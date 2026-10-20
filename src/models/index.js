@@ -4,6 +4,7 @@ export {
   getProviderConnectionById,
   getProviderConnectionStats,
   bulkSetConnectionsActive,
+  getProviderConnectionsPage,
   createProviderConnection,
   updateProviderConnection,
   deleteProviderConnection,

@@ -218,7 +218,7 @@ export default function BasicChatPageClient() {
       setLoadError("");
 
       try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store" });
+        const providersRes = await fetch("/api/providers?lite=1", { cache: "no-store" });
         const providersData = await providersRes.json().catch(() => ({}));
         const connections = Array.isArray(providersData.connections)
           ? providersData.connections.filter((connection) => connection?.isActive !== false)
@@ -264,8 +264,19 @@ export default function BasicChatPageClient() {
           group.models.push(...staticModels);
         }
 
+        // 9Router Pro: fetch live models once per provider, not once per
+        // connection — with thousands of keys per provider the old fan-out
+        // fired thousands of requests; group models are deduped anyway.
+        const seenProviders = new Set();
+        const representatives = connections.filter((connection) => {
+          const pid = connection.provider || connection.id;
+          if (seenProviders.has(pid)) return false;
+          seenProviders.add(pid);
+          return true;
+        });
+
         const liveResults = await Promise.all(
-          connections.map(async (connection) => {
+          representatives.map(async (connection) => {
             try {
               const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
               const data = await response.json().catch(() => ({}));

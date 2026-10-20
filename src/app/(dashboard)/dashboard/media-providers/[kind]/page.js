@@ -12,22 +12,14 @@ import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared
 const COMBO_KINDS = new Set([]);
 const COMBO_BASE_NAMES = { image: "image-combo", tts: "tts-combo" };
 
-function getEffectiveStatus(conn) {
-  const isCooldown = Object.entries(conn).some(
-    ([k, v]) => k.startsWith("modelLock_") && v && new Date(v).getTime() > Date.now()
-  );
-  return conn.testStatus === "unavailable" && !isCooldown ? "active" : conn.testStatus;
-}
+// 9Router Pro: per-connection status math moved server-side (?summary=1).
 
-function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) {
+function MediaProviderCard({ provider, kind, stats, isCustom, onToggle }) {
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
 
-  const providerConns = connections.filter((c) => c.provider === provider.id);
-  const connected = providerConns.filter((c) => { const s = getEffectiveStatus(c); return s === "active" || s === "success"; }).length;
-  const error = providerConns.filter((c) => { const s = getEffectiveStatus(c); return s === "error" || s === "expired" || s === "unavailable"; }).length;
-  const total = providerConns.length;
-  const allDisabled = total > 0 && providerConns.every((c) => c.isActive === false);
+  // 9Router Pro: counts come from the server-side summary (?summary=1).
+  const { connected = 0, error = 0, total = 0, allDisabled = false } = stats || {};
 
   const handleToggleClick = (e) => {
     e.preventDefault();
@@ -140,7 +132,7 @@ function ComboList({ combos }) {
 export default function MediaProviderKindPage() {
   const { kind } = useParams();
   const router = useRouter();
-  const [connections, setConnections] = useState([]);
+  const [statsMap, setStatsMap] = useState({});
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
@@ -158,9 +150,9 @@ export default function MediaProviderKindPage() {
 
   useEffect(() => {
     if (!kindConfig) return;
-    fetch("/api/providers", { cache: "no-store" })
+    fetch("/api/providers?summary=1", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setConnections(d.connections || []))
+      .then((d) => setStatsMap(d.stats || {}))
       .catch(() => {});
     if (isEmbedding) {
       fetch("/api/provider-nodes", { cache: "no-store" })
@@ -191,20 +183,37 @@ export default function MediaProviderKindPage() {
 
   const allProviders = [...providers, ...customProviders];
 
+  // 9Router Pro: merge per-authType summary entries into one per provider.
+  const statsFor = (providerId) => {
+    const entries = Object.values(statsMap).filter((s) => s.provider === providerId);
+    const merged = { total: 0, connected: 0, error: 0, allDisabled: false };
+    for (const s of entries) {
+      merged.total += s.total;
+      merged.connected += s.connected;
+      merged.error += s.error;
+    }
+    merged.allDisabled = entries.length > 0 && entries.every((s) => s.allDisabled);
+    return merged;
+  };
+
+  // 9Router Pro: one bulk PATCH instead of one PUT per connection.
   const handleToggleProvider = async (providerId, newActive) => {
-    const providerConns = connections.filter((c) => c.provider === providerId);
-    setConnections((prev) =>
-      prev.map((c) => (c.provider === providerId ? { ...c, isActive: newActive } : c))
-    );
-    await Promise.allSettled(
-      providerConns.map((c) =>
-        fetch(`/api/providers/${c.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isActive: newActive }),
-        })
-      )
-    );
+    const authTypes = [...new Set(
+      Object.values(statsMap).filter((s) => s.provider === providerId).map((s) => s.authType)
+    )];
+    setStatsMap((prev) => {
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(next)) {
+        if (v.provider === providerId) next[k] = { ...v, allDisabled: !newActive };
+      }
+      return next;
+    });
+    if (authTypes.length === 0) return;
+    await fetch("/api/providers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerId, authTypes, isActive: newActive }),
+    }).catch(() => {});
   };
 
   const handleCreateCombo = async () => {
@@ -257,7 +266,7 @@ export default function MediaProviderKindPage() {
               key={provider.id}
               provider={provider}
               kind={kind}
-              connections={connections}
+              stats={statsFor(provider.id)}
               onToggle={handleToggleProvider}
             />
           ))}
@@ -266,7 +275,7 @@ export default function MediaProviderKindPage() {
               key={provider.id}
               provider={provider}
               kind={kind}
-              connections={connections}
+              stats={statsFor(provider.id)}
               isCustom
               onToggle={handleToggleProvider}
             />

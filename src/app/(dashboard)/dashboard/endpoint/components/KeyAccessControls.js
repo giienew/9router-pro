@@ -27,7 +27,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
     setPickerOpen(true);
     // Same sources the combo editor feeds the picker with.
     try {
-      const [providersRes, aliasRes] = await Promise.all([fetch("/api/providers"), fetch("/api/models/alias")]);
+      const [providersRes, aliasRes] = await Promise.all([fetch("/api/providers?lite=1"), fetch("/api/models/alias")]);
       if (providersRes.ok) setActiveProviders((await providersRes.json()).connections || []);
       if (aliasRes.ok) setModelAliases((await aliasRes.json()).aliases || {});
     } catch (error) {

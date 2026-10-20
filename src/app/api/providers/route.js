@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
+  getProviderConnectionsPage,
   getProviderConnectionStats,
   bulkSetConnectionsActive,
   createProviderConnection,
@@ -54,9 +55,33 @@ async function normalizeProxyPoolId(proxyPoolId) {
 let statsCache = { at: 0, data: null };
 const STATS_TTL_MS = 30_000;
 
+// 9Router Pro: lite projection for picker/list consumers that only need
+// identity + status — drops error strings, model locks, and token material.
+function liteConnection(c) {
+  const psd = c.providerSpecificData || {};
+  const trimmedPsd = {};
+  for (const k of ["nodeName", "prefix", "proxyPoolId", "enabledModels"]) {
+    if (psd[k] !== undefined) trimmedPsd[k] = psd[k];
+  }
+  return {
+    id: c.id,
+    provider: c.provider,
+    authType: c.authType,
+    name: c.name,
+    email: c.email ?? null,
+    isActive: c.isActive,
+    priority: c.priority,
+    testStatus: c.testStatus ?? null,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    providerSpecificData: trimmedPsd,
+  };
+}
+
 // GET /api/providers - List connections.
 // Pro additions: ?summary=1 → per-provider aggregates (tiny payload);
-// ?provider=<id> → server-side filter for detail pages.
+// ?provider=<id> → server-side filter; ?page=&pageSize=&search= →
+// server-side pagination; ?lite=1 → slim projection for pickers.
 export async function GET(request) {
   try {
     const params = new URL(request.url).searchParams;
@@ -66,10 +91,8 @@ export async function GET(request) {
       }
       return NextResponse.json({ stats: statsCache.data });
     }
-    const providerFilter = params.get("provider");
-    const connections = await getProviderConnections(
-      providerFilter ? { provider: providerFilter } : {},
-    );
+    const providerFilter = params.get("provider") || undefined;
+    const lite = params.get("lite") === "1";
 
     // Build nodeNameMap for compatible providers (id → name)
     let nodeNameMap = {};
@@ -81,18 +104,34 @@ export async function GET(request) {
     } catch { }
 
     // Hide sensitive fields, enrich name for compatible providers
-    const safeConnections = connections.map(c => {
+    const shape = (list) => list.map(c => {
       const isCompatible = isOpenAICompatibleProvider(c.provider) || isAnthropicCompatibleProvider(c.provider);
       const name = isCompatible
         ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
-      return {
-        ...toProviderConnectionResponse(c),
-        name,
-      };
+      const shaped = { ...toProviderConnectionResponse(c), name };
+      return lite ? liteConnection(shaped) : shaped;
     });
 
-    return NextResponse.json({ connections: safeConnections });
+    if (params.has("page")) {
+      const paged = await getProviderConnectionsPage({
+        provider: providerFilter,
+        page: Number(params.get("page")) || 1,
+        pageSize: Number(params.get("pageSize")) || 100,
+        search: params.get("search") || "",
+      });
+      return NextResponse.json({
+        connections: shape(paged.connections),
+        total: paged.total,
+        page: paged.page,
+        pageSize: paged.pageSize,
+      });
+    }
+
+    const connections = await getProviderConnections(
+      providerFilter ? { provider: providerFilter } : {},
+    );
+    return NextResponse.json({ connections: shape(connections) });
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });

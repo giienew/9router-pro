@@ -147,6 +147,26 @@ export async function getProviderConnectionStats() {
   return stats;
 }
 
+// 9Router Pro: server-side pagination + search for connection lists, so a
+// provider with tens of thousands of keys loads one page at a time.
+export async function getProviderConnectionsPage({ provider, page = 1, pageSize = 100, search = "" } = {}) {
+  const db = await getAdapter();
+  const where = [];
+  const params = [];
+  if (provider) { where.push("provider = ?"); params.push(provider); }
+  const q = typeof search === "string" ? search.trim() : "";
+  if (q) { where.push("(name LIKE ? OR email LIKE ?)"); params.push(`%${q}%`, `%${q}%`); }
+  const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  const total = db.get(`SELECT COUNT(*) AS n FROM providerConnections${whereSql}`, params)?.n ?? 0;
+  const safePage = Math.max(1, Math.floor(page) || 1);
+  const safeSize = Math.min(500, Math.max(1, Math.floor(pageSize) || 100));
+  const rows = db.all(
+    `SELECT * FROM providerConnections${whereSql} ORDER BY priority ASC, createdAt ASC LIMIT ? OFFSET ?`,
+    [...params, safeSize, (safePage - 1) * safeSize],
+  );
+  return { connections: rows.map(rowToConn), total, page: safePage, pageSize: safeSize };
+}
+
 // 9Router Pro: one UPDATE for a whole provider instead of one PUT per
 // connection when toggling a provider on/off from the list page.
 export async function bulkSetConnectionsActive(provider, authTypes, isActive) {

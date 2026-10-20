@@ -44,6 +44,13 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  // 9Router Pro: server-side pagination + search for the connection list.
+  const [connTotal, setConnTotal] = useState(0);
+  const [connPage, setConnPage] = useState(1);
+  const [connSearchInput, setConnSearchInput] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const connSearchRef = useRef("");
+  const connSearchTimer = useRef(null);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -308,7 +315,7 @@ export default function ProviderDetailPage() {
   const fetchConnections = useCallback(async () => {
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-        fetch(`/api/providers?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" }),
+        fetch(`/api/providers?provider=${encodeURIComponent(providerId)}&page=1&pageSize=100&search=${encodeURIComponent(connSearchRef.current)}`, { cache: "no-store" }),
         fetch("/api/provider-nodes", { cache: "no-store" }),
         fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
         fetch("/api/settings", { cache: "no-store" }),
@@ -318,8 +325,9 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
-        setConnections(filtered);
+        setConnections(connectionsData.connections || []);
+        setConnTotal(connectionsData.total ?? (connectionsData.connections || []).length);
+        setConnPage(1);
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
@@ -358,6 +366,36 @@ export default function ProviderDetailPage() {
       setLoading(false);
     }
   }, [providerId, isCompatible]);
+
+  // 9Router Pro: append the next page of connections (server-side pagination).
+  const loadMoreConnections = async () => {
+    if (loadingMore || connections.length >= connTotal) return;
+    setLoadingMore(true);
+    try {
+      const next = connPage + 1;
+      const res = await fetch(
+        `/api/providers?provider=${encodeURIComponent(providerId)}&page=${next}&pageSize=100&search=${encodeURIComponent(connSearchRef.current)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setConnections((prev) => [...prev, ...(data.connections || [])]);
+        setConnPage(next);
+        setConnTotal(data.total ?? connTotal);
+      }
+    } catch { /* keep current list */ }
+    setLoadingMore(false);
+  };
+
+  // 9Router Pro: debounced server-side search over name/email.
+  const handleConnSearch = (value) => {
+    setConnSearchInput(value);
+    clearTimeout(connSearchTimer.current);
+    connSearchTimer.current = setTimeout(() => {
+      connSearchRef.current = value;
+      fetchConnections();
+    }, 350);
+  };
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -1026,6 +1064,21 @@ export default function ProviderDetailPage() {
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
   const connectionsList = (
+    <>
+    <div className="mb-2 flex items-center gap-2">
+      <div className="relative flex-1">
+        <span className="material-symbols-outlined pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-text-muted">search</span>
+        <input
+          value={connSearchInput}
+          onChange={(e) => handleConnSearch(e.target.value)}
+          placeholder="Search connections by name or email…"
+          className="w-full rounded-lg border border-border bg-bg py-1.5 pl-9 pr-3 text-sm text-text-main outline-none focus:border-brand-500"
+        />
+      </div>
+      <span className="shrink-0 text-xs text-text-muted">
+        Showing {connections.length} of {connTotal}
+      </span>
+    </div>
     <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03] max-h-[500px] overflow-y-auto pr-1">
       {connections
         .map((conn, index) => (
@@ -1085,6 +1138,17 @@ export default function ProviderDetailPage() {
           </div>
         ))}
     </div>
+    {connections.length < connTotal && (
+      <button
+        type="button"
+        onClick={loadMoreConnections}
+        disabled={loadingMore}
+        className="mt-2 w-full rounded-lg border border-dashed border-border px-3 py-2 text-sm text-text-muted transition-colors hover:border-brand-500 hover:text-brand-500 disabled:opacity-40"
+      >
+        {loadingMore ? "Loading…" : `Load more (${connTotal - connections.length} remaining)`}
+      </button>
+    )}
+    </>
   );
 
   const activePools = proxyPools.filter((p) => p.isActive === true);
@@ -1427,7 +1491,7 @@ export default function ProviderDetailPage() {
               )}
             </div>
             <p className="text-text-muted">
-              {connections.length} connection{connections.length === 1 ? "" : "s"}
+              {connTotal} connection{connTotal === 1 ? "" : "s"}
             </p>
           </div>
         </div>

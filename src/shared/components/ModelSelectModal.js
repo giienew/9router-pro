@@ -95,7 +95,7 @@ export default function ModelSelectModal({
 
   const fetchConnections = async () => {
     try {
-      const res = await fetch("/api/providers");
+      const res = await fetch("/api/providers?lite=1");
       if (!res.ok) throw new Error(`Failed to fetch providers: ${res.status}`);
       const data = await res.json();
       setFetchedConnections(data.connections || []);
