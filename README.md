@@ -1,6 +1,28 @@
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
-  
+
+  # 9Router Pro — by Gienetic
+
+  **A Pro edition of 9Router with a Prompt Inject engine: reusable system-prompt profiles bound globally, per API key, or per model.**
+
+  Based on [9Router](https://github.com/decolua/9router) by decolua (MIT). Everything below the Pro section is the original project documentation.
+
+</div>
+
+## ✨ What's Pro
+
+- **Prompt Studio** (dashboard) — create reusable system-prompt profiles, then bind them:
+  - **Globally** — injected into every chat request
+  - **Per API key** — a persona for whoever holds the key
+  - **Per model** — matched by the name clients call (combo, alias, or `provider/model`)
+- **Prepend or append** per profile. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
+- **Ordering** — global → per-key → per-model; idempotent on retries; fails open (a broken profile never breaks a chat).
+- Starter presets included (Structured Output, Bahasa Indonesia, Coding Partner).
+
+---
+
+<div align="center">
+
   # 9Router - FREE AI Router & Token Saver
   
   **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
