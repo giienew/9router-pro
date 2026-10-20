@@ -309,8 +309,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
-  // Prompt Inject (9Router Pro): profile system prompts resolved by the caller,
-  // ordered global → per-key → per-model. Independent of the token savers.
+  // Soul Prompts (9Router Pro): soul system prompts resolved by the caller —
+  // the global soul first, then the model's own. Independent of the token savers.
   // Grouped into a single injector pass per position: joining same-position
   // texts with "\n\n" produces the identical prompt as injecting them one by
   // one (the injector itself joins with "\n\n"; prepend order = priority

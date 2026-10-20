@@ -1,7 +1,7 @@
 // Shared system-prompt injector: inserts an instruction into the system message of
 // the final request body, dispatching by format so it works for translated and
-// native-passthrough flows. Used by caveman.js, ponytail.js and the Prompt Inject
-// engine (9Router Pro). position: "append" (default) or "prepend".
+// native-passthrough flows. Used by caveman.js, ponytail.js and Soul Prompts
+// (9Router Pro). position: "append" (default) or "prepend".
 
 import { FORMATS } from "../translator/formats.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK, RESPONSES_ITEM } from "../translator/schema/blocks.js";

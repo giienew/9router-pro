@@ -3,7 +3,7 @@
 
   # 9Router Pro — by Gienetic
 
-  **A Pro edition of 9Router with a Prompt Inject engine: reusable system-prompt profiles bound globally, per API key, or per model.**
+  **A Pro edition of 9Router with Soul Prompts: one system prompt per target — a global soul, a soul per API key, a soul per model.**
 
   By **Gienetic** — [GitHub](https://github.com/giienew) · [Telegram](https://t.me/gienetic)
 
@@ -18,13 +18,12 @@
 
 ## ✨ What's Pro
 
-- **Prompt Inject** (dashboard page) — create reusable system-prompt profiles, then bind them:
-  - **Globally** — injected into every chat request
-  - **Per API key** — a persona for whoever holds the key
-  - **Per model** — matched by the name clients call (combo, alias, or `provider/model`)
-- **Prepend or append** per profile. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
-- **Ordering** — global → per-key → per-model; idempotent on retries; fails open (a broken profile never breaks a chat).
-- **Import / export** profile packs as JSON — back them up, share them between instances.
+- **Soul Prompts** (dashboard page) — one system prompt per target, zero learning curve:
+  - **Global Soul** — the router's own SOUL.md, injected into every chat request
+  - **User Soul** — one per API key: a persona for whoever holds the key
+  - **Model Soul** — one per model, matched by the name clients call (combo, alias, or `provider/model`)
+- **Prepend or append** per soul. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
+- **Stacking** — a request receives at most three souls, ordered global → user → model; idempotent on retries; fails open (a broken soul never breaks a chat).
 - **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
@@ -35,7 +34,7 @@
 | | 9Router (original) | Typical forks | **9Router Pro** |
 |---|---|---|---|
 | Base stack | Next 16 / React 19 | often older (Next 14) | Next 16 / React 19 (upstream) |
-| Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ reusable profiles, 3 binding scopes |
+| Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ Soul Prompts: global + per-user + per-model |
 | Per-API-key system prompt | ❌ | ❌ | ✅ |
 | Prepend/append control | ❌ | ❌ | ✅ |
 | Dashboard accents | coral only | varies | ✅ 7 accents |
@@ -55,7 +54,7 @@ npm run start        # dashboard on http://localhost:20128
 # or with Docker — see the original documentation below for the full guide
 ```
 
-Then open the dashboard, add a provider, and visit **Prompt Inject** to create your first profile.
+Then open the dashboard, add a provider, and visit **Soul Prompts** to give your router a soul.
 
 ---
 

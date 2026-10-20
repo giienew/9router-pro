@@ -1,9 +1,9 @@
-// 9Router Pro — Prompt Inject tests (vitest, upstream harness).
-// Run from tests/: npx vitest run pro/prompt-inject.test.js
+// 9Router Pro — Soul Prompts + injector tests (vitest, upstream harness).
+// Run from tests/: npx vitest run pro/soul-prompts.test.js
 import assert from "node:assert";
 import { injectSystemPrompt } from "open-sse/rtk/systemInject.js";
 import { FORMATS } from "open-sse/translator/formats.js";
-import { selectPromptInjects } from "@/lib/db/repos/promptInjectRepo.js";
+import { selectSoulPrompt } from "@/lib/db/repos/soulPromptRepo.js";
 
 describe("injectSystemPrompt — OpenAI chat", () => {
   it("append goes after existing system text", () => {
@@ -107,38 +107,43 @@ describe("injectSystemPrompt — Responses", () => {
   });
 });
 
-describe("selectPromptInjects — resolver", () => {
-  const profiles = [
-    { id: "g1", name: "Global", content: "G", position: "prepend", enabled: true },
-    { id: "k1", name: "KeyPersona", content: "K", position: "append", enabled: true },
-    { id: "m1", name: "ModelPersona", content: "M", position: "append", enabled: true },
-    { id: "off", name: "Disabled", content: "X", position: "append", enabled: false },
-    { id: "empty", name: "Empty", content: "   ", position: "append", enabled: true },
-  ];
-  const bindings = {
-    global: ["g1", "off", "empty"],
-    byKey: { keyA: ["k1"] },
-    byModel: { dpsk_un: ["m1", "g1"], "dahl/deepseek-ai/DeepSeek-V4": ["k1"] },
+describe("selectSoulPrompt — resolver (global → user → model)", () => {
+  const snap = {
+    global: { content: "G", position: "prepend", enabled: true },
+    byKey: { keyA: { content: "K", position: "append", enabled: true } },
+    byModel: {
+      dpsk_un: { content: "M", position: "append", enabled: true },
+      "dahl/deepseek-ai/DeepSeek-V4": { content: "RM", position: "append", enabled: true },
+      off: { content: "X", position: "append", enabled: false },
+      empty: { content: "   ", position: "append", enabled: true },
+    },
   };
 
-  it("orders global → key → model, skips disabled/empty, dedupes", () => {
-    const out = selectPromptInjects(profiles, bindings, {
+  it("stacks global → user → model, one per scope", () => {
+    const out = selectSoulPrompt(snap, {
       apiKeyId: "keyA",
       requestedModel: "dpsk_un",
       resolvedModel: "dahl/deepseek-ai/DeepSeek-V4",
       bareModel: "deepseek-ai/DeepSeek-V4",
     });
-    assert.deepEqual(out.map(p => p.id), ["g1", "k1", "m1"]);
-    assert.deepEqual(out.map(p => p.position), ["prepend", "append", "append"]);
+    assert.deepEqual(out.map(p => p.name), ["global", "user", "dpsk_un"]);
+    assert.deepEqual(out.map(p => p.text), ["G", "K", "M"]);
   });
 
-  it("unknown key gets global only", () => {
-    const out = selectPromptInjects(profiles, bindings, { apiKeyId: "nope", requestedModel: "zzz" });
-    assert.deepEqual(out.map(p => p.id), ["g1"]);
+  it("model match falls back to the resolved provider/model name", () => {
+    const out = selectSoulPrompt(snap, { requestedModel: "unknown-combo", resolvedModel: "dahl/deepseek-ai/DeepSeek-V4" });
+    assert.deepEqual(out.map(p => p.text), ["G", "RM"]);
   });
 
-  it("empty bindings resolve to nothing", () => {
-    const out = selectPromptInjects(profiles, { global: [], byKey: {}, byModel: {} }, { apiKeyId: "keyA" });
-    assert.deepEqual(out, []);
+  it("unknown key gets global only; disabled/empty model souls are skipped", () => {
+    const out = selectSoulPrompt(snap, { apiKeyId: "nope", requestedModel: "off" });
+    assert.deepEqual(out.map(p => p.text), ["G"]);
+    const out2 = selectSoulPrompt(snap, { apiKeyId: "nope", requestedModel: "empty" });
+    assert.deepEqual(out2.map(p => p.text), ["G"]);
+  });
+
+  it("nothing set resolves to nothing", () => {
+    assert.deepEqual(selectSoulPrompt({}, {}), []);
+    assert.deepEqual(selectSoulPrompt({ global: null, byKey: {}, byModel: {} }, { apiKeyId: "keyA" }), []);
   });
 });

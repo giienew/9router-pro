@@ -47,11 +47,12 @@ export {
   getMitmAlias, setMitmAliasAll,
 } from "./repos/aliasRepo.js";
 
-// Prompt Inject (9Router Pro)
+// Soul Prompts (9Router Pro) — global soul + per-user + per-model souls
 export {
-  getPromptProfiles, getPromptProfileById, createPromptProfile, updatePromptProfile,
-  deletePromptProfile, getPromptBindings, setPromptBindings, resolvePromptInjects,
-} from "./repos/promptInjectRepo.js";
+  getSoulPrompts, setSoulPrompt, deleteSoulPrompt,
+  getSoulUserPrompts, setSoulUserPrompt, deleteSoulUserPrompt,
+  getSoulGlobal, setSoulGlobal, resolveSoulPrompt,
+} from "./repos/soulPromptRepo.js";
 
 // Key Quotas (9Router Pro)
 export {
