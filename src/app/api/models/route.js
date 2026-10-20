@@ -5,9 +5,19 @@ import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
+// 9Router Pro: the catalog is near-static (constants + aliases + disabled +
+// custom rows) but ~320KB to build and ship — cache the payload for 30s so
+// dashboard loads after the first are instant. Alias/disabled/custom edits
+// show up within the TTL.
+const MODELS_CACHE_TTL_MS = 30000;
+let modelsCache = { at: 0, payload: null };
+
 // GET /api/models - Get models with aliases
 export async function GET() {
   try {
+    if (modelsCache.payload && Date.now() - modelsCache.at < MODELS_CACHE_TTL_MS) {
+      return NextResponse.json(modelsCache.payload);
+    }
     const modelAliases = await getModelAliases();
     const disabled = await getDisabledModels();
 
@@ -75,7 +85,8 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({ models });
+    modelsCache = { at: Date.now(), payload: { models } };
+    return NextResponse.json(modelsCache.payload);
   } catch (error) {
     console.log("Error fetching models:", error);
     return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });

@@ -319,6 +319,77 @@ export default function PromptInjectionClient() {
   const selectedKeyEntry = selectedKeyId ? userPrompts[selectedKeyId] || null : null;
   const modelNames = Object.keys(prompts).sort();
 
+  // ---- Import / Export (Pro) ----
+  const exportInjections = async () => {
+    try {
+      const res = await fetch(API);
+      const data = await res.json();
+      const blob = new Blob(
+        [JSON.stringify({ app: "9router-pro", kind: "prompt-injections", version: 1, ...data }, null, 2)],
+        { type: "application/json" }
+      );
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "prompt-injections.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      showToast("Export failed", "error");
+    }
+  };
+
+  const importInjections = async (file) => {
+    try {
+      const data = JSON.parse(await file.text());
+      let applied = 0;
+      let skipped = 0;
+      if (data.global) {
+        const res = await fetch(API, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ global: data.global }),
+        });
+        if (res.ok) applied++; else skipped++;
+      }
+      for (const [model, entry] of Object.entries(data.prompts || {})) {
+        const res = await fetch(API, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, ...entry }),
+        });
+        if (res.ok) applied++; else skipped++;
+      }
+      for (const [keyId, entry] of Object.entries(data.userPrompts || {})) {
+        if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
+        const res = await fetch(API, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keyId, ...entry }),
+        });
+        if (res.ok) applied++; else skipped++;
+      }
+      showToast(`Imported ${applied} injection(s)${skipped ? `, ${skipped} skipped` : ""}`, "success");
+      await load();
+    } catch {
+      showToast("Import failed — not a valid injections file", "error");
+    }
+  };
+
+  // ---- Stack Preview (Pro) ----
+  const [pvModel, setPvModel] = useState("");
+  const [pvKeyId, setPvKeyId] = useState("");
+  const [pvStack, setPvStack] = useState(null);
+  const runPreview = async () => {
+    try {
+      const qs = new URLSearchParams({ preview: "1", model: pvModel, keyId: pvKeyId });
+      const res = await fetch(`${API}?${qs}`);
+      const data = await res.json();
+      setPvStack(data.stack || []);
+    } catch {
+      showToast("Preview failed", "error");
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-6">
       <div>
@@ -342,6 +413,23 @@ export default function PromptInjectionClient() {
           {" "}·{" "}
           <a className="underline" href="https://t.me/gienetic" target="_blank" rel="noreferrer">Telegram</a>
         </p>
+        <div className="mt-3 flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportInjections}>
+            <span className="material-symbols-outlined text-[16px]">download</span> Export
+          </Button>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2">
+            <span className="material-symbols-outlined text-[16px]">upload</span> Import
+            <input
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) importInjections(e.target.files[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       {loading ? (
@@ -472,6 +560,74 @@ export default function PromptInjectionClient() {
                 <p className="text-sm text-text-muted">No model injections yet — add one above.</p>
               )}
             </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <SectionTitle icon="layers" title="Stack preview">
+              Exactly what one request receives, in order — pick a model and a key.
+            </SectionTitle>
+            <Card>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={pvModel}
+                    onChange={(e) => setPvModel(e.target.value)}
+                    placeholder="model or combo name — e.g. dpsk_un"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+                  />
+                  <select
+                    value={pvKeyId}
+                    onChange={(e) => setPvKeyId(e.target.value)}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  >
+                    <option value="">— no key —</option>
+                    {keys.map((k) => (
+                      <option key={k.id} value={k.id}>{k.name || k.id}</option>
+                    ))}
+                  </select>
+                  <Button size="sm" onClick={runPreview}>Preview</Button>
+                </div>
+                {pvStack !== null && (
+                  pvStack.length === 0 ? (
+                    <p className="text-sm text-text-muted">No injections would fire for this combination.</p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {pvStack.map((item, i) => (
+                        <div key={i} className="rounded-lg border border-border bg-surface p-3">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                              {i + 1}. {item.name}
+                            </span>
+                            <EntryBadge entry={item.mode === "chat" ? { mode: "chat", turns: item.turns } : { mode: "single" }} />
+                            {item.mode === "single" && (
+                              <span className="text-xs text-text-muted">
+                                {item.position} · ~{estimateTokens(item.text)} tokens
+                              </span>
+                            )}
+                          </div>
+                          {item.mode === "single" ? (
+                            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-text-muted">{item.text}</pre>
+                          ) : (
+                            <div className="flex flex-col gap-1.5">
+                              {item.turns.map((t, j) => (
+                                <div key={j} className={`max-w-[92%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                                  t.role === "user" ? "self-start bg-surface-3" : "self-end bg-primary/10"
+                                }`}>
+                                  <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                    {t.role === "user" ? "You" : "Bot"}
+                                  </span>
+                                  <span className="whitespace-pre-wrap">{t.content}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+            </Card>
           </section>
 
           <section className="flex flex-col gap-3">

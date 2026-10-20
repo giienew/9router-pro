@@ -4,6 +4,7 @@ import {
   setInjectModelPrompt, setInjectUserPrompt, setInjectGlobal,
   deleteInjectModelPrompt, deleteInjectUserPrompt,
 } from "@/lib/localDb";
+import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
 
 // Prompt Injection (9Router Pro) — one global injection, one per user
 // (API key), one per model. Each entry is either a single system prompt
@@ -14,13 +15,28 @@ import {
 //                                          | { model, mode, content|turns, position, enabled }
 // DELETE /api/prompt-injection?model=<name>  |  ?keyId=<id>
 
-export async function GET() {
+export async function GET(request) {
   try {
     const [global, userPrompts, prompts] = await Promise.all([
       getInjectGlobal(),
       getInjectUserPrompts(),
       getInjectModelPrompts(),
     ]);
+    // Stack preview: exactly what one request would receive, in order.
+    const params = new URL(request.url).searchParams;
+    if (params.get("preview")) {
+      const model = params.get("model") || "";
+      const stack = selectPromptInjections(
+        { global, byKey: userPrompts, byModel: prompts },
+        {
+          apiKeyId: params.get("keyId") || null,
+          requestedModel: model,
+          resolvedModel: model,
+          bareModel: model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model,
+        }
+      );
+      return NextResponse.json({ stack });
+    }
     return NextResponse.json({ global, userPrompts, prompts });
   } catch (error) {
     console.log("Error fetching prompt injections:", error);
