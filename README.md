@@ -39,6 +39,7 @@ The original 9Router is a great router — Pro is what it becomes when you actua
 - **An optimized hot path** — soul resolution is snapshot-cached and injection runs as a single grouped pass per position: identical output, less work per request.
 - **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
 - **Tested** — the Pro features ship with unit tests (injector + resolver), all passing.
+- **Made to be an agent's endpoint** — one base URL for Hermes-style setups, model switching by name, streaming + tool-call passthrough.
 
 ## 🤖 Built for agents — Hermes & friends
 

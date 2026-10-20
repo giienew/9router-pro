@@ -108,6 +108,58 @@ export async function getProviderConnectionById(id) {
   return rowToConn(row);
 }
 
+// 9Router Pro: dashboard list-page stats, aggregated server-side so the
+// providers page no longer downloads every connection (18k+ rows ≈ 7MB).
+// Mirrors the page's own rules: "unavailable" counts as connected unless a
+// modelLock_* is still in the future (cooldown), in which case it's an error.
+export async function getProviderConnectionStats() {
+  const db = await getAdapter();
+  const rows = db.all(`SELECT provider, authType, isActive, data FROM providerConnections`);
+  const nowMs = Date.now();
+  const stats = {};
+  for (const row of rows) {
+    const extra = parseJson(row.data, {});
+    const key = `${row.provider}|${row.authType}`;
+    const s = (stats[key] ||= {
+      provider: row.provider, authType: row.authType,
+      total: 0, connected: 0, error: 0, allDisabled: true, latestError: null,
+    });
+    s.total++;
+    if (row.isActive === 1 || row.isActive === true) s.allDisabled = false;
+    const cooling = Object.entries(extra).some(
+      ([k, v]) => k.startsWith(MODEL_LOCK_PREFIX) && v && new Date(v).getTime() > nowMs,
+    );
+    const status = extra.testStatus === "unavailable" && !cooling ? "active" : extra.testStatus;
+    if (status === "active" || status === "success") {
+      s.connected++;
+    } else if (status === "error" || status === "expired" || status === "unavailable") {
+      s.error++;
+      if (!s.latestError || new Date(extra.lastErrorAt || 0) > new Date(s.latestError.lastErrorAt || 0)) {
+        s.latestError = {
+          lastErrorType: extra.lastErrorType || null,
+          errorCode: extra.errorCode ?? null,
+          lastError: extra.lastError || null,
+          lastErrorAt: extra.lastErrorAt || null,
+        };
+      }
+    }
+  }
+  return stats;
+}
+
+// 9Router Pro: one UPDATE for a whole provider instead of one PUT per
+// connection when toggling a provider on/off from the list page.
+export async function bulkSetConnectionsActive(provider, authTypes, isActive) {
+  if (!provider || !Array.isArray(authTypes) || !authTypes.length) return 0;
+  const db = await getAdapter();
+  const placeholders = authTypes.map(() => "?").join(", ");
+  const info = db.run(
+    `UPDATE providerConnections SET isActive = ?, updatedAt = ? WHERE provider = ? AND authType IN (${placeholders})`,
+    [isActive ? 1 : 0, new Date().toISOString(), provider, ...authTypes],
+  );
+  return info?.changes ?? 0;
+}
+
 // Internal sync reorder — must be called INSIDE a transaction.
 //
 // Normalizes priorities to a contiguous 1..N after a DELETE or an explicit

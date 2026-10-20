@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
+  getProviderConnectionStats,
+  bulkSetConnectionsActive,
   createProviderConnection,
   getProviderNodeById,
   getProviderNodes,
@@ -47,10 +49,27 @@ async function normalizeProxyPoolId(proxyPoolId) {
   return { proxyPoolId: normalizedId };
 }
 
-// GET /api/providers - List all connections
-export async function GET() {
+// 9Router Pro: summary stats are computed from up to tens of thousands of
+// rows — cache them briefly so reopening the providers page is instant.
+let statsCache = { at: 0, data: null };
+const STATS_TTL_MS = 30_000;
+
+// GET /api/providers - List connections.
+// Pro additions: ?summary=1 → per-provider aggregates (tiny payload);
+// ?provider=<id> → server-side filter for detail pages.
+export async function GET(request) {
   try {
-    const connections = await getProviderConnections();
+    const params = new URL(request.url).searchParams;
+    if (params.get("summary") === "1") {
+      if (!statsCache.data || Date.now() - statsCache.at > STATS_TTL_MS) {
+        statsCache = { at: Date.now(), data: await getProviderConnectionStats() };
+      }
+      return NextResponse.json({ stats: statsCache.data });
+    }
+    const providerFilter = params.get("provider");
+    const connections = await getProviderConnections(
+      providerFilter ? { provider: providerFilter } : {},
+    );
 
     // Build nodeNameMap for compatible providers (id → name)
     let nodeNameMap = {};
@@ -77,6 +96,23 @@ export async function GET() {
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
+  }
+}
+
+// PATCH /api/providers - 9Router Pro: bulk-toggle every connection of one
+// provider (the list page's provider switch) in a single UPDATE.
+export async function PATCH(request) {
+  try {
+    const { provider, authTypes, isActive } = await request.json();
+    if (!provider || !Array.isArray(authTypes) || !authTypes.length) {
+      return NextResponse.json({ error: "provider and authTypes are required" }, { status: 400 });
+    }
+    const updated = await bulkSetConnectionsActive(provider, authTypes, !!isActive);
+    statsCache = { at: 0, data: null };
+    return NextResponse.json({ updated });
+  } catch (error) {
+    console.log("Error bulk-toggling providers:", error);
+    return NextResponse.json({ error: "Failed to update connections" }, { status: 500 });
   }
 }
 
