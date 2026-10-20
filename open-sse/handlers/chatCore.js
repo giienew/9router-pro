@@ -24,7 +24,7 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
-import { injectSystemPrompt } from "../rtk/systemInject.js";
+import { injectSystemPrompt, injectChatTurns } from "../rtk/systemInject.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe } from "../rtk/pxpipe.js";
@@ -309,19 +309,27 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
-  // Soul Prompts (9Router Pro): soul system prompts resolved by the caller —
-  // the global soul first, then the model's own. Independent of the token savers.
-  // Grouped into a single injector pass per position: joining same-position
-  // texts with "\n\n" produces the identical prompt as injecting them one by
-  // one (the injector itself joins with "\n\n"; prepend order = priority
-  // order, highest first), with O(1) body scans instead of O(profiles).
+  // Prompt Injection (9Router Pro): injections resolved by the caller —
+  // global → user (API key) → model. Independent of the token savers.
+  // "single" entries are grouped into one injector pass per position:
+  // joining same-position texts with "\n\n" produces the identical prompt
+  // as injecting them one by one (the injector itself joins with "\n\n";
+  // prepend order = priority order, highest first), with O(1) body scans.
+  // "chat" entries are flattened in stack order and inserted as fake
+  // history right after the system message(s) by injectChatTurns.
   if (Array.isArray(promptInjects) && promptInjects.length) {
     try {
-      const prepends = promptInjects.filter(p => p && p.position === "prepend" && p.text);
-      const appends = promptInjects.filter(p => p && p.position !== "prepend" && p.text);
+      const singles = promptInjects.filter(p => p && p.mode !== "chat");
+      const chats = promptInjects.filter(p => p && p.mode === "chat" && Array.isArray(p.turns) && p.turns.length);
+      const prepends = singles.filter(p => p.position === "prepend" && p.text);
+      const appends = singles.filter(p => p.position !== "prepend" && p.text);
       if (prepends.length) injectSystemPrompt(translatedBody, finalFormat, prepends.map(p => p.text).join("\n\n"), "prepend");
       if (appends.length) injectSystemPrompt(translatedBody, finalFormat, appends.map(p => p.text).join("\n\n"), "append");
-      if (prepends.length || appends.length) xf.push(`INJECT:${promptInjects.map(p => p.name || p.id || "?").join("+")}`);
+      if (prepends.length || appends.length) xf.push(`INJECT:${singles.map(p => p.name || "?").join("+")}`);
+      if (chats.length) {
+        injectChatTurns(translatedBody, finalFormat, chats.flatMap(p => p.turns));
+        xf.push(`INJECT-CHAT:${chats.map(p => p.name || "?").join("+")}`);
+      }
     } catch { /* fail-open: injection must never break chat */ }
   }
 

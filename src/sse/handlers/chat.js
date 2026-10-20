@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings, getApiKeyByKey, resolveSoulPrompt, checkKeyQuota } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, checkKeyQuota } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -292,12 +292,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    // Soul Prompts (9Router Pro): global soul → the API key's soul → the
-    // model's soul (matched by requested name → provider/model → bare).
-    // Fail-open: resolveSoulPrompt already swallows storage errors.
-    const soulKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
-    const promptInjects = await resolveSoulPrompt({
-      apiKeyId: soulKeyRecord?.id || null,
+    // Prompt Injection (9Router Pro): global → the API key's → the model's
+    // (matched by requested name → provider/model → bare).
+    // Fail-open: resolvePromptInjections already swallows storage errors.
+    const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
+    const promptInjects = await resolvePromptInjections({
+      apiKeyId: injectKeyRecord?.id || null,
       requestedModel: injectModelName || requestedModel || modelStr,
       resolvedModel: `${provider}/${model}`,
       bareModel: model,

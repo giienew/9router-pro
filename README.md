@@ -3,7 +3,7 @@
 
   # 9Router Pro — by Gienetic
 
-  **A Pro edition of 9Router with Soul Prompts: one system prompt per target — a global soul, a soul per API key, a soul per model.**
+  **A Pro edition of 9Router with Prompt Injection: one injection per target — global, per API key, per model — as a system prompt or a scripted chat.**
 
   By **Gienetic** — [GitHub](https://github.com/giienew) · [Telegram](https://t.me/gienetic)
 
@@ -18,12 +18,12 @@
 
 ## ✨ What's Pro
 
-- **Soul Prompts** (dashboard page) — one system prompt per target, zero learning curve:
-  - **Global Soul** — the router's own SOUL.md, injected into every chat request
-  - **User Soul** — one per API key: a persona for whoever holds the key
-  - **Model Soul** — one per model, matched by the name clients call (combo, alias, or `provider/model`)
-- **Prepend or append** per soul. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
-- **Stacking** — a request receives at most three souls, ordered global → user → model; idempotent on retries; fails open (a broken soul never breaks a chat).
+- **Prompt Injection** (dashboard page) — one injection per target, zero learning curve:
+  - **Global** — injected into every chat request
+  - **Per user** — one per API key: a persona for whoever holds the key
+  - **Per model** — one per model, matched by the name clients call (combo, alias, or `provider/model`)
+- **Two modes per injection** — a *single system prompt* (prepend or append), or a *chat script*: user/bot turns, as long as you like, inserted as a conversation that already happened. Fake history primes far harder than a system prompt alone.
+- **Stacking** — a request receives at most three injections, ordered global → user → model. Injection happens after format translation through the router's own wire-aware injector (OpenAI, Claude, Gemini, Responses); idempotent on retries; fails open (a broken injection never breaks a chat).
 - **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
@@ -33,10 +33,10 @@
 
 The original 9Router is a great router — Pro is what it becomes when you actually run it as your daily gateway:
 
-- **Soul Prompts** — the original has *no* custom system prompts at all. Pro gives every target one: a **Global Soul** (the router's SOUL.md), a **User Soul** per API key, and a **Model Soul** per model — prepend or append, injected wire-aware for OpenAI / Claude / Gemini / Responses / Kiro bodies.
+- **Prompt Injection** — the original has *no* custom system prompts at all. Pro gives every target one injection — **global**, **per API key**, and **per model** — each either a system prompt (prepend or append) or a scripted chat primed as fake history, injected wire-aware for OpenAI / Claude / Gemini / Responses bodies.
 - **Per-key token quotas** — upstream *removed* this feature. Pro brings it back: a token budget per API key (24h / 7d / 30d) with live usage and 429 enforcement.
 - **An identity** — 7 switchable accent themes with violet as the Pro signature (the original is coral-only), plus Pro branding throughout.
-- **An optimized hot path** — soul resolution is snapshot-cached and injection runs as a single grouped pass per position: identical output, less work per request.
+- **An optimized hot path** — injection resolution is snapshot-cached and system prompts run as a single grouped pass per position: identical output, less work per request.
 - **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
 - **Tested** — the Pro features ship with unit tests (injector + resolver), all passing.
 - **Made to be an agent's endpoint** — one base URL for Hermes-style setups, model switching by name, streaming + tool-call passthrough.
@@ -47,16 +47,16 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 
 - **One base URL** — point the agent at `https://your-host/v1` with any client key; every combo and model is callable by name and listed in `/v1/models`, so model-switching menus just work.
 - **Streaming + tool calls pass through** — verified end-to-end with agent-style requests.
-- **The persona lives in the router, not the client** — Souls are injected by Pro, so the agent keeps its behavior no matter which model answers. Switch models mid-flight; the soul follows.
-- **Your own `*_un` lineup** — this is how the author's setup runs: six models, each with a permanent uncensored soul of its own (11K–102K characters), behind one endpoint. No client-side prompt juggling, no re-pasting per app.
-- **Hand out keys safely** — per-key souls (a different persona per agent) plus per-key token quotas.
+- **The persona lives in the router, not the client** — injections are applied by Pro, so the agent keeps its behavior no matter which model answers. Switch models mid-flight; the injection follows.
+- **Your own `*_un` lineup** — this is how the author's setup runs: six models, each with a permanent injection of its own (11K–102K characters), behind one endpoint. No client-side prompt juggling, no re-pasting per app.
+- **Hand out keys safely** — per-key injections (a different persona per agent) plus per-key token quotas.
 
 ## ⚖️ Pro vs Original vs Other Forks
 
 | | 9Router (original) | Typical forks | **9Router Pro** |
 |---|---|---|---|
 | Base stack | Next 16 / React 19 | often older (Next 14) | Next 16 / React 19 (upstream) |
-| Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ Soul Prompts: global + per-user + per-model |
+| Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ Prompt Injection: global + per-user + per-model, prompt or chat script |
 | Per-API-key system prompt | ❌ | ❌ | ✅ |
 | Prepend/append control | ❌ | ❌ | ✅ |
 | Dashboard accents | coral only | varies | ✅ 7 accents |
@@ -77,7 +77,7 @@ npm run start        # dashboard on http://localhost:20128
 # or with Docker — see the original documentation below for the full guide
 ```
 
-Then open the dashboard, add a provider, and visit **Soul Prompts** to give your router a soul.
+Then open the dashboard, add a provider, and visit **Prompt Injection** to set up your injections.
 
 ---
 

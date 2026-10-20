@@ -9,7 +9,6 @@ import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useSettingsStore from "@/store/settingsStore";
-import { getSoulIcon, SOUL_ICON_EVENT } from "@/shared/constants/soulIcon";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 
@@ -26,7 +25,7 @@ const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
-  { href: "/dashboard/soul-prompts", label: "Soul Prompts", icon: "psychology" },
+  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
@@ -52,21 +51,7 @@ export default function Sidebar({ onClose }) {
   const [enableTranslator, setEnableTranslator] = useState(false);
   const { copied, copy } = useCopyToClipboard(2000);
 
-  // 9Router Pro: the Soul Prompts icon is changeable from its page.
-  const [soulIcon, setSoulIconState] = useState("psychology");
-  useEffect(() => {
-    const update = () => setSoulIconState(getSoulIcon());
-    update();
-    window.addEventListener(SOUL_ICON_EVENT, update);
-    window.addEventListener("storage", update);
-    return () => {
-      window.removeEventListener(SOUL_ICON_EVENT, update);
-      window.removeEventListener("storage", update);
-    };
-  }, []);
-  const mainNavItems = navItems.map((it) =>
-    it.href === "/dashboard/soul-prompts" ? { ...it, icon: soulIcon } : it
-  );
+  const mainNavItems = navItems;
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
