@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ModelSelectModal from "@/shared/components/ModelSelectModal";
 
 // ---------------- Injection Tester ----------------
 // Fires the same probe at two models through this router's /v1: model A
@@ -126,6 +127,7 @@ export function InjectionTester() {
   const [running, setRunning] = useState(false);
   const [resA, setResA] = useState(null);
   const [resB, setResB] = useState(null);
+  const [pickerFor, setPickerFor] = useState(null);
 
   useEffect(() => {
     try {
@@ -195,23 +197,43 @@ export function InjectionTester() {
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-text-muted">Model A — with injection</span>
-          <input
-            value={modelA}
-            onChange={(e) => setModelA(e.target.value)}
-            list="inject-tester-models"
-            className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-            placeholder="model name"
-          />
+          <span className="flex gap-2">
+            <input
+              value={modelA}
+              onChange={(e) => setModelA(e.target.value)}
+              list="inject-tester-models"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+              placeholder="model name"
+            />
+            <button
+              type="button"
+              onClick={() => setPickerFor("A")}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface-2 hover:text-text-main"
+            >
+              <span className="material-symbols-outlined text-[16px]">travel_explore</span>
+              Browse
+            </button>
+          </span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-text-muted">Model B — bare (optional)</span>
-          <input
-            value={modelB}
-            onChange={(e) => setModelB(e.target.value)}
-            list="inject-tester-models"
-            className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-            placeholder="model name"
-          />
+          <span className="flex gap-2">
+            <input
+              value={modelB}
+              onChange={(e) => setModelB(e.target.value)}
+              list="inject-tester-models"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+              placeholder="model name"
+            />
+            <button
+              type="button"
+              onClick={() => setPickerFor("B")}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface-2 hover:text-text-main"
+            >
+              <span className="material-symbols-outlined text-[16px]">travel_explore</span>
+              Browse
+            </button>
+          </span>
         </label>
         <datalist id="inject-tester-models">
           {models.map((m) => <option key={m} value={m} />)}
@@ -253,6 +275,16 @@ export function InjectionTester() {
         <ResultCard title="With injection" result={resA} />
         <ResultCard title="Bare" result={resB} />
       </div>
+      <ModelSelectModal
+        isOpen={!!pickerFor}
+        onClose={() => setPickerFor(null)}
+        onSelect={(m) => {
+          const v = m.value || m.id || "";
+          if (pickerFor === "A") setModelA(v);
+          else if (pickerFor === "B") setModelB(v);
+          setPickerFor(null);
+        }}
+      />
     </div>
   );
 }
