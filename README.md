@@ -11,7 +11,7 @@
 
 ## ✨ What's Pro
 
-- **Prompt Studio** (dashboard) — create reusable system-prompt profiles, then bind them:
+- **Prompt Inject** (dashboard page) — create reusable system-prompt profiles, then bind them:
   - **Globally** — injected into every chat request
   - **Per API key** — a persona for whoever holds the key
   - **Per model** — matched by the name clients call (combo, alias, or `provider/model`)

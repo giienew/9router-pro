@@ -5,13 +5,13 @@ import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal }
 import { useNotificationStore } from "@/store/notificationStore";
 import { cn } from "@/shared/utils/cn";
 
-// 9Router Pro — Prompt Studio
+// 9Router Pro — Prompt Inject
 // Reusable system-prompt profiles, injected per request through the upstream
 // format-aware injector. Bindings resolve in order: global → per-key → per-model.
 
 const PRESETS = [
   {
-    name: "Structured Output",
+    name: "Format Rapi",
     position: "append",
     content:
       "Always answer in well-structured Markdown: short headings, bullet lists for enumerations, and fenced code blocks for code. Never bury lists inside a single paragraph. If the user asks for JSON, output valid JSON only — no prose, no code fences.",
@@ -70,7 +70,7 @@ function ProfileChips({ profiles, selected, onToggle }) {
   );
 }
 
-export default function PromptStudioClient() {
+export default function PromptInjectClient() {
   const notify = useNotificationStore();
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState([]);
@@ -92,7 +92,7 @@ export default function PromptStudioClient() {
       setProfiles(data.profiles || []);
       setBindings(data.bindings || { global: [], byKey: {}, byModel: {} });
     } catch {
-      notify.error("Failed to load Prompt Studio");
+      notify.error("Failed to load Prompt Inject");
     } finally {
       setLoading(false);
     }
@@ -277,7 +277,7 @@ export default function PromptStudioClient() {
             <span className="material-symbols-outlined text-[24px] text-primary">prompt_suggestion</span>
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-text-main">Prompt Studio</h1>
+            <h1 className="text-xl font-semibold text-text-main">Prompt Inject</h1>
             <p className="text-sm text-text-muted">
               System prompt profiles injected into every matching request — global, per API key, or per model.
             </p>
@@ -406,9 +406,9 @@ export default function PromptStudioClient() {
                     placeholder="Model name — e.g. dpsk_un or dahl/deepseek-ai/DeepSeek-V4"
                     value={modelDraft}
                     onChange={(e) => setModelDraft(e.target.value)}
-                    list="prompt-studio-models"
+                    list="prompt-inject-models"
                   />
-                  <datalist id="prompt-studio-models">
+                  <datalist id="prompt-inject-models">
                     {modelNames.map((n) => (
                       <option key={n} value={n} />
                     ))}
