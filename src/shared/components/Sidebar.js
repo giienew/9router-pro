@@ -147,6 +147,9 @@ export default function Sidebar({ onClose }) {
                 {APP_CONFIG.name}
               </h1>
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              <span className="text-[11px] leading-tight text-text-subtle">
+                Modder by <span className="font-semibold text-brand-500">Gienetic</span>
+              </span>
             </div>
           </Link>
           {updateInfo && (
