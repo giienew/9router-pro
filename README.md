@@ -40,6 +40,16 @@ The original 9Router is a great router — Pro is what it becomes when you actua
 - **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
 - **Tested** — the Pro features ship with unit tests (injector + resolver), all passing.
 
+## 🤖 Built for agents — Hermes & friends
+
+Pro is designed to sit in front of an AI agent (Hermes-style setups) as its single endpoint:
+
+- **One base URL** — point the agent at `https://your-host/v1` with any client key; every combo and model is callable by name and listed in `/v1/models`, so model-switching menus just work.
+- **Streaming + tool calls pass through** — verified end-to-end with agent-style requests.
+- **The persona lives in the router, not the client** — Souls are injected by Pro, so the agent keeps its behavior no matter which model answers. Switch models mid-flight; the soul follows.
+- **Your own `*_un` lineup** — this is how the author's setup runs: six models, each with a permanent uncensored soul of its own (11K–102K characters), behind one endpoint. No client-side prompt juggling, no re-pasting per app.
+- **Hand out keys safely** — per-key souls (a different persona per agent) plus per-key token quotas.
+
 ## ⚖️ Pro vs Original vs Other Forks
 
 | | 9Router (original) | Typical forks | **9Router Pro** |
