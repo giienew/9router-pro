@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { deleteApiKey, getApiKeyById, updateApiKey, getKeyQuota, setKeyQuota, deleteKeyQuota, getKeyUsageInWindow } from "@/lib/localDb";
 import { validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 
 // GET /api/keys/[id] - Get single key
@@ -17,12 +17,12 @@ export async function GET(request, { params }) {
   }
 }
 
-// PUT /api/keys/[id] - Update key
+// PUT /api/keys/[id] - Update key (Pro: also accepts `quota`)
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive, access } = body;
+    const { isActive, access, quota } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -38,6 +38,14 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateApiKey(id, updateData);
+
+    // Pro: token quota lives in KV, keyed by key id. `quota: null` clears it.
+    let savedQuota = await getKeyQuota(id);
+    if (quota !== undefined) {
+      savedQuota = await setKeyQuota(id, quota);
+    }
+    updated.quota = savedQuota;
+    updated.quotaUsed = savedQuota ? await getKeyUsageInWindow(existing.key, savedQuota.windowHours) : 0;
 
     return NextResponse.json({ key: updated });
   } catch (error) {
@@ -55,6 +63,7 @@ export async function DELETE(request, { params }) {
     if (!deleted) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
+    await deleteKeyQuota(id).catch(() => {});
 
     return NextResponse.json({ message: "Key deleted successfully" });
   } catch (error) {

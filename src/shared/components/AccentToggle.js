@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/shared/utils/cn";
-import { ACCENTS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccent, isValidAccent } from "@/shared/constants/accents";
+import { ACCENTS, ACCENT_STORAGE_KEY, PRO_DEFAULT_ACCENT, applyAccent, isValidAccent } from "@/shared/constants/accents";
 
 // 9Router Pro — accent picker. A palette button in the header opens a small
 // swatch popover; the choice persists in localStorage and is applied before
 // first paint by the inline script in app/layout.js.
 export default function AccentToggle({ className }) {
   const [open, setOpen] = useState(false);
-  const [accent, setAccent] = useState(DEFAULT_ACCENT);
+  const [accent, setAccent] = useState(PRO_DEFAULT_ACCENT);
   const rootRef = useRef(null);
 
   useEffect(() => {

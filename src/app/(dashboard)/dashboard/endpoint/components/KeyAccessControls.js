@@ -8,8 +8,17 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Toggle, ModelSelectModal } from "@/shared/components";
 
-export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict }) {
+const QUOTA_WINDOWS = [
+  { hours: 24, label: "24 hours" },
+  { hours: 168, label: "7 days" },
+  { hours: 720, label: "30 days" },
+];
+
+export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict, onQuotaChange }) {
   const access = apiKey.access || { restricted: false, allow: [] };
+  const quota = apiKey.quota || null;
+  const quotaUsed = apiKey.quotaUsed || 0;
+  const [limitDraft, setLimitDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeProviders, setActiveProviders] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
@@ -68,6 +77,58 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
           </button>
         </div>
       )}
+      {/* 9Router Pro: per-key token quota */}
+      <div className="mt-2.5 border-t border-border-subtle pt-2.5">
+        <Toggle
+          size="sm"
+          checked={!!quota?.enabled}
+          label="Token quota"
+          onChange={(checked) => {
+            if (!onQuotaChange) return;
+            if (checked) {
+              const limit = parseInt(limitDraft, 10) || quota?.limit || 100000;
+              onQuotaChange({ enabled: true, limit, windowHours: quota?.windowHours || 24 });
+            } else if (quota) {
+              onQuotaChange({ ...quota, enabled: false });
+            }
+          }}
+        />
+        {!!quota?.enabled && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              className="w-32 rounded-lg border border-border bg-bg px-2 py-1 font-mono text-xs text-text-main outline-none focus:border-brand-500"
+              defaultValue={quota.limit}
+              placeholder="100000"
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (v > 0 && v !== quota.limit) onQuotaChange?.({ ...quota, limit: v });
+              }}
+              onChange={(e) => setLimitDraft(e.target.value)}
+            />
+            <span className="text-xs text-text-muted">tokens per</span>
+            <select
+              className="rounded-lg border border-border bg-bg px-2 py-1 text-xs text-text-main outline-none focus:border-brand-500"
+              value={quota.windowHours}
+              onChange={(e) => onQuotaChange?.({ ...quota, windowHours: Number(e.target.value) })}
+            >
+              {QUOTA_WINDOWS.map((w) => (
+                <option key={w.hours} value={w.hours}>{w.label}</option>
+              ))}
+            </select>
+            <span className={`text-xs ${quotaUsed >= quota.limit ? "font-medium text-red-500" : "text-text-muted"}`}>
+              {quotaUsed.toLocaleString()} / {quota.limit.toLocaleString()} used
+            </span>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+              <div
+                className={`h-full rounded-full ${quotaUsed >= quota.limit ? "bg-red-500" : "bg-brand-500"}`}
+                style={{ width: `${Math.min(100, quota.limit ? (quotaUsed / quota.limit) * 100 : 0)}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
       {pickerOpen && (
         <ModelSelectModal
           isOpen={pickerOpen}
@@ -90,7 +151,10 @@ KeyAccessControls.propTypes = {
     id: PropTypes.string.isRequired,
     name: PropTypes.string,
     access: PropTypes.shape({ restricted: PropTypes.bool, allow: PropTypes.arrayOf(PropTypes.string) }),
+    quota: PropTypes.shape({ enabled: PropTypes.bool, limit: PropTypes.number, windowHours: PropTypes.number }),
+    quotaUsed: PropTypes.number,
   }).isRequired,
   onChange: PropTypes.func.isRequired,
   onRequestRestrict: PropTypes.func.isRequired,
+  onQuotaChange: PropTypes.func,
 };

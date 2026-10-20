@@ -17,6 +17,8 @@ export {
   getCustomModels, addCustomModel, deleteCustomModel,
   getPromptProfiles, getPromptProfileById, createPromptProfile, updatePromptProfile,
   deletePromptProfile, getPromptBindings, setPromptBindings, resolvePromptInjects,
+  getKeyQuota, getAllKeyQuotas, setKeyQuota, deleteKeyQuota,
+  getKeyUsageInWindow, checkKeyQuota,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,

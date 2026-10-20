@@ -13,6 +13,9 @@ export const ACCENTS = [
 
 export const ACCENT_STORAGE_KEY = "9rp-accent";
 export const DEFAULT_ACCENT = "coral";
+// 9Router Pro signature: fresh installs open in violet (the Pro identity);
+// picking Coral restores the exact original upstream palette.
+export const PRO_DEFAULT_ACCENT = "violet";
 
 export function isValidAccent(id) {
   return ACCENTS.some((a) => a.id === id);

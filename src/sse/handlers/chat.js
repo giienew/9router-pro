@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjects } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjects, checkKeyQuota } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -80,6 +80,20 @@ export async function handleChat(request, clientRawRequest = null) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+  }
+
+  // 9Router Pro: per-key token quota — soft pre-check, fails open
+  if (apiKey) {
+    try {
+      const keyRecord = await getApiKeyByKey(apiKey);
+      if (keyRecord) {
+        const verdict = await checkKeyQuota(keyRecord.id, apiKey);
+        if (verdict.blocked) {
+          log.warn("QUOTA", `Key "${keyRecord.name}" over quota (${verdict.used}/${verdict.quota.limit})`);
+          return errorResponse(429, `API key token quota exceeded (${verdict.used}/${verdict.quota.limit} tokens in the last ${verdict.quota.windowHours}h)`);
+        }
+      }
+    } catch {}
   }
 
   if (!modelStr) {

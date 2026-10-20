@@ -53,6 +53,12 @@ export {
   deletePromptProfile, getPromptBindings, setPromptBindings, resolvePromptInjects,
 } from "./repos/promptInjectRepo.js";
 
+// Key Quotas (9Router Pro)
+export {
+  getKeyQuota, getAllKeyQuotas, setKeyQuota, deleteKeyQuota,
+  getKeyUsageInWindow, checkKeyQuota,
+} from "./repos/keyQuotaRepo.js";
+
 // Pricing
 export {
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,

@@ -43,7 +43,7 @@ export default function RootLayout({ children }) {
         {/* 9Router Pro: apply the saved accent before first paint (no flash). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a&&a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}catch(e){}})();`,
+            __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a){if(a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}else{document.documentElement.setAttribute('data-accent','violet')}}catch(e){}})();`,
           }}
         />
         <script

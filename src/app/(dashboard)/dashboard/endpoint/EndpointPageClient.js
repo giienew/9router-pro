@@ -694,6 +694,25 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  // 9Router Pro: save a key's token quota (null clears it).
+  const handleUpdateKeyQuota = async (id, quota) => {
+    try {
+      const res = await fetch(`/api/keys/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quota }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.key) {
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, quota: data.key.quota, quotaUsed: data.key.quotaUsed } : k));
+      } else {
+        console.log("Error updating key quota:", data.error || res.status);
+      }
+    } catch (error) {
+      console.log("Error updating key quota:", error);
+    }
+  };
+
   const maskKey = (fullKey) => {
     if (!fullKey || fullKey.length <= 10) return fullKey || "";
     return fullKey.slice(0, 6) + "•".repeat(fullKey.length - 10) + fullKey.slice(-4);
@@ -1059,6 +1078,7 @@ export default function APIPageClient({ machineId }) {
                   <KeyAccessControls
                     apiKey={key}
                     onChange={(access) => handleUpdateKeyAccess(key.id, access)}
+                    onQuotaChange={(quota) => handleUpdateKeyQuota(key.id, quota)}
                     onRequestRestrict={() => setConfirmState({
                       title: "Restrict API Key",
                       message: `Restrict API key "${key.name}"?\n\nIt will only be able to call the combos and models you add. Until you add one, it can call nothing.`,
