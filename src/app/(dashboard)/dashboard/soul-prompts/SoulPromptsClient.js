@@ -5,6 +5,8 @@
 // API key), Model (per model name). A request stacks global → user → model.
 
 import { useCallback, useEffect, useState } from "react";
+import { SoulIconPicker, SoulTester } from "./SoulExtras";
+import { getSoulIcon, setSoulIcon, SOUL_ICON_EVENT } from "@/shared/constants/soulIcon";
 
 const PRESETS = [
   { name: "Format Rapi", content: "Always answer in clean, structured Markdown. Lead with the answer, then supporting detail. Use short headings and lists only where they help." },
@@ -142,6 +144,19 @@ export default function SoulPromptsClient() {
   const [newKeyId, setNewKeyId] = useState("");
   const [addingModel, setAddingModel] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
+  const [soulIcon, setSoulIconState] = useState("psychology");
+
+  useEffect(() => {
+    const update = () => setSoulIconState(getSoulIcon());
+    update();
+    window.addEventListener(SOUL_ICON_EVENT, update);
+    return () => window.removeEventListener(SOUL_ICON_EVENT, update);
+  }, []);
+
+  const chooseSoulIcon = (icon) => {
+    setSoulIcon(icon);
+    setSoulIconState(icon);
+  };
 
   const refresh = useCallback(async () => {
     const { data } = await api("/api/soul-prompts");
@@ -195,7 +210,7 @@ export default function SoulPromptsClient() {
     <div className="mx-auto max-w-4xl p-4 sm:p-6">
       <div className="mb-5">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-text-main">
-          <span className="material-symbols-outlined text-brand-500">psychology</span>
+          <span className="material-symbols-outlined text-brand-500">{soulIcon}</span>
           Soul Prompts
         </h1>
         <p className="mt-0.5 text-sm text-text-muted">
@@ -340,6 +355,10 @@ export default function SoulPromptsClient() {
               front, appends in the same order at the back.
             </p>
           </div>
+
+          <SoulIconPicker value={soulIcon} onChange={chooseSoulIcon} />
+
+          <SoulTester keys={keys} modelNames={modelNames} />
         </div>
       )}
     </div>

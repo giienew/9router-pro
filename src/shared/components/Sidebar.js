@@ -9,6 +9,7 @@ import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useSettingsStore from "@/store/settingsStore";
+import { getSoulIcon, SOUL_ICON_EVENT } from "@/shared/constants/soulIcon";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 
@@ -50,6 +51,22 @@ export default function Sidebar({ onClose }) {
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
   const { copied, copy } = useCopyToClipboard(2000);
+
+  // 9Router Pro: the Soul Prompts icon is changeable from its page.
+  const [soulIcon, setSoulIconState] = useState("psychology");
+  useEffect(() => {
+    const update = () => setSoulIconState(getSoulIcon());
+    update();
+    window.addEventListener(SOUL_ICON_EVENT, update);
+    window.addEventListener("storage", update);
+    return () => {
+      window.removeEventListener(SOUL_ICON_EVENT, update);
+      window.removeEventListener("storage", update);
+    };
+  }, []);
+  const mainNavItems = navItems.map((it) =>
+    it.href === "/dashboard/soul-prompts" ? { ...it, icon: soulIcon } : it
+  );
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
@@ -160,7 +177,7 @@ export default function Sidebar({ onClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => (
+          {mainNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
