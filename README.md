@@ -25,6 +25,8 @@
 - **Prepend or append** per profile. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
 - **Ordering** — global → per-key → per-model; idempotent on retries; fails open (a broken profile never breaks a chat).
 - **Import / export** profile packs as JSON — back them up, share them between instances.
+- **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
+- **Free AI page** — one-click wiring for free services: Pollinations (no key, no signup), LLM7.io, Groq, OpenRouter free models, Cerebras.
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
 - Starter presets included (Format Rapi, Bahasa Indonesia, Coding Partner).
