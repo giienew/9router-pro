@@ -40,6 +40,12 @@ export default function RootLayout({ children }) {
             __html: `(function(){try{var s=localStorage.getItem('theme');var t=s?(JSON.parse(s).state||{}).theme:'system';t=t||'system';var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t==='system'&&m)){document.documentElement.classList.add('dark')}}catch(e){}})();`,
           }}
         />
+        {/* 9Router Pro: apply the saved accent before first paint (no flash). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a&&a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}catch(e){}})();`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,

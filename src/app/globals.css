@@ -119,6 +119,67 @@
 }
 
 /* ============================================================
+   9Router Pro — accent themes (data-accent on <html>)
+   Overrides ONLY the brand scale + brand-tinted shadows, so an
+   accent costs zero extra CSS in components and works in both
+   light and dark mode. Default (no attribute) = original coral.
+   ============================================================ */
+:root[data-accent="violet"] {
+  --color-brand-50: #F5F3FF; --color-brand-100: #EDE9FE; --color-brand-200: #DDD6FE;
+  --color-brand-300: #C4B5FD; --color-brand-400: #A78BFA; --color-brand-500: #8B5CF6;
+  --color-brand-600: #7C3AED; --color-brand-700: #6D28D9; --color-brand-800: #5B21B6;
+  --color-brand-900: #4C1D95;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(139, 92, 246, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+:root[data-accent="azure"] {
+  --color-brand-50: #EFF6FF; --color-brand-100: #DBEAFE; --color-brand-200: #BFDBFE;
+  --color-brand-300: #93C5FD; --color-brand-400: #60A5FA; --color-brand-500: #3B82F6;
+  --color-brand-600: #2563EB; --color-brand-700: #1D4ED8; --color-brand-800: #1E40AF;
+  --color-brand-900: #1E3A8A;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(59, 130, 246, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+:root[data-accent="emerald"] {
+  --color-brand-50: #ECFDF5; --color-brand-100: #D1FAE5; --color-brand-200: #A7F3D0;
+  --color-brand-300: #6EE7B7; --color-brand-400: #34D399; --color-brand-500: #10B981;
+  --color-brand-600: #059669; --color-brand-700: #047857; --color-brand-800: #065F46;
+  --color-brand-900: #064E3B;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(16, 185, 129, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+:root[data-accent="rose"] {
+  --color-brand-50: #FFF1F2; --color-brand-100: #FFE4E6; --color-brand-200: #FECDD3;
+  --color-brand-300: #FDA4AF; --color-brand-400: #FB7185; --color-brand-500: #F43F5E;
+  --color-brand-600: #E11D48; --color-brand-700: #BE123C; --color-brand-800: #9F1239;
+  --color-brand-900: #881337;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(244, 63, 94, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(244, 63, 94, 0.18);
+}
+:root[data-accent="amber"] {
+  --color-brand-50: #FFFBEB; --color-brand-100: #FEF3C7; --color-brand-200: #FDE68A;
+  --color-brand-300: #FCD34D; --color-brand-400: #FBBF24; --color-brand-500: #F59E0B;
+  --color-brand-600: #D97706; --color-brand-700: #B45309; --color-brand-800: #92400E;
+  --color-brand-900: #78350F;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(245, 158, 11, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+:root[data-accent="cyan"] {
+  --color-brand-50: #ECFEFF; --color-brand-100: #CFFAFE; --color-brand-200: #A5F3FC;
+  --color-brand-300: #67E8F9; --color-brand-400: #22D3EE; --color-brand-500: #06B6D4;
+  --color-brand-600: #0891B2; --color-brand-700: #0E7490; --color-brand-800: #155E75;
+  --color-brand-900: #164E63;
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px rgba(6, 182, 212, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(6, 182, 212, 0.18);
+}
+
+/* ============================================================
    Fix native select dropdowns in dark mode
    ============================================================ */
 select {
