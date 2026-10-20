@@ -201,40 +201,87 @@
   --color-text-muted: #a2a2ae;
   --color-text-subtle: #62626e;
 
-  --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.6);
-  --shadow-warm: 0 4px 22px -2px color-mix(in srgb, var(--color-brand-500) 45%, transparent);
+  --shadow-soft:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 4px 10px -2px rgba(0, 0, 0, 0.5);
+  --shadow-warm:
+    0 3px 8px -2px rgba(0, 0, 0, 0.6),
+    0 12px 32px -8px color-mix(in srgb, var(--color-brand-500) 38%, transparent);
   --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
-  --shadow-elevated: 0 18px 44px -10px rgba(0, 0, 0, 0.9);
+  --shadow-elevated:
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    0 20px 40px -12px rgba(0, 0, 0, 0.85),
+    0 40px 80px -24px rgba(0, 0, 0, 0.7);
   --shadow-elev:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
-    0 2px 4px rgba(0, 0, 0, 0.6),
-    0 28px 60px -12px rgba(0, 0, 0, 0.9);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    0 24px 48px -12px rgba(0, 0, 0, 0.85),
+    0 48px 96px -24px rgba(0, 0, 0, 0.75);
 
   color-scheme: dark;
 }
 
-/* Ambient depth: a faint brand glow above a pitch-black gradient. */
+/* Super 3D — depth from neutral light and shadow only (no colored glow):
+   a soft white light falls from the top of the viewport. */
 :root[data-preset="dark-pro"] body {
   background:
-    radial-gradient(900px 480px at 50% -8%, color-mix(in srgb, var(--color-brand-500) 13%, transparent), transparent 65%),
-    linear-gradient(180deg, #05050a 0%, #000000 42%);
+    radial-gradient(120% 42% at 50% 0%, rgba(255, 255, 255, 0.05), transparent 60%),
+    linear-gradient(180deg, #0b0b10 0%, #030304 34%, #000000 100%);
   background-attachment: fixed;
 }
 
-/* 3D surfaces: top-edge highlight + deep soft drop shadow on cards. */
+/* Raised slabs: lit face, bright top edge, dark bottom edge, layered
+   contact + ambient shadows underneath. */
 :root[data-preset="dark-pro"] .bg-surface {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 42%, rgba(0, 0, 0, 0.14));
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
-    0 16px 36px -16px rgba(0, 0, 0, 0.8);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 10px 22px -8px rgba(0, 0, 0, 0.75),
+    0 28px 56px -16px rgba(0, 0, 0, 0.65);
 }
 
 :root[data-preset="dark-pro"] .bg-surface-2 {
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.1));
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.5),
+    0 6px 16px -6px rgba(0, 0, 0, 0.65);
 }
 
-/* --- Dark Pro polish: colored icons, gradient headings, glowing brand --- */
+:root[data-preset="dark-pro"] .bg-surface-3 {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 4px 10px -4px rgba(0, 0, 0, 0.6);
+}
 
-/* Sidebar nav: icons carry a soft brand tint instead of flat gray. */
+/* Carved-in fields: inputs sit IN the surface, lit from below the rim. */
+:root[data-preset="dark-pro"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+:root[data-preset="dark-pro"] textarea,
+:root[data-preset="dark-pro"] select {
+  box-shadow:
+    inset 0 2px 7px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Sidebar + header as physical slabs. */
+:root[data-preset="dark-pro"] aside {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.15));
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.05),
+    12px 0 32px -16px rgba(0, 0, 0, 0.8);
+}
+:root[data-preset="dark-pro"] header {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 28px -16px rgba(0, 0, 0, 0.8);
+}
+
+/* --- Dark Pro polish: colored icons, gradient headings, physical bevels --- */
+
+/* Sidebar nav: icons carry a flat brand tint instead of flat gray. */
 :root[data-preset="dark-pro"] aside nav a {
   color: #bcbcca;
 }
@@ -245,18 +292,20 @@
 :root[data-preset="dark-pro"] aside nav a:hover .material-symbols-outlined {
   color: var(--color-brand-400);
 }
-/* Active nav item: gradient wash + brand icon with a soft glow. */
+/* Active nav item: pressed into the sidebar (carved), flat brand icon. */
 :root[data-preset="dark-pro"] aside nav a.text-primary {
   background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--color-brand-500) 20%, transparent),
-    color-mix(in srgb, var(--color-brand-500) 5%, transparent)
+    180deg,
+    color-mix(in srgb, var(--color-brand-500) 17%, transparent),
+    color-mix(in srgb, var(--color-brand-500) 8%, transparent)
   );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 28%, transparent);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 22%, transparent);
 }
 :root[data-preset="dark-pro"] aside nav a.text-primary .material-symbols-outlined {
   color: var(--color-brand-400);
-  text-shadow: 0 0 14px color-mix(in srgb, var(--color-brand-500) 70%, transparent);
 }
 
 /* Header icons: lift from gray to a bright neutral. */
@@ -264,42 +313,53 @@
   color: #c9c9d6;
 }
 
-/* Page headings: white-to-silver gradient text. */
+/* Page headings: sculpted white-to-silver gradient text. */
 :root[data-preset="dark-pro"] main h1,
 :root[data-preset="dark-pro"] main h2 {
-  background: linear-gradient(180deg, #ffffff 25%, #b7bbcd 100%);
+  background: linear-gradient(180deg, #ffffff 20%, #a8adc0 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
 
-/* Brand buttons: glossy 3D pill with a colored glow. */
+/* Brand buttons: a real bevel — bright top rim, dark bottom rim, side
+   light, and a physical drop shadow with a restrained brand bounce. */
 :root[data-preset="dark-pro"] .bg-brand-500,
 :root[data-preset="dark-pro"] .bg-primary {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.1));
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.05) 46%, rgba(0, 0, 0, 0.16));
   box-shadow:
-    0 10px 28px -8px color-mix(in srgb, var(--color-brand-500) 65%, transparent),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.3),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.28);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.38),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(0, 0, 0, 0.12),
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    0 10px 24px -8px color-mix(in srgb, var(--color-brand-500) 45%, transparent);
+}
+/* Pressed state: the button sinks in. */
+:root[data-preset="dark-pro"] .bg-brand-500:active,
+:root[data-preset="dark-pro"] .bg-primary:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Brand-colored text gets a faint neon halo. */
-:root[data-preset="dark-pro"] .text-brand-500 {
-  text-shadow: 0 0 16px color-mix(in srgb, var(--color-brand-500) 35%, transparent);
-}
-
-/* Clickable cards lift slightly on hover. */
+/* Clickable cards lift off the background on hover. */
 :root[data-preset="dark-pro"] a.bg-surface,
 :root[data-preset="dark-pro"] button.bg-surface {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 :root[data-preset="dark-pro"] a.bg-surface:hover,
 :root[data-preset="dark-pro"] button.bg-surface:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
-    0 22px 44px -16px rgba(0, 0, 0, 0.9);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.55),
+    0 2px 3px rgba(0, 0, 0, 0.5),
+    0 18px 36px -10px rgba(0, 0, 0, 0.8),
+    0 40px 72px -20px rgba(0, 0, 0, 0.7);
 }
 
 /* Selection + scrollbar follow the accent. */
@@ -315,12 +375,12 @@
   background: transparent;
 }
 :root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb {
-  background: #262633;
+  background: linear-gradient(90deg, #33333f, #1a1a24 55%, #262633);
   border-radius: 8px;
   border: 2px solid #000000;
 }
 :root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-brand-500) 55%, #262633);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-brand-500) 45%, #33333f), #1a1a24 55%, #262633);
 }
 
 /* ============================================================
