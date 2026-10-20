@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { THEME_CONFIG } from "@/shared/constants/config";
+import { isDarkProActive, applyPreset } from "@/shared/constants/presets";
 
 const useThemeStore = create(
   persist(
@@ -10,11 +11,21 @@ const useThemeStore = create(
       theme: THEME_CONFIG.defaultTheme,
 
       setTheme: (theme) => {
+        // 9Router Pro: an explicit light choice exits the Dark Pro preset.
+        if (theme === "light" && isDarkProActive()) applyPreset("ori");
         set({ theme });
         applyTheme(theme);
       },
 
       toggleTheme: () => {
+        // 9Router Pro: toggling while Dark Pro is active leaves the preset
+        // and lands on Ori light (the sun-icon affordance).
+        if (isDarkProActive()) {
+          applyPreset("ori");
+          set({ theme: "light" });
+          applyTheme("light");
+          return;
+        }
         const currentTheme = get().theme;
         const newTheme = currentTheme === "dark" ? "light" : "dark";
         set({ theme: newTheme });
@@ -43,7 +54,8 @@ function applyTheme(theme) {
 
   const effectiveTheme = theme === "system" ? systemTheme : theme;
 
-  if (effectiveTheme === "dark") {
+  // 9Router Pro: the Dark Pro preset is always dark.
+  if (effectiveTheme === "dark" || isDarkProActive()) {
     root.classList.add("dark");
   } else {
     root.classList.remove("dark");
