@@ -29,6 +29,17 @@
 - **Update notifications** that follow *this* repo's releases.
 - Starter presets included (Format Rapi, Bahasa Indonesia, Coding Partner).
 
+## 💎 Why Pro?
+
+The original 9Router is a great router — Pro is what it becomes when you actually run it as your daily gateway:
+
+- **Soul Prompts** — the original has *no* custom system prompts at all. Pro gives every target one: a **Global Soul** (the router's SOUL.md), a **User Soul** per API key, and a **Model Soul** per model — prepend or append, injected wire-aware for OpenAI / Claude / Gemini / Responses / Kiro bodies.
+- **Per-key token quotas** — upstream *removed* this feature. Pro brings it back: a token budget per API key (24h / 7d / 30d) with live usage and 429 enforcement.
+- **An identity** — 7 switchable accent themes with violet as the Pro signature (the original is coral-only), plus Pro branding throughout.
+- **An optimized hot path** — soul resolution is snapshot-cached and injection runs as a single grouped pass per position: identical output, less work per request.
+- **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
+- **Tested** — the Pro features ship with unit tests (injector + resolver), all passing.
+
 ## ⚖️ Pro vs Original vs Other Forks
 
 | | 9Router (original) | Typical forks | **9Router Pro** |
@@ -38,6 +49,7 @@
 | Per-API-key system prompt | ❌ | ❌ | ✅ |
 | Prepend/append control | ❌ | ❌ | ✅ |
 | Dashboard accents | coral only | varies | ✅ 7 accents |
+| Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d budgets |
 | `/v1/models` | ✅ healthy | ⚠️ had a 500 bug | ✅ healthy (upstream base) |
 | Extra services (Prisma/Redis) | none | sometimes required | none |
 
