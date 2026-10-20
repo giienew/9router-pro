@@ -15,6 +15,8 @@ export {
   createCombo, updateCombo, deleteCombo,
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, deleteCustomModel,
+  getPromptProfiles, getPromptProfileById, createPromptProfile, updatePromptProfile,
+  deletePromptProfile, getPromptBindings, setPromptBindings, resolvePromptInjects,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,

@@ -47,6 +47,12 @@ export {
   getMitmAlias, setMitmAliasAll,
 } from "./repos/aliasRepo.js";
 
+// Prompt Inject (9Router Pro)
+export {
+  getPromptProfiles, getPromptProfileById, createPromptProfile, updatePromptProfile,
+  deletePromptProfile, getPromptBindings, setPromptBindings, resolvePromptInjects,
+} from "./repos/promptInjectRepo.js";
+
 // Pricing
 export {
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,

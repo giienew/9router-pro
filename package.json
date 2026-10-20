@@ -1,7 +1,8 @@
 {
-  "name": "9router-app",
-  "version": "0.5.104",
-  "description": "9Router web dashboard",
+  "name": "9router-pro",
+  "version": "0.5.104-pro.1",
+  "description": "9Router Pro by Gienetic — AI router with a Prompt Inject engine (per-model / per-key / global system prompts), based on 9Router by decolua",
+  "author": "Gienetic",
   "private": true,
   "scripts": {
     "dev": "next dev --port 20127",

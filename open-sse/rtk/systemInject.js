@@ -1,6 +1,7 @@
-// Shared system-prompt injector: appends an instruction into the system message of
+// Shared system-prompt injector: inserts an instruction into the system message of
 // the final request body, dispatching by format so it works for translated and
-// native-passthrough flows. Used by caveman.js and ponytail.js.
+// native-passthrough flows. Used by caveman.js, ponytail.js and the Prompt Inject
+// engine (9Router Pro). position: "append" (default) or "prepend".
 
 import { FORMATS } from "../translator/formats.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK, RESPONSES_ITEM } from "../translator/schema/blocks.js";
@@ -8,14 +9,15 @@ import { ROLE } from "../translator/schema/roles.js";
 
 const SEP = "\n\n";
 
-export function injectSystemPrompt(body, format, prompt) {
+export function injectSystemPrompt(body, format, prompt, position = "append") {
   try {
     if (!body || !prompt) return;
     if (typeof body !== "object") return;
+    const pos = position === "prepend" ? "prepend" : "append";
 
     // Kiro wire shape is unique (conversationState) — handle directly.
     if (isKiroBody(body) || format === FORMATS.KIRO) {
-      injectKiroSystem(body, prompt);
+      injectKiroSystem(body, prompt, pos);
       return;
     }
 
@@ -23,29 +25,29 @@ export function injectSystemPrompt(body, format, prompt) {
     // messages[]/contents[] — decide by format label before the shape sniff below.
     // Anthropic rejects a "system" role inside messages[] (no such input role).
     if (format === FORMATS.CLAUDE) {
-      injectClaudeSystem(body, prompt);
+      injectClaudeSystem(body, prompt, pos);
       return;
     }
     if (format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI
       || format === FORMATS.VERTEX || format === FORMATS.ANTIGRAVITY) {
       // Antigravity wraps Gemini shape in body.request → injectGeminiSystem handles it
-      injectGeminiSystem(body, prompt);
+      injectGeminiSystem(body, prompt, pos);
       return;
     }
 
     // Dispatch by actual wire shape for OpenAI-shaped formats.
     // instructions string takes precedence; messages[] means Chat; input[] means Responses.
     if (typeof body.instructions === "string") {
-      injectInstructionsSystem(body, prompt);
+      injectInstructionsSystem(body, prompt, pos);
       return;
     }
     if (Array.isArray(body.messages)) {
-      injectChatSystem(body, prompt);
+      injectChatSystem(body, prompt, pos);
       return;
     }
     if (Array.isArray(body.input)) {
       // Responses input[]: empty array already normalized elsewhere; string stays untouched here
-      injectResponsesInputSystem(body, prompt);
+      injectResponsesInputSystem(body, prompt, pos);
       return;
     }
     if (typeof body.input === "string") {
@@ -78,25 +80,25 @@ function hasPrompt(haystack, prompt) {
   return haystack.split(SEP).includes(prompt);
 }
 
-function dedupStringAppend(curr, prompt) {
+function dedupStringAppend(curr, prompt, position = "append") {
   if (!curr) return prompt;
   if (hasPrompt(curr, prompt)) return curr;
-  return `${curr}${SEP}${prompt}`;
+  return position === "prepend" ? `${prompt}${SEP}${curr}` : `${curr}${SEP}${prompt}`;
 }
 
 // ---- OpenAI instructions string ----
-function injectInstructionsSystem(body, prompt) {
+function injectInstructionsSystem(body, prompt, position = "append") {
   try {
     const curr = body.instructions;
     if (typeof curr !== "string") return;
     if (hasPrompt(curr, prompt)) return;
-    const next = curr ? `${curr}${SEP}${prompt}` : prompt;
+    const next = curr ? dedupStringAppend(curr, prompt, position) : prompt;
     try { body.instructions = next; } catch (_) { /* frozen/proxy fail-open */ }
   } catch (_) {}
 }
 
 // ---- Chat messages[] ----
-function injectChatSystem(body, prompt) {
+function injectChatSystem(body, prompt, position = "append") {
   try {
     const arr = body.messages;
     if (!Array.isArray(arr)) return;
@@ -105,7 +107,7 @@ function injectChatSystem(body, prompt) {
     let idx = -1;
     try { idx = arr.findIndex(m => m && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER)); } catch (_) { return; }
     if (idx >= 0) {
-      appendToChatMessage(arr[idx], prompt);
+      appendToChatMessage(arr[idx], prompt, position);
     } else {
       // create typed system message at index 0; fail-open on frozen/proxy
       try { arr.unshift({ role: ROLE.SYSTEM, content: prompt }); } catch (_) {}
@@ -129,12 +131,12 @@ function containsPromptInMessages(arr, prompt) {
   return false;
 }
 
-function appendToChatMessage(msg, prompt) {
+function appendToChatMessage(msg, prompt, position = "append") {
   try {
     if (!msg || typeof msg !== "object") return;
     const c = msg.content;
     if (typeof c === "string") {
-      const next = dedupStringAppend(c, prompt);
+      const next = dedupStringAppend(c, prompt, position);
       if (next === c) return;
       // avoid partial mutation: try assignment, bail if setter throws
       try { msg.content = next; } catch (_) {}
@@ -145,7 +147,10 @@ function appendToChatMessage(msg, prompt) {
       try {
         if (c.some(b => b && b.text === prompt)) return;
       } catch (_) {}
-      try { c.push({ type: OPENAI_BLOCK.TEXT, text: prompt }); } catch (_) {}
+      try {
+        if (position === "prepend") c.unshift({ type: OPENAI_BLOCK.TEXT, text: prompt });
+        else c.push({ type: OPENAI_BLOCK.TEXT, text: prompt });
+      } catch (_) {}
       return;
     }
     try { msg.content = prompt; } catch (_) {}
@@ -153,7 +158,7 @@ function appendToChatMessage(msg, prompt) {
 }
 
 // ---- Responses input[] ----
-function injectResponsesInputSystem(body, prompt) {
+function injectResponsesInputSystem(body, prompt, position = "append") {
   try {
     const arr = body.input;
     if (!Array.isArray(arr)) return;
@@ -165,7 +170,7 @@ function injectResponsesInputSystem(body, prompt) {
       idx = arr.findIndex(m => m && m.type === RESPONSES_ITEM.MESSAGE && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER));
     } catch (_) { return; }
     if (idx >= 0) {
-      appendToResponsesMessage(arr[idx], prompt);
+      appendToResponsesMessage(arr[idx], prompt, position);
     } else {
       const msg = { type: RESPONSES_ITEM.MESSAGE, role: ROLE.SYSTEM, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: prompt }] };
       try { arr.unshift(msg); } catch (_) {}
@@ -190,19 +195,22 @@ function containsPromptInResponsesInput(arr, prompt) {
   return false;
 }
 
-function appendToResponsesMessage(msg, prompt) {
+function appendToResponsesMessage(msg, prompt, position = "append") {
   try {
     if (!msg || typeof msg !== "object") return;
     const c = msg.content;
     if (typeof c === "string") {
-      const next = dedupStringAppend(c, prompt);
+      const next = dedupStringAppend(c, prompt, position);
       if (next === c) return;
       try { msg.content = next; } catch (_) {}
       return;
     }
     if (Array.isArray(c)) {
       try { if (c.some(b => b && b.text === prompt)) return; } catch (_) {}
-      try { c.push({ type: RESPONSES_ITEM.INPUT_TEXT, text: prompt }); } catch (_) {}
+      try {
+        if (position === "prepend") c.unshift({ type: RESPONSES_ITEM.INPUT_TEXT, text: prompt });
+        else c.push({ type: RESPONSES_ITEM.INPUT_TEXT, text: prompt });
+      } catch (_) {}
       return;
     }
     try { msg.content = [{ type: RESPONSES_ITEM.INPUT_TEXT, text: prompt }]; } catch (_) {}
@@ -210,18 +218,24 @@ function appendToResponsesMessage(msg, prompt) {
 }
 
 // ---- Claude ----
-function injectClaudeSystem(body, prompt) {
+function injectClaudeSystem(body, prompt, position = "append") {
   try {
     const sys = body.system;
     if (typeof sys === "string") {
       if (hasPrompt(sys, prompt)) return;
-      const next = sys.length > 0 ? `${sys}${SEP}${prompt}` : prompt;
+      const next = sys.length > 0 ? dedupStringAppend(sys, prompt, position) : prompt;
       try { body.system = next; } catch (_) {}
       return;
     }
     if (Array.isArray(sys)) {
       try { if (sys.some(b => b && b.text === prompt)) return; } catch (_) {}
       const block = { type: CLAUDE_BLOCK.TEXT, text: prompt };
+      if (position === "prepend") {
+        // Front of the system array; any cache_control marker further down
+        // still caches the (now longer, but stable) prefix that follows it.
+        try { sys.unshift(block); } catch (_) {}
+        return;
+      }
       let lastCacheIdx = -1;
       try {
         for (let i = sys.length - 1; i >= 0; i--) {
@@ -240,7 +254,7 @@ function injectClaudeSystem(body, prompt) {
 }
 
 // ---- Gemini ----
-function injectGeminiSystem(body, prompt) {
+function injectGeminiSystem(body, prompt, position = "append") {
   try {
     let target = body;
     try {
@@ -253,7 +267,10 @@ function injectGeminiSystem(body, prompt) {
     try { sys = target[key]; } catch (_) { sys = undefined; }
     if (sys && Array.isArray(sys.parts)) {
       try { if (sys.parts.some(p => p && p.text === prompt)) return; } catch (_) {}
-      try { sys.parts.push({ text: prompt }); } catch (_) {}
+      try {
+        if (position === "prepend") sys.parts.unshift({ text: prompt });
+        else sys.parts.push({ text: prompt });
+      } catch (_) {}
       return;
     }
     try { target[key] = { parts: [{ text: prompt }] }; } catch (_) {}
@@ -270,7 +287,7 @@ function injectGeminiSystem(body, prompt) {
 // The translator stopped emitting it in v0.5.59, but this injector kept adding
 // it back, so every kr/ model failed whenever an RTK prompt (caveman, ponytail)
 // was active.
-function injectKiroSystem(body, prompt) {
+function injectKiroSystem(body, prompt, position = "append") {
   try {
     const cs = body.conversationState;
     let targetMsg = null;
@@ -286,7 +303,7 @@ function injectKiroSystem(body, prompt) {
     if (!targetMsg) return;
 
     const content = typeof targetMsg.content === "string" ? targetMsg.content : "";
-    const next = dedupStringAppend(content, prompt);
+    const next = dedupStringAppend(content, prompt, position);
     if (next === content) return; // already injected — idempotent across retries
     try { targetMsg.content = next; } catch (_) { /* frozen/proxy fail-open */ }
   } catch (_) {}
