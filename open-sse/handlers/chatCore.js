@@ -311,13 +311,16 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Prompt Inject (9Router Pro): profile system prompts resolved by the caller,
   // ordered global → per-key → per-model. Independent of the token savers.
-  // Prepends run in reverse so the highest-priority profile ends up in front.
+  // Grouped into a single injector pass per position: joining same-position
+  // texts with "\n\n" produces the identical prompt as injecting them one by
+  // one (the injector itself joins with "\n\n"; prepend order = priority
+  // order, highest first), with O(1) body scans instead of O(profiles).
   if (Array.isArray(promptInjects) && promptInjects.length) {
     try {
       const prepends = promptInjects.filter(p => p && p.position === "prepend" && p.text);
       const appends = promptInjects.filter(p => p && p.position !== "prepend" && p.text);
-      for (const p of [...prepends].reverse()) injectSystemPrompt(translatedBody, finalFormat, p.text, "prepend");
-      for (const p of appends) injectSystemPrompt(translatedBody, finalFormat, p.text, "append");
+      if (prepends.length) injectSystemPrompt(translatedBody, finalFormat, prepends.map(p => p.text).join("\n\n"), "prepend");
+      if (appends.length) injectSystemPrompt(translatedBody, finalFormat, appends.map(p => p.text).join("\n\n"), "append");
       if (prepends.length || appends.length) xf.push(`INJECT:${promptInjects.map(p => p.name || p.id || "?").join("+")}`);
     } catch { /* fail-open: injection must never break chat */ }
   }

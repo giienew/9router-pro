@@ -90,6 +90,7 @@ export async function createPromptProfile({ name, content, position = "append", 
     updatedAt: now,
   });
   await profilesKv.set(profile.id, profile);
+  invalidatePromptSnapshot();
   return profile;
 }
 
@@ -105,6 +106,7 @@ export async function updatePromptProfile(id, patch = {}) {
     updatedAt: new Date().toISOString(),
   });
   await profilesKv.set(id, next);
+  invalidatePromptSnapshot();
   return next;
 }
 
@@ -121,6 +123,7 @@ export async function deletePromptProfile(id) {
     }
   }
   await bindingsKv.set(BINDINGS_KEY, bindings);
+  invalidatePromptSnapshot();
   return true;
 }
 
@@ -133,6 +136,7 @@ export async function getPromptBindings() {
 export async function setPromptBindings(bindings) {
   const clean = cleanBindings(bindings);
   await bindingsKv.set(BINDINGS_KEY, clean);
+  invalidatePromptSnapshot();
   return clean;
 }
 
@@ -174,13 +178,32 @@ export function selectPromptInjects(profiles, bindings, ctx = {}) {
   return out;
 }
 
+// --------------------------------------------------------------- snapshot
+// Hot-path cache: chat requests resolve injects on every call, and profiles
+// change rarely. A 3s snapshot keeps KV reads off the request path; every
+// write through this repo invalidates it immediately.
+
+const SNAPSHOT_TTL_MS = 3000;
+let snapshot = null;
+
+function invalidatePromptSnapshot() {
+  snapshot = null;
+}
+
+async function getPromptSnapshot() {
+  if (snapshot && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) return snapshot;
+  const [profiles, bindings] = await Promise.all([
+    getPromptProfiles(),
+    getPromptBindings(),
+  ]);
+  snapshot = { at: Date.now(), profiles, bindings };
+  return snapshot;
+}
+
 // Load profiles + bindings and resolve the inject list for one request.
 export async function resolvePromptInjects(ctx = {}) {
   try {
-    const [profiles, bindings] = await Promise.all([
-      getPromptProfiles(),
-      getPromptBindings(),
-    ]);
+    const { profiles, bindings } = await getPromptSnapshot();
     return selectPromptInjects(profiles, bindings, ctx);
   } catch {
     return []; // fail-open: injection must never break chat

@@ -18,18 +18,24 @@ describe("injectSystemPrompt — OpenAI chat", () => {
     assert.equal(body.messages[0].content, "FRONT\n\nBASE");
   });
 
-  it("stacks prepends (reversed) then appends, chatCore order", () => {
-    const body = { messages: [{ role: "system", content: "BASE" }] };
+  it("stacks prepends then appends, chatCore grouped order (== sequential)", () => {
     const injects = [
       { name: "G", text: "GLOBAL", position: "prepend" },
       { name: "K", text: "KEYPROMPT", position: "prepend" },
       { name: "M", text: "MODELTAIL", position: "append" },
     ];
-    const prepends = injects.filter(p => p.position === "prepend");
-    const appends = injects.filter(p => p.position !== "prepend");
-    for (const p of [...prepends].reverse()) injectSystemPrompt(body, FORMATS.OPENAI, p.text, "prepend");
-    for (const p of appends) injectSystemPrompt(body, FORMATS.OPENAI, p.text, "append");
-    assert.equal(body.messages[0].content, "GLOBAL\n\nKEYPROMPT\n\nBASE\n\nMODELTAIL");
+    // Grouped — the form chatCore applies now (one pass per position)
+    const grouped = { messages: [{ role: "system", content: "BASE" }] };
+    const prepends = injects.filter(p => p.position === "prepend" && p.text);
+    const appends = injects.filter(p => p.position !== "prepend" && p.text);
+    if (prepends.length) injectSystemPrompt(grouped, FORMATS.OPENAI, prepends.map(p => p.text).join("\n\n"), "prepend");
+    if (appends.length) injectSystemPrompt(grouped, FORMATS.OPENAI, appends.map(p => p.text).join("\n\n"), "append");
+    assert.equal(grouped.messages[0].content, "GLOBAL\n\nKEYPROMPT\n\nBASE\n\nMODELTAIL");
+    // Sequential reference (the pre-optimization loop) must match byte-for-byte
+    const sequential = { messages: [{ role: "system", content: "BASE" }] };
+    for (const p of [...prepends].reverse()) injectSystemPrompt(sequential, FORMATS.OPENAI, p.text, "prepend");
+    for (const p of appends) injectSystemPrompt(sequential, FORMATS.OPENAI, p.text, "append");
+    assert.equal(grouped.messages[0].content, sequential.messages[0].content);
   });
 
   it("creates a system message when none exists", () => {
