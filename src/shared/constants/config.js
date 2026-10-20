@@ -9,15 +9,17 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
+  // 9Router Pro — changelog + releases live in the Pro repo
+  changelogUrl: "https://raw.githubusercontent.com/giienew/9router-pro/refs/heads/master/CHANGELOG-PRO.md",
+  repoUrl: "https://github.com/giienew/9router-pro",
   donateUrl: "https://9router.com/api/donate",
 };
 
 // Updater configuration
 export const UPDATER_CONFIG = {
-  npmPackageName: "9router",
-  installCmd: "npm i -g 9router",
-  installCmdLatest: "npm i -g 9router@latest --prefer-online",
+  npmPackageName: "9router-pro",
+  installCmd: "npm i -g github:giienew/9router-pro",
+  installCmdLatest: "npm i -g github:giienew/9router-pro --prefer-online",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,

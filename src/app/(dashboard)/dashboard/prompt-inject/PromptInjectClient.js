@@ -347,7 +347,16 @@ export default function PromptInjectClient() {
             <p className="text-sm text-text-muted">
               System prompt profiles injected into every matching request — global, per API key, or per model.
             </p>
-            <p className="text-xs text-text-muted/70 mt-0.5">9Router Pro · by Gienetic</p>
+            <p className="text-xs text-text-muted/70 mt-0.5">
+              9Router Pro · by Gienetic ·{" "}
+              <a href="https://github.com/giienew" target="_blank" rel="noreferrer" className="underline hover:text-brand-500">
+                GitHub
+              </a>{" "}
+              ·{" "}
+              <a href="https://t.me/gienetic" target="_blank" rel="noreferrer" className="underline hover:text-brand-500">
+                Telegram
+              </a>
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">

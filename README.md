@@ -5,6 +5,13 @@
 
   **A Pro edition of 9Router with a Prompt Inject engine: reusable system-prompt profiles bound globally, per API key, or per model.**
 
+  By **Gienetic** — [GitHub](https://github.com/giienew) · [Telegram](https://t.me/gienetic)
+
+  [![Stars](https://img.shields.io/github/stars/giienew/9router-pro?style=social)](https://github.com/giienew/9router-pro/stargazers)
+  [![Forks](https://img.shields.io/github/forks/giienew/9router-pro?style=social)](https://github.com/giienew/9router-pro/network/members)
+  [![License](https://img.shields.io/github/license/giienew/9router-pro)](./LICENSE)
+  [![Latest Pro release](https://img.shields.io/github/v/release/giienew/9router-pro?label=release)](https://github.com/giienew/9router-pro/releases)
+
   Based on [9Router](https://github.com/decolua/9router) by decolua (MIT). Everything below the Pro section is the original project documentation.
 
 </div>
@@ -17,7 +24,37 @@
   - **Per model** — matched by the name clients call (combo, alias, or `provider/model`)
 - **Prepend or append** per profile. Injection happens after format translation through the router's own wire-aware injector, so OpenAI, Claude, Gemini, Responses, and Kiro bodies each receive the text in their native system slot.
 - **Ordering** — global → per-key → per-model; idempotent on retries; fails open (a broken profile never breaks a chat).
-- Starter presets included (Structured Output, Bahasa Indonesia, Coding Partner).
+- **Import / export** profile packs as JSON — back them up, share them between instances.
+- **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
+- **Update notifications** that follow *this* repo's releases.
+- Starter presets included (Format Rapi, Bahasa Indonesia, Coding Partner).
+
+## ⚖️ Pro vs Original vs Other Forks
+
+| | 9Router (original) | Typical forks | **9Router Pro** |
+|---|---|---|---|
+| Base stack | Next 16 / React 19 | often older (Next 14) | Next 16 / React 19 (upstream) |
+| Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ reusable profiles, 3 binding scopes |
+| Per-API-key system prompt | ❌ | ❌ | ✅ |
+| Prepend/append control | ❌ | ❌ | ✅ |
+| Dashboard accents | coral only | varies | ✅ 7 accents |
+| `/v1/models` | ✅ healthy | ⚠️ had a 500 bug | ✅ healthy (upstream base) |
+| Extra services (Prisma/Redis) | none | sometimes required | none |
+
+## 🚀 Quick Start (Pro)
+
+```bash
+# from source
+git clone https://github.com/giienew/9router-pro.git
+cd 9router-pro
+npm install
+npm run build
+npm run start        # dashboard on http://localhost:20128
+
+# or with Docker — see the original documentation below for the full guide
+```
+
+Then open the dashboard, add a provider, and visit **Prompt Inject** to create your first profile.
 
 ---
 
