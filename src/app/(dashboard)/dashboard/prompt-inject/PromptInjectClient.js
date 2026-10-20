@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { cn } from "@/shared/utils/cn";
@@ -259,6 +259,72 @@ export default function PromptInjectClient() {
 
   const modelRows = [...new Set([...Object.keys(bindings.byModel), ...extraModels])].sort();
 
+  // ---- Import / export (Pro): share or back up profiles + bindings as JSON
+  const importRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+
+  const exportProfiles = () => {
+    const payload = {
+      app: "9router-pro",
+      kind: "prompt-inject",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      profiles,
+      bindings,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prompt-inject-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importProfiles = async (file) => {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload?.kind !== "prompt-inject" || !Array.isArray(payload.profiles)) {
+        throw new Error("Not a Prompt Inject export file");
+      }
+      const idMap = new Map();
+      for (const p of payload.profiles) {
+        const res = await fetch("/api/prompt-inject/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: p.name, content: p.content, position: p.position, enabled: p.enabled !== false }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Import failed");
+        if (p.id && data.profile?.id) idMap.set(p.id, data.profile.id);
+      }
+      const mapIds = (ids) => (ids || []).map((id) => idMap.get(id)).filter(Boolean);
+      const mergeList = (a, b) => [...new Set([...(a || []), ...(b || [])])];
+      const src = payload.bindings || { global: [], byKey: {}, byModel: {} };
+      const next = {
+        global: mergeList(bindings.global, mapIds(src.global)),
+        byKey: { ...bindings.byKey },
+        byModel: { ...bindings.byModel },
+      };
+      for (const scope of ["byKey", "byModel"]) {
+        for (const [k, ids] of Object.entries(src[scope] || {})) {
+          const mapped = mapIds(ids);
+          if (mapped.length) next[scope][k] = mergeList(next[scope][k], mapped);
+        }
+      }
+      await saveBindings(next);
+      notify.success(`Imported ${idMap.size} profile(s)`);
+      load();
+    } catch (e) {
+      notify.error(e.message || "Import failed");
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 p-6">
@@ -284,9 +350,24 @@ export default function PromptInjectClient() {
             <p className="text-xs text-text-muted/70 mt-0.5">9Router Pro · by Gienetic</p>
           </div>
         </div>
-        <Button variant="primary" icon="add" onClick={openCreate}>
-          New Profile
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => importProfiles(e.target.files?.[0])}
+          />
+          <Button variant="secondary" icon="upload" loading={importing} onClick={() => importRef.current?.click()}>
+            Import
+          </Button>
+          <Button variant="secondary" icon="download" onClick={exportProfiles}>
+            Export
+          </Button>
+          <Button variant="primary" icon="add" onClick={openCreate}>
+            New Profile
+          </Button>
+        </div>
       </div>
 
       {/* Profiles */}
