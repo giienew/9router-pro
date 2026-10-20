@@ -202,6 +202,8 @@
   --color-text-subtle: #62626e;
 
   --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.6);
+  --shadow-warm: 0 4px 22px -2px color-mix(in srgb, var(--color-brand-500) 45%, transparent);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
   --shadow-elevated: 0 18px 44px -10px rgba(0, 0, 0, 0.9);
   --shadow-elev:
     inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
@@ -228,6 +230,97 @@
 
 :root[data-preset="dark-pro"] .bg-surface-2 {
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+/* --- Dark Pro polish: colored icons, gradient headings, glowing brand --- */
+
+/* Sidebar nav: icons carry a soft brand tint instead of flat gray. */
+:root[data-preset="dark-pro"] aside nav a {
+  color: #bcbcca;
+}
+:root[data-preset="dark-pro"] aside nav a .material-symbols-outlined,
+:root[data-preset="dark-pro"] aside nav button .material-symbols-outlined {
+  color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
+}
+:root[data-preset="dark-pro"] aside nav a:hover .material-symbols-outlined {
+  color: var(--color-brand-400);
+}
+/* Active nav item: gradient wash + brand icon with a soft glow. */
+:root[data-preset="dark-pro"] aside nav a.text-primary {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-brand-500) 20%, transparent),
+    color-mix(in srgb, var(--color-brand-500) 5%, transparent)
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 28%, transparent);
+}
+:root[data-preset="dark-pro"] aside nav a.text-primary .material-symbols-outlined {
+  color: var(--color-brand-400);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--color-brand-500) 70%, transparent);
+}
+
+/* Header icons: lift from gray to a bright neutral. */
+:root[data-preset="dark-pro"] header .material-symbols-outlined {
+  color: #c9c9d6;
+}
+
+/* Page headings: white-to-silver gradient text. */
+:root[data-preset="dark-pro"] main h1,
+:root[data-preset="dark-pro"] main h2 {
+  background: linear-gradient(180deg, #ffffff 25%, #b7bbcd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Brand buttons: glossy 3D pill with a colored glow. */
+:root[data-preset="dark-pro"] .bg-brand-500,
+:root[data-preset="dark-pro"] .bg-primary {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.1));
+  box-shadow:
+    0 10px 28px -8px color-mix(in srgb, var(--color-brand-500) 65%, transparent),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.28);
+}
+
+/* Brand-colored text gets a faint neon halo. */
+:root[data-preset="dark-pro"] .text-brand-500 {
+  text-shadow: 0 0 16px color-mix(in srgb, var(--color-brand-500) 35%, transparent);
+}
+
+/* Clickable cards lift slightly on hover. */
+:root[data-preset="dark-pro"] a.bg-surface,
+:root[data-preset="dark-pro"] button.bg-surface {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+:root[data-preset="dark-pro"] a.bg-surface:hover,
+:root[data-preset="dark-pro"] button.bg-surface:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
+    0 22px 44px -16px rgba(0, 0, 0, 0.9);
+}
+
+/* Selection + scrollbar follow the accent. */
+:root[data-preset="dark-pro"] ::selection {
+  background: color-mix(in srgb, var(--color-brand-500) 55%, transparent);
+  color: #ffffff;
+}
+:root[data-preset="dark-pro"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-preset="dark-pro"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb {
+  background: #262633;
+  border-radius: 8px;
+  border: 2px solid #000000;
+}
+:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-brand-500) 55%, #262633);
 }
 
 /* ============================================================
