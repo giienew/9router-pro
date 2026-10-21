@@ -392,8 +392,8 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         <HeaderMenu onLogout={handleLogout} />
       </div>
       <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />
-      <Modal isOpen={nameOpen} onClose={() => setNameOpen(false)} title="Customize your name">
-        <div className="flex flex-col gap-4">
+      <Modal isOpen={nameOpen} onClose={() => setNameOpen(false)} title="Customize your name" size="sm">
+        <div className="flex flex-col gap-3">
           <Input
             label="Name"
             value={nameDraft}
@@ -402,15 +402,15 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
             maxLength={24}
           />
           <div>
-            <p className="mb-1.5 text-sm font-medium text-text-main">Font style</p>
-            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-0.5">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">Font style</p>
+            <div className="flex max-h-44 flex-col gap-1 overflow-y-auto pr-0.5">
               {NAME_FONTS.map((f, i) => {
                 const selected = fontDraft === f.id;
                 const groupHeader = i === 0 || NAME_FONTS[i - 1].group !== f.group;
                 return (
                   <div key={f.id} className="flex flex-col gap-1">
                     {groupHeader && (
-                      <p className="px-0.5 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-text-subtle first:pt-0">
+                      <p className="px-0.5 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-subtle first:pt-0">
                         {f.group}
                       </p>
                     )}
@@ -418,13 +418,13 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                       type="button"
                       onClick={() => setFontDraft(f.id)}
                       className={cn(
-                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer",
+                        "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer",
                         selected
                           ? "border-primary/40 bg-primary/5"
                           : "border-border-subtle hover:bg-black/5 dark:hover:bg-white/5"
                       )}
                     >
-                      <span style={f.style} className="truncate text-[17px] leading-6 text-text-main">
+                      <span style={f.style} className="truncate text-[15px] leading-5 text-text-main">
                         {nameDraft.trim() || DEFAULT_NAME}
                       </span>
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
