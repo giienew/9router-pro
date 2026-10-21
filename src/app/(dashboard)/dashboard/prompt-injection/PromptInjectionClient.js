@@ -9,24 +9,6 @@ import { InjectionTester } from "./InjectExtras";
 
 const API = "/api/prompt-injection";
 
-const PRESETS = [
-  {
-    label: "Format Rapi",
-    content:
-      "Selalu jawab dengan format yang rapi dan terstruktur: gunakan heading singkat, poin-poin, dan contoh bila membantu. Hindari paragraf panjang yang bertele-tele.",
-  },
-  {
-    label: "Bahasa Indonesia",
-    content:
-      "Selalu jawab dalam Bahasa Indonesia yang natural dan santai, kecuali user meminta bahasa lain atau menempelkan teks dalam bahasa lain.",
-  },
-  {
-    label: "Coding Partner",
-    content:
-      "Kamu adalah coding partner yang to the point: berikan kode yang lengkap dan bisa langsung jalan, jelaskan hanya bagian yang tidak obvious, dan sebutkan asumsi yang kamu buat.",
-  },
-];
-
 function estimateTokens(text) {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
@@ -110,18 +92,6 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
 
       {mode === "single" ? (
         <>
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => setContent(p.content)}
-                className="rounded-full border border-dashed border-border px-3 py-1 text-xs text-text-muted transition-colors hover:border-primary hover:text-primary"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -406,12 +376,6 @@ export default function PromptInjectionClient() {
           One injection per target — no library, no binding step. A request stacks them in
           order: global → user → model. Each one is either a single system prompt or a
           scripted chat inserted as a conversation that already happened.
-        </p>
-        <p className="mt-1 text-xs text-text-muted">
-          9Router Pro · by Gienetic ·{" "}
-          <a className="underline" href="https://github.com/giienew" target="_blank" rel="noreferrer">GitHub</a>
-          {" "}·{" "}
-          <a className="underline" href="https://t.me/gienetic" target="_blank" rel="noreferrer">Telegram</a>
         </p>
         <div className="mt-3 flex gap-2">
           <Button variant="outline" size="sm" onClick={exportInjections}>

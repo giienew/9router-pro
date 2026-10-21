@@ -27,7 +27,6 @@
 - **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
-- Starter presets included (Format Rapi, Bahasa Indonesia, Coding Partner).
 
 ## 📸 Screenshots
 
