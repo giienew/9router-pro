@@ -1,7 +1,7 @@
 {
   "name": "9router-pro",
-  "version": "0.5.104-pro.3",
-  "description": "9Router Pro by Gienetic — AI router with a Prompt Inject engine (per-model / per-key / global system prompts), based on 9Router by decolua",
+  "version": "0.5.104-pro.4",
+  "description": "9Router Pro by Gienetic \u2014 AI router with a Prompt Inject engine (per-model / per-key / global system prompts), based on 9Router by decolua",
   "author": "Gienetic",
   "private": true,
   "scripts": {
@@ -57,8 +57,8 @@
     "@aws-sdk/credential-providers": "^3.1135.0",
     "better-sqlite3": "^12.6.2"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
-  "comment_aws_sdk_credential_providers": "kept in optionalDependencies (npm still installs these by default) and imported lazily in shared/awsCredentials.js — only AWS Bedrock connections using profile/SSO mode need it; static accessKeyId/secretAccessKey connections never load it",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
+  "comment_aws_sdk_credential_providers": "kept in optionalDependencies (npm still installs these by default) and imported lazily in shared/awsCredentials.js \u2014 only AWS Bedrock connections using profile/SSO mode need it; static accessKeyId/secretAccessKey connections never load it",
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "eslint": "^9",
