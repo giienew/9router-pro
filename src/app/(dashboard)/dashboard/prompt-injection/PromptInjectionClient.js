@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
+import Modal from "@/shared/components/Modal";
+import Input from "@/shared/components/Input";
+import Toggle from "@/shared/components/Toggle";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { InjectionTester } from "./InjectExtras";
 
@@ -218,6 +221,204 @@ function EntryBadge({ entry }) {
   );
 }
 
+function targetSummary(preset) {
+  const parts = [];
+  if (preset.targets?.global) parts.push("Global");
+  const m = preset.targets?.models?.length || 0;
+  const k = preset.targets?.keys?.length || 0;
+  if (m) parts.push(`${m} model${m === 1 ? "" : "s"}`);
+  if (k) parts.push(`${k} key${k === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(" · ") : "No targets yet";
+}
+
+function PresetCard({ preset, onToggle, onEdit, onDuplicate, onDelete }) {
+  return (
+    <Card padding="sm" className={preset.enabled === false ? "opacity-60" : ""}>
+      <div className="flex items-center gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <span className="material-symbols-outlined text-[18px] text-primary">bookmarks</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{preset.name}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+            <EntryBadge entry={preset} />
+            <span>{targetSummary(preset)}</span>
+            <span>~{estimateTokens(entryText(preset))} tokens</span>
+          </div>
+        </div>
+        <Toggle
+          checked={preset.enabled !== false}
+          onChange={onToggle}
+          aria-label={`Enable preset ${preset.name}`}
+        />
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Edit preset"
+            className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title="Duplicate preset"
+            className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+          >
+            <span className="material-symbols-outlined text-[18px]">content_copy</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Delete preset"
+            className="rounded p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
+          >
+            <span className="material-symbols-outlined text-[18px]">delete</span>
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Preset editor: name + auto-loaded target checklists + the shared
+// InjectEditor for the prompt itself (its Save saves the whole preset).
+function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, saving }) {
+  const isNew = !preset?.id;
+  const [name, setName] = useState(preset?.name || "");
+  const [tGlobal, setTGlobal] = useState(!!preset?.targets?.global);
+  const [tModels, setTModels] = useState(preset?.targets?.models || []);
+  const [tKeys, setTKeys] = useState(preset?.targets?.keys || []);
+  const [modelQuery, setModelQuery] = useState("");
+
+  const toggleIn = (list, setList, v) =>
+    setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const visibleModels = modelOptions.filter(
+    (m) => !modelQuery.trim() || m.toLowerCase().includes(modelQuery.trim().toLowerCase())
+  );
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={isNew ? "New preset" : "Edit preset"}
+      size="lg"
+      bodyClassName="p-4 sm:p-6"
+    >
+      <div className="flex flex-col gap-4">
+        <Input
+          label="Preset name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Persona — Friendly"
+        />
+
+        <div className="flex flex-col gap-3">
+          <p className="text-sm font-medium">
+            Targets
+            <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              loaded automatically
+            </span>
+          </p>
+
+          <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
+            <span className="flex items-center gap-2 text-sm">
+              <span className="material-symbols-outlined text-[18px] text-text-muted">public</span>
+              Global — every request
+            </span>
+            <Toggle checked={tGlobal} onChange={setTGlobal} aria-label="Target all requests" />
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-xs font-medium text-text-muted">
+                Models · {tModels.length} selected
+              </span>
+              <span className="flex gap-2 text-[11px] font-medium">
+                <button type="button" onClick={() => setTModels(modelOptions)} className="text-primary hover:underline">
+                  Select all
+                </button>
+                <button type="button" onClick={() => setTModels([])} className="text-text-muted hover:underline">
+                  Clear
+                </button>
+              </span>
+            </div>
+            <input
+              value={modelQuery}
+              onChange={(e) => setModelQuery(e.target.value)}
+              placeholder="Search models…"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
+            />
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-border">
+              {visibleModels.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-text-muted">No models match.</p>
+              ) : (
+                visibleModels.map((m) => (
+                  <label
+                    key={m}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={tModels.includes(m)}
+                      onChange={() => toggleIn(tModels, setTModels, m)}
+                      className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                    />
+                    <span className="min-w-0 truncate font-mono">{m}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-text-muted">
+              API keys · {tKeys.length} selected
+            </p>
+            <div className="max-h-36 overflow-y-auto rounded-lg border border-border">
+              {keys.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-text-muted">No API keys yet.</p>
+              ) : (
+                keys.map((k) => (
+                  <label
+                    key={k.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={tKeys.includes(k.id)}
+                      onChange={() => toggleIn(tKeys, setTKeys, k.id)}
+                      className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+                    />
+                    <span className="min-w-0 truncate">{keyName(k.id)}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-border-subtle pt-4">
+          <InjectEditor
+            key={preset?.id || "new"}
+            initial={preset || null}
+            saving={saving}
+            onSave={(fields) =>
+              onSave({
+                id: preset?.id,
+                name: name.trim(),
+                ...fields,
+                targets: { global: tGlobal, models: tModels, keys: tKeys },
+              })
+            }
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function PromptInjectionClient() {
   const [msg, setMsg] = useState(null);
   const showToast = useCallback((text, type = "success") => {
@@ -228,22 +429,50 @@ export default function PromptInjectionClient() {
   const [global_, setGlobal] = useState(null);
   const [userPrompts, setUserPrompts] = useState({});
   const [prompts, setPrompts] = useState({});
+  const [presets, setPresets] = useState([]);
   const [keys, setKeys] = useState([]);
+  const [modelOptions, setModelOptions] = useState([]);
   const [selectedKeyId, setSelectedKeyId] = useState("");
   const [newModel, setNewModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [saving, setSaving] = useState("");
+  const [editingPreset, setEditingPreset] = useState(undefined); // undefined=closed, null=new
+  const [globalOpen, setGlobalOpen] = useState(false);
+  const [editingModel, setEditingModel] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [injRes, keyRes] = await Promise.all([fetch(API), fetch("/api/keys")]);
+      const [injRes, keyRes, modelsRes, combosRes] = await Promise.all([
+        fetch(API),
+        fetch("/api/keys"),
+        fetch("/api/models"),
+        fetch("/api/combos"),
+      ]);
       const inj = await injRes.json();
       setGlobal(inj.global || null);
       setUserPrompts(inj.userPrompts || {});
       setPrompts(inj.prompts || {});
+      setPresets(Array.isArray(inj.presets) ? inj.presets : []);
       const keyData = await keyRes.json();
       const list = Array.isArray(keyData?.keys) ? keyData.keys : Array.isArray(keyData) ? keyData : [];
       setKeys(list);
+      // Callable model names, auto-loaded: combos + routed provider models,
+      // plus anything already targeted so nothing ever looks lost.
+      const names = new Set();
+      try {
+        const modelsData = await modelsRes.json();
+        for (const m of modelsData?.models || []) {
+          if (m.routedModel) names.add(m.routedModel);
+          if (m.fullModel) names.add(m.fullModel);
+        }
+      } catch { /* models list is a convenience, not a requirement */ }
+      try {
+        const combosData = await combosRes.json();
+        for (const c of combosData?.combos || []) if (c.name) names.add(c.name);
+      } catch { /* same */ }
+      for (const name of Object.keys(inj.prompts || {})) names.add(name);
+      for (const p of inj.presets || []) for (const m of p.targets?.models || []) names.add(m);
+      setModelOptions([...names].sort());
     } catch {
       showToast("Failed to load prompt injections", "error");
     } finally {
@@ -264,8 +493,10 @@ export default function PromptInjectionClient() {
       if (!res.ok) throw new Error("save failed");
       showToast(okMsg, "success");
       await load();
+      return true;
     } catch {
       showToast("Failed to save", "error");
+      return false;
     } finally {
       setSaving("");
     }
@@ -283,6 +514,15 @@ export default function PromptInjectionClient() {
     } finally {
       setSaving("");
     }
+  };
+
+  const savePreset = async (payload) => {
+    if (!payload.name) {
+      showToast("Preset name is required", "error");
+      return;
+    }
+    const ok = await put({ preset: payload }, "preset", "Preset saved");
+    if (ok) setEditingPreset(undefined);
   };
 
   const keyName = (id) => keys.find((k) => k.id === id)?.name || id;
@@ -321,6 +561,14 @@ export default function PromptInjectionClient() {
         });
         if (res.ok) applied++; else skipped++;
       }
+      for (const preset of data.presets || []) {
+        const res = await fetch(API, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preset }),
+        });
+        if (res.ok) applied++; else skipped++;
+      }
       for (const [model, entry] of Object.entries(data.prompts || {})) {
         const res = await fetch(API, {
           method: "PUT",
@@ -345,11 +593,11 @@ export default function PromptInjectionClient() {
     }
   };
 
-  // ---- Stack Preview (Pro) ----
+  // ---- Stack Preview (Pro) — re-runs automatically on any change ----
   const [pvModel, setPvModel] = useState("");
   const [pvKeyId, setPvKeyId] = useState("");
   const [pvStack, setPvStack] = useState(null);
-  const runPreview = async () => {
+  const runPreview = useCallback(async () => {
     try {
       const qs = new URLSearchParams({ preview: "1", model: pvModel, keyId: pvKeyId });
       const res = await fetch(`${API}?${qs}`);
@@ -358,26 +606,29 @@ export default function PromptInjectionClient() {
     } catch {
       showToast("Preview failed", "error");
     }
-  };
+  }, [pvModel, pvKeyId, showToast]);
+
+  useEffect(() => {
+    if (loading) return;
+    const t = setTimeout(runPreview, 400);
+    return () => clearTimeout(t);
+  }, [runPreview, loading, global_, userPrompts, prompts, presets]);
+
+  const globalEditorOpen = globalOpen || !global_;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <span className="material-symbols-outlined text-primary">skull</span>
-          Prompt Injection
-        </h1>
-        {msg && (
-          <p className={`mt-2 rounded-lg px-3 py-2 text-sm ${msg.type === "error" ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"}`}>
-            {msg.text}
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <span className="material-symbols-outlined text-primary">skull</span>
+            Prompt Injection
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Presets and direct injections — stacked global → user → model.
           </p>
-        )}
-        <p className="mt-1 text-sm leading-relaxed text-text-muted">
-          One injection per target — no library, no binding step. A request stacks them in
-          order: global → user → model. Each one is either a single system prompt or a
-          scripted chat inserted as a conversation that already happened.
-        </p>
-        <div className="mt-3 flex gap-2">
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportInjections}>
             <span className="material-symbols-outlined text-[16px]">download</span> Export
           </Button>
@@ -393,26 +644,99 @@ export default function PromptInjectionClient() {
               }}
             />
           </label>
+          <Button size="sm" icon="add" onClick={() => setEditingPreset(null)}>
+            New Preset
+          </Button>
         </div>
       </div>
+      {msg && (
+        <p className={`rounded-lg px-3 py-2 text-sm ${msg.type === "error" ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"}`}>
+          {msg.text}
+        </p>
+      )}
 
       {loading ? (
         <p className="text-sm text-text-muted">Loading…</p>
       ) : (
         <>
           <section className="flex flex-col gap-3">
+            <SectionTitle icon="bookmarks" title="Presets">
+              Write once, target anywhere. A preset fires ahead of the direct entry in its
+              scope — and only once per request, at the first scope it matches.
+            </SectionTitle>
+            {presets.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+                <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
+                <p className="text-sm text-text-muted">
+                  No presets yet — create one to reuse the same prompt across models and keys.
+                </p>
+                <Button size="sm" icon="add" onClick={() => setEditingPreset(null)}>
+                  Create preset
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {presets.map((p) => (
+                  <PresetCard
+                    key={p.id}
+                    preset={p}
+                    onToggle={(v) => put({ preset: { ...p, enabled: v } }, `preset-${p.id}`, v ? "Preset enabled" : "Preset disabled")}
+                    onEdit={() => setEditingPreset(p)}
+                    onDuplicate={() =>
+                      put(
+                        { preset: { ...p, id: "", name: `${p.name} copy` } },
+                        `preset-${p.id}`,
+                        "Preset duplicated"
+                      )
+                    }
+                    onDelete={() => del(`presetId=${encodeURIComponent(p.id)}`, `preset-${p.id}`, "Preset deleted")}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-3">
             <SectionTitle icon="public" title="Global injection">
               Applies to every chat request, whatever the model or key.
             </SectionTitle>
             <Card>
-              <InjectEditor
-                key={`global-${global_?.updatedAt || "new"}`}
-                initial={global_}
-                saving={saving === "global"}
-                onSave={(entry) => put({ global: entry }, "global", "Global injection saved")}
-                onClear={global_ ? () => put({ global: {} }, "global", "Global injection cleared") : undefined}
-                clearLabel="Clear"
-              />
+              {global_ && !globalEditorOpen ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <EntryBadge entry={global_} />
+                  <span className="text-xs text-text-muted">
+                    ~{estimateTokens(entryText(global_))} tokens
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-muted">
+                    {entryText(global_).split("\n")[0]}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => setGlobalOpen(true)}>
+                    Edit
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  {global_ && (
+                    <div className="mb-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setGlobalOpen(false)}
+                        className="text-xs font-medium text-text-muted hover:text-text-main"
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                  )}
+                  <InjectEditor
+                    key={`global-${global_?.updatedAt || "new"}`}
+                    initial={global_}
+                    saving={saving === "global"}
+                    onSave={(entry) => put({ global: entry }, "global", "Global injection saved")}
+                    onClear={global_ ? () => put({ global: {} }, "global", "Global injection cleared") : undefined}
+                    clearLabel="Clear"
+                  />
+                </>
+              )}
             </Card>
           </section>
 
@@ -480,8 +804,14 @@ export default function PromptInjectionClient() {
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
                 placeholder="model or combo name — e.g. my-assistant"
+                list="pi-model-names"
                 className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
               />
+              <datalist id="pi-model-names">
+                {modelOptions.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
               <Button
                 variant="outline"
                 size="sm"
@@ -504,20 +834,46 @@ export default function PromptInjectionClient() {
                 />
               </Card>
             )}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               {modelNames.map((name) => (
-                <Card key={`${name}-${prompts[name]?.updatedAt || ""}`}>
-                  <div className="mb-3 flex items-center gap-2">
-                    <p className="break-all font-mono text-[13px] text-primary">{name}</p>
-                    <span className="ml-auto shrink-0"><EntryBadge entry={prompts[name]} /></span>
+                <Card key={name} padding="sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
+                    <EntryBadge entry={prompts[name]} />
+                    <span className="text-xs text-text-muted">
+                      ~{estimateTokens(entryText(prompts[name]))} tokens
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingModel(editingModel === name ? null : name)}
+                      title="Edit"
+                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        {editingModel === name ? "expand_less" : "edit"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
+                      title="Delete"
+                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                    </button>
                   </div>
-                  <InjectEditor
-                    initial={prompts[name]}
-                    saving={saving === `model-${name}`}
-                    onSave={(entry) => put({ model: name, ...entry }, `model-${name}`, "Model injection saved")}
-                    onClear={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                    clearLabel="Delete"
-                  />
+                  {editingModel === name && (
+                    <div className="mt-3 border-t border-border-subtle pt-3">
+                      <InjectEditor
+                        key={`${name}-${prompts[name]?.updatedAt || ""}`}
+                        initial={prompts[name]}
+                        saving={saving === `model-${name}`}
+                        onSave={(entry) => put({ model: name, ...entry }, `model-${name}`, "Model injection saved")}
+                        onClear={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
+                        clearLabel="Delete"
+                      />
+                    </div>
+                  )}
                 </Card>
               ))}
               {modelNames.length === 0 && (
@@ -528,7 +884,7 @@ export default function PromptInjectionClient() {
 
           <section className="flex flex-col gap-3">
             <SectionTitle icon="layers" title="Stack preview">
-              Exactly what one request receives, in order — pick a model and a key.
+              Exactly what one request receives, in order — updates automatically.
             </SectionTitle>
             <Card>
               <div className="flex flex-col gap-3">
@@ -537,6 +893,7 @@ export default function PromptInjectionClient() {
                     value={pvModel}
                     onChange={(e) => setPvModel(e.target.value)}
                     placeholder="model or combo name — e.g. my-assistant"
+                    list="pi-model-names"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
                   <select
@@ -549,7 +906,6 @@ export default function PromptInjectionClient() {
                       <option key={k.id} value={k.id}>{k.name || k.id}</option>
                     ))}
                   </select>
-                  <Button size="sm" onClick={runPreview}>Preview</Button>
                 </div>
                 {pvStack !== null && (
                   pvStack.length === 0 ? (
@@ -609,6 +965,18 @@ export default function PromptInjectionClient() {
             handles compression; this page handles persona.
           </p>
         </>
+      )}
+
+      {editingPreset !== undefined && (
+        <PresetModal
+          preset={editingPreset}
+          keys={keys}
+          keyName={keyName}
+          modelOptions={modelOptions}
+          onClose={() => setEditingPreset(undefined)}
+          onSave={savePreset}
+          saving={saving === "preset"}
+        />
       )}
 
       <ModelSelectModal
