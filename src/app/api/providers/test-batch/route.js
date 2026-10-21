@@ -8,6 +8,11 @@ import {
   ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/testUtils.js";
+import {
+  registerBatchJob,
+  isBatchStopped,
+  clearBatchJob,
+} from "@/lib/batchTestRegistry";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -41,9 +46,11 @@ function isCompatibleProvider(providerId) {
 
 // POST /api/providers/test-batch - Test multiple connections by group
 export async function POST(request) {
+  let jobId = null;
   try {
     const body = await request.json();
     const { mode, providerId } = body;
+    jobId = typeof body.jobId === "string" ? body.jobId : null;
 
     if (!mode) {
       return NextResponse.json({ error: "mode is required" }, { status: 400 });
@@ -81,8 +88,15 @@ export async function POST(request) {
       });
     }
 
+    if (jobId) registerBatchJob(jobId);
+    let stopped = false;
     const results = [];
     for (const conn of connectionsToTest) {
+      // Stop asked via /test-batch/stop, or the client went away entirely.
+      if ((jobId && isBatchStopped(jobId)) || request.signal?.aborted) {
+        stopped = true;
+        break;
+      }
       try {
         const data = await testSingleConnection(conn.id);
         results.push({
@@ -113,18 +127,22 @@ export async function POST(request) {
       }
     }
 
+    if (jobId) clearBatchJob(jobId);
     return NextResponse.json({
       mode,
       providerId: providerId || null,
       results,
+      stopped,
       testedAt: new Date().toISOString(),
       summary: {
         total: results.length,
+        planned: connectionsToTest.length,
         passed: results.filter((r) => r.valid).length,
         failed: results.filter((r) => !r.valid).length,
       },
     });
   } catch (error) {
+    if (jobId) clearBatchJob(jobId);
     console.log("Error in batch test:", error);
     return NextResponse.json({ error: "Batch test failed" }, { status: 500 });
   }

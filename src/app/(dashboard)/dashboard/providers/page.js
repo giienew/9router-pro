@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   Card,
@@ -299,21 +299,29 @@ export default function ProvidersPage() {
     }).catch(() => {});
   };
 
+  const batchJobRef = useRef(null);
+
   const handleBatchTest = async (mode, providerId = null) => {
     if (testingMode) return;
+    const jobId = `bt-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    batchJobRef.current = jobId;
     setTestingMode(mode === "provider" ? providerId : mode);
     setTestResults(null);
     try {
       const res = await fetch("/api/providers/test-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, providerId }),
+        body: JSON.stringify({ mode, providerId, jobId }),
       });
       const data = await res.json();
       setTestResults(data);
       if (data.summary) {
-        const { passed, failed, total } = data.summary;
-        if (failed === 0) notify.success(`All ${total} tests passed`);
+        const { passed, failed, total, planned } = data.summary;
+        if (data.stopped) {
+          notify.warning(
+            `Test stopped — ${total} of ${planned ?? total} connections tested (${passed} passed, ${failed} failed)`,
+          );
+        } else if (failed === 0) notify.success(`All ${total} tests passed`);
         else notify.warning(`${passed}/${total} passed, ${failed} failed`);
       }
     } catch (error) {
@@ -321,7 +329,20 @@ export default function ProvidersPage() {
       notify.error("Provider test failed");
     } finally {
       setTestingMode(null);
+      batchJobRef.current = null;
     }
+  };
+
+  // Ask the server to stop the running batch; the batch request itself
+  // returns the partial results, which handleBatchTest then reports.
+  const handleStopBatchTest = async () => {
+    const jobId = batchJobRef.current;
+    if (!jobId) return;
+    await fetch("/api/providers/test-batch/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId }),
+    }).catch(() => {});
   };
 
   const compatibleProviders = providerNodes
@@ -558,22 +579,24 @@ export default function ProvidersPage() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <ModelAvailabilityBadge />
             <button
-              onClick={() => handleBatchTest("oauth")}
-              disabled={!!testingMode}
+              onClick={() =>
+                testingMode === "oauth" ? handleStopBatchTest() : handleBatchTest("oauth")
+              }
+              disabled={!!testingMode && testingMode !== "oauth"}
               className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
                 testingMode === "oauth"
-                  ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
+                  ? "border-red-400/50 bg-red-500/10 text-red-500 hover:bg-red-500/20"
                   : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
               }`}
-              title="Test all OAuth connections"
-              aria-label="Test all OAuth connections"
+              title={testingMode === "oauth" ? "Stop the running test" : "Test all OAuth connections"}
+              aria-label={testingMode === "oauth" ? "Stop the running test" : "Test all OAuth connections"}
             >
               <span
-                className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? " animate-spin" : " text-primary"}`}
+                className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? "" : " text-primary"}`}
               >
-                play_arrow
+                {testingMode === "oauth" ? "stop_circle" : "play_arrow"}
               </span>
-              {testingMode === "oauth" ? "Testing..." : "Test All"}
+              {testingMode === "oauth" ? "Stop" : "Test All"}
             </button>
           </div>
         </div>
@@ -606,22 +629,24 @@ export default function ProvidersPage() {
             Free Tier Providers
           </h2>
           <button
-            onClick={() => handleBatchTest("free")}
-            disabled={!!testingMode}
+            onClick={() =>
+              testingMode === "free" ? handleStopBatchTest() : handleBatchTest("free")
+            }
+            disabled={!!testingMode && testingMode !== "free"}
             className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
               testingMode === "free"
-                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
+                ? "border-red-400/50 bg-red-500/10 text-red-500 hover:bg-red-500/20"
                 : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
             }`}
-            title="Test all Free connections"
-            aria-label="Test all Free provider connections"
+            title={testingMode === "free" ? "Stop the running test" : "Test all Free connections"}
+            aria-label={testingMode === "free" ? "Stop the running test" : "Test all Free provider connections"}
           >
             <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "free" ? " animate-spin" : " text-primary"}`}
+              className={`material-symbols-outlined text-[14px]${testingMode === "free" ? "" : " text-primary"}`}
             >
-              play_arrow
+              {testingMode === "free" ? "stop_circle" : "play_arrow"}
             </span>
-            {testingMode === "free" ? "Testing..." : "Test All"}
+            {testingMode === "free" ? "Stop" : "Test All"}
           </button>
         </div>
         {(freeConnected.length > 0 || freeTierConnected.length > 0) && (
@@ -673,22 +698,24 @@ export default function ProvidersPage() {
             API Key Providers{" "}
           </h2>
           <button
-            onClick={() => handleBatchTest("apikey")}
-            disabled={!!testingMode}
+            onClick={() =>
+              testingMode === "apikey" ? handleStopBatchTest() : handleBatchTest("apikey")
+            }
+            disabled={!!testingMode && testingMode !== "apikey"}
             className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
               testingMode === "apikey"
-                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
+                ? "border-red-400/50 bg-red-500/10 text-red-500 hover:bg-red-500/20"
                 : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
             }`}
-            title="Test all API Key connections"
-            aria-label="Test all API Key connections"
+            title={testingMode === "apikey" ? "Stop the running test" : "Test all API Key connections"}
+            aria-label={testingMode === "apikey" ? "Stop the running test" : "Test all API Key connections"}
           >
             <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? " animate-spin" : " text-primary"}`}
+              className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? "" : " text-primary"}`}
             >
-              play_arrow
+              {testingMode === "apikey" ? "stop_circle" : "play_arrow"}
             </span>
-            {testingMode === "apikey" ? "Testing..." : "Test All"}
+            {testingMode === "apikey" ? "Stop" : "Test All"}
           </button>
         </div>
         {apikeyConnected.length > 0 && (
