@@ -4,6 +4,10 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.4.1
+
+- **Mobile sidebar scroll fix**: on phones the navigation drawer grew with its content instead of filling the viewport, so menu entries below the fold (Media Providers children and everything under them) could not be reached — the nav's scroll area never engaged. The sidebar is now viewport-bounded (`h-full` + `max-h-dvh`, `min-h-0` on the nav region, `h-dvh` on the mobile drawer wrapper) and scrolls properly on mobile and desktop.
+
 ## v0.5.104-pro.4
 
 - **Anti-Flaky Guard**: some upstreams answer HTTP 200 with an empty body or a degenerate repetition loop ("OK.OK.OK..."). The guard inspects each finished response (OpenAI / Claude / Responses / Gemini shapes — the body is probed directly, since some executor paths mislabel a JSON body as text/event-stream, and even malformed JSON is salvaged and judged by its content), and on a flaky verdict retries on another account of the same model instead of passing garbage to the client. Tool calls and reasoning-only answers are never flagged. Fail-open throughout: retries are capped (Settings → Token Saver page, default 2), the account is not marked unavailable, the last flaky response is rescued if the pool runs out, and recovered responses carry an `x-9router-pro-flaky-retries` header. Long live streams are released uninspected.
