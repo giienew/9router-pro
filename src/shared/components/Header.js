@@ -403,31 +403,38 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           />
           <div>
             <p className="mb-1.5 text-sm font-medium text-text-main">Font style</p>
-            <div className="flex max-h-60 flex-col gap-1 overflow-y-auto">
-              {NAME_FONTS.map((f) => {
+            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-0.5">
+              {NAME_FONTS.map((f, i) => {
                 const selected = fontDraft === f.id;
+                const groupHeader = i === 0 || NAME_FONTS[i - 1].group !== f.group;
                 return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFontDraft(f.id)}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer",
-                      selected
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border-subtle hover:bg-black/5 dark:hover:bg-white/5"
+                  <div key={f.id} className="flex flex-col gap-1">
+                    {groupHeader && (
+                      <p className="px-0.5 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-text-subtle first:pt-0">
+                        {f.group}
+                      </p>
                     )}
-                  >
-                    <span style={f.style} className="truncate text-[17px] leading-6 text-text-main">
-                      {nameDraft.trim() || DEFAULT_NAME}
-                    </span>
-                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                      <span className="text-[11px] text-text-muted">{f.name}</span>
-                      {selected && (
-                        <span className="material-symbols-outlined text-[16px] text-brand-500">check</span>
+                    <button
+                      type="button"
+                      onClick={() => setFontDraft(f.id)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer",
+                        selected
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-border-subtle hover:bg-black/5 dark:hover:bg-white/5"
                       )}
-                    </span>
-                  </button>
+                    >
+                      <span style={f.style} className="truncate text-[17px] leading-6 text-text-main">
+                        {nameDraft.trim() || DEFAULT_NAME}
+                      </span>
+                      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                        <span className="text-[11px] text-text-muted">{f.name}</span>
+                        {selected && (
+                          <span className="material-symbols-outlined text-[16px] text-brand-500">check</span>
+                        )}
+                      </span>
+                    </button>
+                  </div>
                 );
               })}
             </div>

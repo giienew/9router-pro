@@ -1,4 +1,4 @@
-import { Inter, Space_Grotesk, Playfair_Display, Pacifico } from "next/font/google";
+import { Inter, Space_Grotesk, Playfair_Display, Pacifico, Poppins, Montserrat, Bebas_Neue, Anton, Orbitron, Lobster, Bangers, Zilla_Slab, Great_Vibes, Caveat, JetBrains_Mono, Special_Elite, Press_Start_2P } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "material-symbols/outlined.css";
 import "./globals.css";
@@ -33,6 +33,20 @@ const pacifico = Pacifico({
   weight: ["400"],
   variable: "--font-pacifico",
 });
+// The full display-name font set (see shared/constants/nameStyles.js).
+const poppins = Poppins({ subsets: ["latin"], weight: ["600"], variable: "--font-poppins" });
+const montserrat = Montserrat({ subsets: ["latin"], weight: ["700"], variable: "--font-montserrat" });
+const bebas = Bebas_Neue({ subsets: ["latin"], weight: ["400"], variable: "--font-bebas" });
+const anton = Anton({ subsets: ["latin"], weight: ["400"], variable: "--font-anton" });
+const orbitron = Orbitron({ subsets: ["latin"], weight: ["600"], variable: "--font-orbitron" });
+const lobster = Lobster({ subsets: ["latin"], weight: ["400"], variable: "--font-lobster" });
+const bangers = Bangers({ subsets: ["latin"], weight: ["400"], variable: "--font-bangers" });
+const zilla = Zilla_Slab({ subsets: ["latin"], weight: ["600"], variable: "--font-zilla" });
+const vibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-vibes" });
+const caveat = Caveat({ subsets: ["latin"], weight: ["600"], variable: "--font-caveat" });
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], weight: ["600"], variable: "--font-jetbrains" });
+const special = Special_Elite({ subsets: ["latin"], weight: ["400"], variable: "--font-special" });
+const pixel = Press_Start_2P({ subsets: ["latin"], weight: ["400"], variable: "--font-pixel" });
 
 export const metadata = {
   title: "9Router Pro - AI Infrastructure Management",
@@ -77,7 +91,7 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} ${poppins.variable} ${montserrat.variable} ${bebas.variable} ${anton.variable} ${orbitron.variable} ${lobster.variable} ${bangers.variable} ${zilla.variable} ${vibes.variable} ${caveat.variable} ${jetbrains.variable} ${special.variable} ${pixel.variable} font-sans antialiased`}>
         <ThemeProvider>
           <RuntimeI18nProvider>
             {children}
