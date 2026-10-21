@@ -25,6 +25,7 @@
 - **Two modes per injection** — a *single system prompt* (prepend or append), or a *chat script*: user/bot turns, as long as you like, inserted as a conversation that already happened. Fake history primes far harder than a system prompt alone.
 - **Stacking** — a request receives at most three injections, ordered global → user → model. Injection happens after format translation through the router's own wire-aware injector (OpenAI, Claude, Gemini, Responses); idempotent on retries; fails open (a broken injection never breaks a chat).
 - **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
+- **Key Limits for reselling** — per-API-key rate limits, all configurable per key on the Endpoint page: requests/minute, tokens/minute, requests/hour, requests/day and max concurrent requests, enforced with HTTP 429 + `Retry-After`. Shape every key to the plan you sold.
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
 
@@ -72,6 +73,7 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 | Prepend/append control | ❌ | ❌ | ✅ |
 | Dashboard accents | coral only | varies | ✅ 7 accents |
 | Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d budgets |
+| Per-key rate limits (RPM/TPM/RPD/concurrency) | ❌ | ❌ | ✅ per key, 429 + Retry-After |
 | `/v1/models` | ✅ healthy | ⚠️ had a 500 bug | ✅ healthy (upstream base) |
 | Extra services (Prisma/Redis) | none | sometimes required | none |
 
@@ -89,6 +91,8 @@ npm run start        # dashboard on http://localhost:20128
 ```
 
 Then open the dashboard, add a provider, and visit **Prompt Injection** to set up your injections.
+
+> Already running the original 9Router? Keep your providers, combos and keys — follow the [migration guide](./MIGRATION.md) (about two minutes, via backup export/import).
 
 ---
 
