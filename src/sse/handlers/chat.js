@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, checkKeyQuota } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, checkKeyQuota } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -302,6 +302,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       resolvedModel: `${provider}/${model}`,
       bareModel: model,
     });
+    // Brief Mode (9Router Pro): per-scope terseness level, same context.
+    const briefLevel = await resolveBriefLevel({
+      apiKeyId: injectKeyRecord?.id || null,
+      requestedModel: injectModelName || requestedModel || modelStr,
+      resolvedModel: `${provider}/${model}`,
+      bareModel: model,
+    });
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
@@ -322,6 +329,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       ponytailEnabled: !!chatSettings.ponytailEnabled,
       ponytailLevel: chatSettings.ponytailLevel || "full",
       promptInjects,
+      briefLevel,
+      onRtkStats: (stats) => { try { recordRtkSavings(stats); } catch {} },
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,

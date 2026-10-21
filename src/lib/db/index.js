@@ -71,6 +71,16 @@ export {
   getKeyUsageInWindow, checkKeyQuota,
 } from "./repos/keyQuotaRepo.js";
 
+// Brief Mode (Pro) + Token Saver savings stats (Pro)
+export {
+  getBriefModes, getBriefGlobal, getBriefByKey, getBriefByModel,
+  setBriefGlobal, setBriefForKey, setBriefForModel,
+  resolveBriefLevel, selectBriefLevel,
+} from "./repos/briefModeRepo.js";
+export {
+  recordRtkSavings, flushTokenSaverStats, getTokenSaverStats,
+} from "./repos/tokenSaverStatsRepo.js";
+
 // Pricing
 export {
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,

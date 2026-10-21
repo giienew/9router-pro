@@ -6,6 +6,8 @@ follows these releases.
 
 ## v0.5.104-pro.3
 
+- **Token Saver Pro**: three additions on the Token Saver page. **Savings panel** — RTK compression stats are now persisted (they were console-log only): estimated tokens saved, requests compressed, 14-day chart, top filters. **Brief Mode** — Caveman terseness scoped global / per API key / per model (model beats key beats global), overriding the global Caveman setting per request. **Test Bench** — paste any tool output and run the real RTK pipeline to preview savings before it ever hits a request.
+- **Dashboard performance**: no page fetches the full provider-connection list anymore — the remaining consumers (CLI tools, media providers, MITM, usage stats, Xiaomi auth) use the slim `?lite=1` projection, and the media connections card uses the server-side `?provider=` filter.
 - **Backup/restore hardened**: Settings backups now include Prompt Injections, per-key token quotas, and disabled models (previously skipped silently — a restore on a fresh install lost them). Every import first takes an automatic safety snapshot of the current database (kept in the data folder's `db/backups`, newest 3), and importing an older backup file no longer wipes Pro data the file knows nothing about. Backup files now carry a format + version marker.
 - **Prompt Injection polish**: Browse-models picker in the Injection Tester (no more typing model names from memory); starter preset chips and the page byline removed — the editor opens clean, write your own prompt.
 - **README**: real Pro screenshots (Prompt Injection, chat script editor, Providers) from a clean install.
