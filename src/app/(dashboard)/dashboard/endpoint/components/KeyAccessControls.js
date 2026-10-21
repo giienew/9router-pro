@@ -39,16 +39,21 @@ function limitsSummary(limits) {
   return parts.length ? parts.join(" · ") : null;
 }
 
-function GroupLabel({ children, right }) {
+function GroupLabel({ children, right, optional = false }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{children}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        {children}
+        {optional && (
+          <span className="ml-1.5 text-[10px] font-medium tracking-wider text-text-subtle">Optional</span>
+        )}
+      </span>
       {right}
     </div>
   );
 }
 
-GroupLabel.propTypes = { children: PropTypes.node, right: PropTypes.node };
+GroupLabel.propTypes = { children: PropTypes.node, right: PropTypes.node, optional: PropTypes.bool };
 
 function Chip({ icon, children, tone = "muted" }) {
   const tones = {
@@ -250,6 +255,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
           {/* Rate limits */}
           <div className="mt-4 border-t border-border-subtle pt-4">
             <GroupLabel
+              optional
               right={
                 limitsText ? (
                   <button

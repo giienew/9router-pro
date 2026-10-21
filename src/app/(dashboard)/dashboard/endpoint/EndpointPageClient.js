@@ -1213,9 +1213,9 @@ export default function APIPageClient({ machineId }) {
 
           {/* 9Router Pro: optional settings, applied at creation */}
           <div className="border-t border-border-subtle pt-3">
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-baseline gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Key settings</span>
-              <span className="text-[11px] text-text-muted">Optional — editable later in the key&apos;s Settings</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-text-subtle">Optional</span>
             </div>
 
             {/* Restrict access */}
