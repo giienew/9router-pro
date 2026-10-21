@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 
@@ -65,7 +67,19 @@ export default function CombosPage() {
   const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showStrategyInfo, setShowStrategyInfo] = useState(false);
+  const [adapterSaveState, setAdapterSaveState] = useState("idle");
+  const adapterSaveRef = useRef({ busy: false, pending: null });
   const { copied, copy } = useCopyToClipboard();
+  const notify = useNotificationStore();
+  const searchQuery = useHeaderSearchStore((s) => s.query);
+  const registerSearch = useHeaderSearchStore((s) => s.register);
+  const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
+
+  useEffect(() => {
+    registerSearch("Search combos or models...");
+    return () => unregisterSearch();
+  }, [registerSearch, unregisterSearch]);
 
   useEffect(() => {
     fetchData();
@@ -77,8 +91,19 @@ export default function CombosPage() {
     setSelectedIds((prev) => prev.filter((id) => alive.has(id)));
   }, [combos]);
 
+  const query = searchQuery.trim().toLowerCase();
+  const filteredCombos = query
+    ? combos.filter(
+        (c) =>
+          c.name.toLowerCase().includes(query) ||
+          (c.models || []).some((m) => m.toLowerCase().includes(query)),
+      )
+    : combos;
+
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
-  const allSelected = combos.length > 0 && selectedIds.length === combos.length;
+  const allSelected =
+    filteredCombos.length > 0 &&
+    filteredCombos.every((c) => selectedIds.includes(c.id));
   const someSelected = selectedIds.length > 0;
 
   const toggleSelect = (id) => {
@@ -88,7 +113,12 @@ export default function CombosPage() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? [] : combos.map((c) => c.id));
+    const filteredIds = filteredCombos.map((c) => c.id);
+    setSelectedIds((prev) =>
+      allSelected
+        ? prev.filter((id) => !filteredIds.includes(id))
+        : [...new Set([...prev, ...filteredIds])],
+    );
   };
 
   const clearSelection = () => setSelectedIds([]);
@@ -183,17 +213,36 @@ export default function CombosPage() {
     }
   };
 
-  const handleSetCapacityAdapter = async (next) => {
+  // Saves are serialized through a queue so rapid edits can't land out of
+  // order; the latest state always wins, and failures surface as a toast
+  // instead of silently diverging from the server.
+  const handleSetCapacityAdapter = (next) => {
     setCapacityAdapter(next);
-    try {
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capacityAdapter: next }),
-      });
-    } catch (error) {
-      console.log("Error updating capacity adapter:", error);
-    }
+    const ref = adapterSaveRef.current;
+    ref.pending = next;
+    if (ref.busy) return;
+    ref.busy = true;
+    (async () => {
+      while (ref.pending) {
+        const payload = ref.pending;
+        ref.pending = null;
+        setAdapterSaveState("saving");
+        try {
+          const res = await fetch("/api/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ capacityAdapter: payload }),
+          });
+          if (!res.ok) throw new Error("save failed");
+          setAdapterSaveState("saved");
+        } catch (error) {
+          console.log("Error updating capacity adapter:", error);
+          setAdapterSaveState("error");
+          notify.error("Failed to save Vision Adapter settings");
+        }
+      }
+      ref.busy = false;
+    })();
   };
 
   const handleCreate = async (data) => {
@@ -366,23 +415,41 @@ export default function CombosPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm text-text-muted mt-1">
-            Group models under one name, then pick a strategy per combo:
+            Group models under one name, then pick a strategy per combo.
           </p>
-          <ul className="text-sm text-text-muted mt-2 flex flex-col gap-1">
-            <li><span className="font-medium text-text-main">Fallback</span> — tries models in order (next on failure)</li>
-            <li><span className="font-medium text-text-main">Round Robin</span> — rotates models across requests to spread load</li>
-            <li><span className="font-medium text-text-main">Fusion</span> — queries all models in parallel, then a judge synthesizes one answer. Best quality, but costs the most: every request bills all panel models + the judge (N+1 calls)</li>
-          </ul>
-          <p className="hidden text-xs text-text-muted mt-3 max-w-2xl">
-            <span className="font-medium text-text-main">Cursor / Claude Default</span> create combos named exactly like those clients&apos; model IDs (e.g. <code className="font-mono">composer-2.5</code>, <code className="font-mono">opus</code>), seeded with the matching <code className="font-mono">cu/…</code> or <code className="font-mono">cc/…</code> route so traffic can hit 9router without the prefix.
-            {" "}Note: Cursor IDE itself often blocks built-in Composer / Grok from Override OpenAI Base URL (&quot;model does not support custom API&quot;); add them via Cursor&apos;s <span className="font-medium text-text-main">Add Custom Model</span> using the combo name, or pick a model Cursor allows through the custom endpoint.
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowStrategyInfo((v) => !v)}
+            className="mt-1.5 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:underline"
+            aria-expanded={showStrategyInfo}
+          >
+            <span
+              className="material-symbols-outlined text-[15px] transition-transform"
+              style={{ transform: showStrategyInfo ? "rotate(180deg)" : "none" }}
+            >
+              expand_more
+            </span>
+            How strategies work
+          </button>
+          {showStrategyInfo && (
+            <>
+              <ul className="text-sm text-text-muted mt-2 flex flex-col gap-1">
+                <li><span className="font-medium text-text-main">Fallback</span> — tries models in order (next on failure)</li>
+                <li><span className="font-medium text-text-main">Round Robin</span> — rotates models across requests to spread load</li>
+                <li><span className="font-medium text-text-main">Fusion</span> — queries all models in parallel, then a judge synthesizes one answer. Best quality, but costs the most: every request bills all panel models + the judge (N+1 calls)</li>
+              </ul>
+              <p className="text-xs text-text-muted mt-3 max-w-2xl">
+                <span className="font-medium text-text-main">Cursor / Claude Default</span> create combos named exactly like those clients&apos; model IDs (e.g. <code className="font-mono">composer-2.5</code>, <code className="font-mono">opus</code>), seeded with the matching <code className="font-mono">cu/…</code> or <code className="font-mono">cc/…</code> route so traffic can hit 9router without the prefix.
+                {" "}Note: Cursor IDE itself often blocks built-in Composer / Grok from Override OpenAI Base URL (&quot;model does not support custom API&quot;); add them via Cursor&apos;s <span className="font-medium text-text-main">Add Custom Model</span> using the combo name, or pick a model Cursor allows through the custom endpoint.
+              </p>
+            </>
+          )}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-stretch">
           <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
             Create Combo
           </Button>
-          <div className="hidden">
+          <div className="flex gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -390,7 +457,7 @@ export default function CombosPage() {
               loading={presetLoading === "cursor"}
               disabled={!!presetLoading}
               onClick={() => handleGeneratePresets("cursor")}
-              className="w-full whitespace-nowrap"
+              className="flex-1 whitespace-nowrap sm:flex-none"
             >
               Cursor Default
             </Button>
@@ -401,7 +468,7 @@ export default function CombosPage() {
               loading={presetLoading === "claude"}
               disabled={!!presetLoading}
               onClick={() => handleGeneratePresets("claude")}
-              className="w-full whitespace-nowrap"
+              className="flex-1 whitespace-nowrap sm:flex-none"
             >
               Claude Default
             </Button>
@@ -440,7 +507,7 @@ export default function CombosPage() {
               <span>
                 {someSelected
                   ? `${selectedIds.length} selected`
-                  : `Select all (${combos.length})`}
+                  : `Select all (${filteredCombos.length})`}
               </span>
             </label>
 
@@ -484,10 +551,20 @@ export default function CombosPage() {
             </div>
           </div>
 
+          {filteredCombos.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border py-8 text-center">
+              <span className="material-symbols-outlined mb-2 text-[32px] text-text-muted">
+                search_off
+              </span>
+              <p className="text-sm text-text-muted">
+                No combos match your search
+              </p>
+            </div>
+          ) : (
           <div className="flex flex-col gap-3">
             {(() => {
               const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
-              return combos.map((combo) => (
+              return filteredCombos.map((combo) => (
                 <ComboCard
                   key={combo.id}
                   combo={combo}
@@ -506,6 +583,7 @@ export default function CombosPage() {
               ));
             })()}
           </div>
+          )}
         </div>
       )}
 
@@ -515,6 +593,7 @@ export default function CombosPage() {
         onChange={handleSetCapacityAdapter}
         activeProviders={activeProviders}
         getCaps={getCaps}
+        saveState={adapterSaveState}
       />
 
       {/* Create Modal - Use key to force remount and reset state */}
@@ -565,6 +644,8 @@ const fmtK = (n) => {
 
 function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
+  const [showAllModels, setShowAllModels] = useState(false);
+  const visibleModels = showAllModels ? combo.models : combo.models.slice(0, 3);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
@@ -596,7 +677,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               {combo.models.length === 0 ? (
                 <span className="text-xs text-text-muted italic">No models</span>
               ) : (
-                combo.models.slice(0, 3).map((model, index) => (
+                visibleModels.map((model, index) => (
                   <code key={index} className="inline-flex items-center gap-1 rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-text-muted dark:bg-white/5">
                     <span>{model}</span>
                     <CapacityBadges caps={
@@ -608,7 +689,13 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 ))
               )}
               {combo.models.length > 3 && (
-                <span className="text-[10px] text-text-muted">+{combo.models.length - 3} more</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAllModels((v) => !v)}
+                  className="cursor-pointer text-[10px] font-medium text-primary hover:underline"
+                >
+                  {showAllModels ? "Show less" : `+${combo.models.length - 3} more`}
+                </button>
               )}
             </div>
             {comboCaps && (
@@ -703,16 +790,27 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   );
 }
 
-function CapacityAdapterSection({ capacityAdapter, onChange, activeProviders, getCaps }) {
+function CapacityAdapterSection({ capacityAdapter, onChange, activeProviders, getCaps, saveState = "idle" }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Vision Adapter</p>
-          <p className="text-xs text-text-muted mt-0.5">
+          <h2 className="text-lg font-semibold sm:text-xl">Vision Adapter</h2>
+          <p className="mt-0.5 text-sm text-text-muted">
             Your model can&apos;t read image/audio? Auto-switches to a model in the pool below.
           </p>
         </div>
+        {saveState !== "idle" && (
+          <span
+            className={`shrink-0 text-xs ${saveState === "error" ? "text-red-500" : "text-text-muted"}`}
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "saved"
+                ? "Saved"
+                : "Save failed"}
+          </span>
+        )}
       </div>
       <div className="flex flex-col gap-4">
         {CAPACITY_ADAPTER_CAPS.map((cap) => (
@@ -742,15 +840,16 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
     patch({ models: [...models, value] });
   };
 
+  // The pool may be emptied for real: the runtime substitutes
+  // DEFAULT_FALLBACK_MODEL for an enabled-but-empty pool (see
+  // open-sse/services/capacityAdapter.js), which the empty state explains.
   const handleDeselect = (model) => {
     const value = model?.value || model?.name || model;
-    const next = models.filter((m) => m !== value);
-    patch({ models: next.length === 0 ? [DEFAULT_FALLBACK_MODEL] : next });
+    patch({ models: models.filter((m) => m !== value) });
   };
 
   const handleRemove = (index) => {
-    const next = models.filter((_, i) => i !== index);
-    patch({ models: next.length === 0 ? [DEFAULT_FALLBACK_MODEL] : next });
+    patch({ models: models.filter((_, i) => i !== index) });
   };
 
   const handleMove = (index, delta) => {
