@@ -1,6 +1,16 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import { makeBackupDir, backupDbLite, pruneOldBackups } from "./backup.js";
+import { getAppVersion } from "./version.js";
+
+// KV scopes that hold user configuration (not stats) and therefore travel
+// with a Settings backup: the four legacy ones plus the Pro-era scopes.
+// The legacy four are always replaced on import (they exist in every
+// backup file ever written); the EXTRA scopes are only replaced when the
+// payload actually carries the section, so importing an older backup
+// never wipes newer data (prompt injections, quotas) it knows nothing of.
+const EXTRA_KV_SCOPES = ["promptInjections", "keyQuotas", "disabledModels"];
 import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
@@ -89,6 +99,9 @@ export async function exportDb() {
   const { exportSettings } = await import("./repos/settingsRepo.js");
 
   const out = {
+    format: "9router-backup",
+    appVersion: getAppVersion(),
+    exportedAt: new Date().toISOString(),
     settings: await exportSettings(),
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
@@ -99,12 +112,18 @@ export async function exportDb() {
     customModels: [],
     mitmAlias: {},
     pricing: {},
+    promptInjections: {},
+    keyQuotas: {},
+    disabledModels: {},
   };
 
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'customModels'`)) out.customModels.push(parseJson(r.value));
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
+  for (const scope of EXTRA_KV_SCOPES) {
+    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = ?`, [scope])) out[scope][r.key] = parseJson(r.value);
+  }
 
   return out;
 }
@@ -115,6 +134,17 @@ export async function importDb(payload) {
   }
   const db = await getAdapter();
 
+  // Safety snapshot BEFORE the wipe: importing a wrong-but-valid file must
+  // never be unrecoverable. Same lightweight backup the schema migrator
+  // takes (excludes the request-details log); newest 3 are kept.
+  try {
+    const dir = makeBackupDir("pre-import");
+    backupDbLite(db, dir);
+    pruneOldBackups();
+  } catch (e) {
+    console.warn("[DB] Pre-import backup failed (continuing):", e?.message || e);
+  }
+
   db.transaction(() => {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
@@ -124,6 +154,17 @@ export async function importDb(payload) {
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
+    // Pro-era scopes: replace only when the payload carries the section —
+    // an older backup (without them) leaves current data untouched.
+    for (const scope of EXTRA_KV_SCOPES) {
+      const section = payload[scope];
+      if (section && typeof section === "object" && !Array.isArray(section)) {
+        db.run(`DELETE FROM kv WHERE scope = ?`, [scope]);
+        for (const [k, v] of Object.entries(section)) {
+          db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES(?, ?, ?)`, [scope, k, stringifyJson(v)]);
+        }
+      }
+    }
 
     // Settings
     if (payload.settings) {
