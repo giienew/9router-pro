@@ -4,6 +4,10 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.5
+
+- **Key Limits — per-API-key rate limits for reselling**: every API key can now carry its own limits, set on the Endpoint page next to the existing token quota: **requests per minute**, **tokens per minute**, **requests per hour**, **requests per day**, and **max concurrent requests**. Every field is optional (empty = unlimited) and fully configurable per key, so sellers and renters can shape each key to the plan they sold. A key that crosses a limit gets **HTTP 429 with a `Retry-After` header** and a message naming the limit it hit. Request windows and concurrency are tracked in memory (they reset on restart, like most rate limiters); tokens-per-minute is a soft check over the last minute of recorded usage — the same fail-open philosophy as the token quota, so a limiter error never blocks a chat. Limits ride along in Settings backups (new `keyLimits` scope), are cleared when their key is deleted, and the Endpoint page shows each key's live usage (requests this minute, tokens this minute, requests in flight).
+
 ## v0.5.104-pro.4.3
 
 - **Key Health page removed**: at the owner's call — per-key testing and management already live on the Providers pages, and the standalone page duplicated them. The `/dashboard/key-health` page, its API route, and its repo helpers are gone; everything else from pro.4 (Anti-Flaky Guard, backup completeness, token-saver upgrades) is unchanged.

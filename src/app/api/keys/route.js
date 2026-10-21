@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey, getAllKeyQuotas, getKeyUsageInWindow } from "@/lib/localDb";
+import { getApiKeys, createApiKey, getAllKeyQuotas, getKeyUsageInWindow, getAllKeyLimits } from "@/lib/localDb";
+import { getKeyLimitUsage } from "@/lib/keyRateLimiter.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +11,17 @@ export async function GET() {
     const keys = await getApiKeys();
     try {
       const quotas = await getAllKeyQuotas();
+      const allLimits = await getAllKeyLimits();
       for (const key of keys) {
         const quota = quotas[key.id] || null;
         key.quota = quota;
         key.quotaUsed = quota ? await getKeyUsageInWindow(key.key, quota.windowHours) : 0;
+        const limits = allLimits[key.id] || null;
+        key.limits = limits;
+        key.limitsUsage = {
+          ...getKeyLimitUsage(key.id),
+          tpmUsed: limits?.tpm ? await getKeyUsageInWindow(key.key, 1 / 60) : 0,
+        };
       }
     } catch {}
     return NextResponse.json({ keys });

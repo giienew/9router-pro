@@ -11,7 +11,7 @@ import { getAppVersion } from "./version.js";
 // older backup never wipes newer data (prompt injections, quotas, brief
 // modes) it knows nothing of. tokenSaverStats is statistics rather than
 // configuration, but it rides along so a restore keeps the savings history.
-const EXTRA_KV_SCOPES = ["promptInjections", "keyQuotas", "disabledModels", "briefMode", "tokenSaverStats"];
+const EXTRA_KV_SCOPES = ["promptInjections", "keyQuotas", "keyLimits", "disabledModels", "briefMode", "tokenSaverStats"];
 import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
@@ -72,6 +72,12 @@ export {
   getKeyUsageInWindow, checkKeyQuota,
 } from "./repos/keyQuotaRepo.js";
 
+// Key Limits (9Router Pro) — per-key RPM/TPM/RPH/RPD/concurrency config
+export {
+  getKeyLimits, getAllKeyLimits, setKeyLimits, deleteKeyLimits,
+  cleanKeyLimits, LIMIT_FIELDS,
+} from "./repos/keyLimitRepo.js";
+
 // Brief Mode (Pro) + Token Saver savings stats (Pro)
 export {
   getBriefModes, getBriefGlobal, getBriefByKey, getBriefByModel,
@@ -125,6 +131,7 @@ export async function exportDb() {
     pricing: {},
     promptInjections: {},
     keyQuotas: {},
+    keyLimits: {},
     disabledModels: {},
     briefMode: {},
     tokenSaverStats: {},

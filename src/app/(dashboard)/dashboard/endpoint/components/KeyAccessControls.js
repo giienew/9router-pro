@@ -14,10 +14,35 @@ const QUOTA_WINDOWS = [
   { hours: 720, label: "30 days" },
 ];
 
-export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict, onQuotaChange }) {
+// 9Router Pro: per-key rate limits (for reselling). Empty field = unlimited.
+const LIMIT_FIELDS_UI = [
+  { field: "rpm", label: "Requests / min" },
+  { field: "tpm", label: "Tokens / min" },
+  { field: "rph", label: "Requests / hour" },
+  { field: "rpd", label: "Requests / day" },
+  { field: "maxConcurrent", label: "Max concurrent" },
+];
+
+export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict, onQuotaChange, onLimitsChange }) {
   const access = apiKey.access || { restricted: false, allow: [] };
   const quota = apiKey.quota || null;
   const quotaUsed = apiKey.quotaUsed || 0;
+  const limits = apiKey.limits || null;
+  const limitsUsage = apiKey.limitsUsage || null;
+
+  const commitLimit = (field, rawValue) => {
+    if (!onLimitsChange) return;
+    const v = parseInt(rawValue, 10);
+    const next = {
+      rpm: limits?.rpm ?? null,
+      tpm: limits?.tpm ?? null,
+      rph: limits?.rph ?? null,
+      rpd: limits?.rpd ?? null,
+      maxConcurrent: limits?.maxConcurrent ?? null,
+    };
+    next[field] = Number.isFinite(v) && v > 0 ? v : null;
+    onLimitsChange(next);
+  };
   const [limitDraft, setLimitDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeProviders, setActiveProviders] = useState([]);
@@ -129,6 +154,45 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
           </div>
         )}
       </div>
+      {/* 9Router Pro: per-key rate limits */}
+      <div className="mt-2.5 border-t border-border-subtle pt-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-text-main">Key limits</span>
+          {!!limits && (
+            <button
+              onClick={() => onLimitsChange?.(null)}
+              className="text-xs text-text-muted hover:text-red-500"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-text-muted">
+          For reselling: cap this key&apos;s request rate. Empty = unlimited. Keys over a limit get HTTP 429 with Retry-After.
+        </p>
+        <div key={JSON.stringify(limits)} className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {LIMIT_FIELDS_UI.map(({ field, label }) => (
+            <label key={field} className="block">
+              <span className="mb-1 block text-xs text-text-muted">{label}</span>
+              <input
+                type="number"
+                min="1"
+                className="w-full rounded-lg border border-border bg-bg px-2 py-1 font-mono text-xs text-text-main outline-none focus:border-brand-500"
+                defaultValue={limits?.[field] ?? ""}
+                placeholder="Unlimited"
+                onBlur={(e) => commitLimit(field, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+        {!!limitsUsage && (
+          <p className="mt-1.5 text-xs text-text-muted">
+            Now: {limitsUsage.rpmUsed || 0} req/min
+            {limits?.tpm ? ` · ${Number(limitsUsage.tpmUsed || 0).toLocaleString()} tok/min` : ""}
+            {" · "}{limitsUsage.inFlight || 0} in flight
+          </p>
+        )}
+      </div>
       {pickerOpen && (
         <ModelSelectModal
           isOpen={pickerOpen}
@@ -153,8 +217,17 @@ KeyAccessControls.propTypes = {
     access: PropTypes.shape({ restricted: PropTypes.bool, allow: PropTypes.arrayOf(PropTypes.string) }),
     quota: PropTypes.shape({ enabled: PropTypes.bool, limit: PropTypes.number, windowHours: PropTypes.number }),
     quotaUsed: PropTypes.number,
+    limits: PropTypes.shape({
+      rpm: PropTypes.number, tpm: PropTypes.number, rph: PropTypes.number,
+      rpd: PropTypes.number, maxConcurrent: PropTypes.number,
+    }),
+    limitsUsage: PropTypes.shape({
+      rpmUsed: PropTypes.number, rphUsed: PropTypes.number, rpdUsed: PropTypes.number,
+      tpmUsed: PropTypes.number, inFlight: PropTypes.number,
+    }),
   }).isRequired,
   onChange: PropTypes.func.isRequired,
   onRequestRestrict: PropTypes.func.isRequired,
   onQuotaChange: PropTypes.func,
+  onLimitsChange: PropTypes.func,
 };

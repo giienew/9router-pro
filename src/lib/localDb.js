@@ -24,6 +24,7 @@ export {
   recordRtkSavings, getTokenSaverStats,
   getKeyQuota, getAllKeyQuotas, setKeyQuota, deleteKeyQuota,
   getKeyUsageInWindow, checkKeyQuota,
+  getKeyLimits, getAllKeyLimits, setKeyLimits, deleteKeyLimits, cleanKeyLimits,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,
