@@ -309,7 +309,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const fetch_ = useCallback(async () => {
     try {
       const [connRes, proxyRes, settingsRes] = await Promise.all([
-        fetch("/api/providers", { cache: "no-store" }),
+        fetch(`/api/providers?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" }),
         fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
         fetch("/api/settings", { cache: "no-store" }),
       ]);

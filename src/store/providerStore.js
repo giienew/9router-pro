@@ -38,7 +38,7 @@ const useProviderStore = create((set, get) => ({
     if (!force && providers.length > 0 && Date.now() - lastFetched < CLIENT_STORE_TTL_MS) return;
     set({ loading: true, error: null });
     try {
-      const response = await fetch("/api/providers");
+      const response = await fetch("/api/providers?lite=1");
       const data = await response.json();
       if (response.ok) {
         set({ providers: data.connections || data.providers || [], loading: false, lastFetched: Date.now() });

@@ -60,7 +60,10 @@ const STATS_TTL_MS = 30_000;
 function liteConnection(c) {
   const psd = c.providerSpecificData || {};
   const trimmedPsd = {};
-  for (const k of ["nodeName", "prefix", "proxyPoolId", "enabledModels"]) {
+  // Identity/picker fields only — but keep the small scalars a few
+  // consumers legitimately read (custom model lists for CLI-tool
+  // pickers, Xiaomi uid matching for duplicate detection).
+  for (const k of ["nodeName", "prefix", "proxyPoolId", "enabledModels", "customModels", "defaultModel", "uid", "mimoUserId"]) {
     if (psd[k] !== undefined) trimmedPsd[k] = psd[k];
   }
   return {
@@ -74,6 +77,7 @@ function liteConnection(c) {
     testStatus: c.testStatus ?? null,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
+    ...(c.defaultModel !== undefined ? { defaultModel: c.defaultModel } : {}),
     providerSpecificData: trimmedPsd,
   };
 }

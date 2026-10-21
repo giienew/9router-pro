@@ -73,7 +73,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
           setPhase("found");
 
           // Non-blocking: flag an already-imported account
-          fetch("/api/providers", { signal: AbortSignal.timeout(3000) })
+          fetch("/api/providers?lite=1", { signal: AbortSignal.timeout(3000) })
             .then((r) => r.json())
             .then((provData) => {
               const foundConn = (provData.connections || []).find(
