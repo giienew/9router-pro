@@ -4,6 +4,11 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.4.2
+
+- **Key Health provider dropdown fix**: the page read the providers summary as an array, but the API returns an object keyed by `provider|authType` — the parse failed silently and the page sat empty (no auto-selected provider, all counters at 0). It now aggregates per provider and auto-selects the largest pool on open, as intended.
+- **Key Health audit pass**: search is properly debounced now (it previously fired a full pool re-classification on every keystroke), load failures surface a visible notice instead of silent zeros, and the provider dropdown shows a loading placeholder while the list is on its way.
+
 ## v0.5.104-pro.4.1
 
 - **Mobile sidebar scroll fix**: on phones the navigation drawer grew with its content instead of filling the viewport, so menu entries below the fold (Media Providers children and everything under them) could not be reached — the nav's scroll area never engaged. The sidebar is now viewport-bounded (`h-full` + `max-h-dvh`, `min-h-0` on the nav region, `h-dvh` on the mobile drawer wrapper) and scrolls properly on mobile and desktop.

@@ -39,6 +39,7 @@ export default function KeyHealthClient() {
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -51,13 +52,23 @@ export default function KeyHealthClient() {
     (async () => {
       try {
         const r = await fetch("/api/providers?summary=1");
-        if (!r.ok) return;
+        if (!r.ok) { setNotice("Failed to load the provider list — refresh to retry."); return; }
         const j = await r.json();
-        const list = (j.stats || []).map((s) => ({ id: s.provider, total: s.total || 0 })).filter((p) => p.id);
+        // stats is an object keyed by "provider|authType" (one entry per
+        // auth type) — aggregate totals per provider for the dropdown.
+        const raw = j.stats || {};
+        const entries = Array.isArray(raw) ? raw : Object.values(raw);
+        const byId = new Map();
+        for (const s of entries) {
+          if (!s?.provider) continue;
+          byId.set(s.provider, (byId.get(s.provider) || 0) + (s.total || 0));
+        }
+        const list = [...byId.entries()].map(([id, total]) => ({ id, total }));
         list.sort((a, b) => b.total - a.total);
         setProviders(list);
         if (list.length) setProvider(list[0].id);
-      } catch {}
+        else setNotice("No providers with connections were found.");
+      } catch { setNotice("Failed to load the provider list — refresh to retry."); }
     })();
   }, []);
 
@@ -72,17 +83,19 @@ export default function KeyHealthClient() {
       if (r.ok) {
         setData(await r.json());
         setSelected(new Set());
+      } else {
+        setNotice("Failed to load key health data — refresh to retry.");
       }
-    } catch {}
+    } catch { setNotice("Failed to load key health data — refresh to retry."); }
     setLoading(false);
   }, [provider, status, search, page]);
 
   useEffect(() => { load(); }, [load]);
 
   const onSearch = (v) => {
-    setSearch(v);
+    setSearchInput(v);
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setPage(1), 350);
+    searchTimer.current = setTimeout(() => { setSearch(v); setPage(1); }, 350);
   };
 
   const counts = data?.counts || {};
@@ -159,12 +172,13 @@ export default function KeyHealthClient() {
           onChange={(e) => { setProvider(e.target.value); setPage(1); setStatus(""); }}
           className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
         >
+          {providers.length === 0 && <option value="">Loading providers…</option>}
           {providers.map((p) => (
             <option key={p.id} value={p.id}>{p.id} ({p.total})</option>
           ))}
         </select>
         <input
-          value={search}
+          value={searchInput}
           onChange={(e) => onSearch(e.target.value)}
           placeholder="Search name or email…"
           className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
