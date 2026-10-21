@@ -1,4 +1,4 @@
-import { Inter, Space_Grotesk, Playfair_Display, Pacifico, Poppins, Montserrat, Bebas_Neue, Anton, Orbitron, Lobster, Bangers, Zilla_Slab, Great_Vibes, Caveat, JetBrains_Mono, Special_Elite, Press_Start_2P } from "next/font/google";
+import { Inter, Space_Grotesk, Playfair_Display, Pacifico, Poppins, Montserrat, Bebas_Neue, Anton, Orbitron, Lobster, Bangers, Zilla_Slab, Great_Vibes, Caveat, JetBrains_Mono, Special_Elite, Press_Start_2P, Audiowide, Monoton, Rubik_Glitch, Michroma, VT323 } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "material-symbols/outlined.css";
 import "./globals.css";
@@ -47,6 +47,11 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["600"], variable: "--font-c
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], weight: ["600"], variable: "--font-jetbrains" });
 const special = Special_Elite({ subsets: ["latin"], weight: ["400"], variable: "--font-special" });
 const pixel = Press_Start_2P({ subsets: ["latin"], weight: ["400"], variable: "--font-pixel" });
+const audiowide = Audiowide({ subsets: ["latin"], weight: ["400"], variable: "--font-audiowide" });
+const monoton = Monoton({ subsets: ["latin"], weight: ["400"], variable: "--font-monoton" });
+const glitch = Rubik_Glitch({ subsets: ["latin"], weight: ["400"], variable: "--font-glitch" });
+const michroma = Michroma({ subsets: ["latin"], weight: ["400"], variable: "--font-michroma" });
+const vt323 = VT323({ subsets: ["latin"], weight: ["400"], variable: "--font-vt323" });
 
 export const metadata = {
   title: "9Router Pro - AI Infrastructure Management",
@@ -91,7 +96,7 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} ${poppins.variable} ${montserrat.variable} ${bebas.variable} ${anton.variable} ${orbitron.variable} ${lobster.variable} ${bangers.variable} ${zilla.variable} ${vibes.variable} ${caveat.variable} ${jetbrains.variable} ${special.variable} ${pixel.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} ${poppins.variable} ${montserrat.variable} ${bebas.variable} ${anton.variable} ${orbitron.variable} ${lobster.variable} ${bangers.variable} ${zilla.variable} ${vibes.variable} ${caveat.variable} ${jetbrains.variable} ${special.variable} ${pixel.variable} ${audiowide.variable} ${monoton.variable} ${glitch.variable} ${michroma.variable} ${vt323.variable} font-sans antialiased`}>
         <ThemeProvider>
           <RuntimeI18nProvider>
             {children}
