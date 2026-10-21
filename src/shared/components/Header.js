@@ -458,32 +458,52 @@ function HeaderSearch() {
   const query = useHeaderSearchStore((s) => s.query);
   const placeholder = useHeaderSearchStore((s) => s.placeholder);
   const setQuery = useHeaderSearchStore((s) => s.setQuery);
+  // On mobile the field collapses to an icon so the page title keeps its
+  // room; tapping the icon expands the field (and the X collapses it back).
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!visible) return null;
 
   return (
-    <div className="relative w-[160px] sm:w-[220px]">
-      <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
-        search
-      </span>
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={placeholder}
-        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
-      />
-      {query && (
-        <button
-          type="button"
-          onClick={() => setQuery("")}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
-          aria-label="Clear search"
-        >
-          <span className="material-symbols-outlined text-[16px]">close</span>
-        </button>
-      )}
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Search"
+        className={cn(
+          "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-text-muted transition-colors hover:bg-black/5 hover:text-text-main dark:hover:bg-white/10 sm:hidden",
+          mobileOpen && "hidden"
+        )}
+      >
+        <span className="material-symbols-outlined text-[20px]">search</span>
+      </button>
+      <div className={cn("relative w-[160px] sm:w-[220px]", !mobileOpen && "hidden sm:block")}>
+        <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
+          search
+        </span>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={placeholder}
+          autoFocus={mobileOpen}
+          className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+        />
+        {(query || mobileOpen) && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setMobileOpen(false);
+            }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
+            aria-label="Clear search"
+          >
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -94,13 +94,76 @@ function getConnectionErrorTag(connection) {
   return "ERR";
 }
 
-const APIKEY_INITIAL_VISIBLE = 20;
+// Providers with no connections collapse into one compact list per section so
+// the page stays short; every row links to the provider page to connect it.
+function NotConnectedProviders({ entries, forceOpen }) {
+  const [open, setOpen] = useState(false);
+  const expanded = forceOpen || open;
+  if (entries.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border-subtle">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left"
+        aria-expanded={expanded}
+      >
+        <span
+          className="material-symbols-outlined text-[18px] text-text-muted transition-transform"
+          style={{ transform: expanded ? "rotate(180deg)" : "none" }}
+        >
+          expand_more
+        </span>
+        <span className="text-sm font-medium text-text-muted">Not connected</span>
+        <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-medium text-text-muted dark:bg-white/10">
+          {entries.length}
+        </span>
+        <span className="ml-auto hidden text-xs text-text-subtle sm:block">
+          Tap a provider to connect it
+        </span>
+      </button>
+      {expanded && (
+        <div className="flex flex-col divide-y divide-border-subtle border-t border-border-subtle">
+          {entries.map(([key, info]) => (
+            <Link
+              key={key}
+              href={`/dashboard/providers/${key}`}
+              className="flex items-center gap-3 px-3.5 py-2 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+            >
+              <div
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  backgroundColor: `${info.color?.length > 7 ? info.color : (info.color || "#888") + "15"}`,
+                }}
+              >
+                <ProviderIcon
+                  src={`/providers/${key}.png`}
+                  alt={info.name}
+                  size={22}
+                  className="max-h-[24px] max-w-[24px] rounded-md object-contain"
+                  fallbackText={info.textIcon || key.slice(0, 2).toUpperCase()}
+                  fallbackColor={info.color}
+                />
+              </div>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {info.name}
+              </span>
+              <span className="flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 px-2 py-1 text-[11px] font-semibold text-primary">
+                <span className="material-symbols-outlined text-[13px]">add</span>
+                Connect
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProvidersPage() {
   const [statsMap, setStatsMap] = useState({});
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAllApikey, setShowAllApikey] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
@@ -359,11 +422,32 @@ export default function ProvidersPage() {
       return (a.name || "").localeCompare(b.name || "");
     });
   const isApikeySearching = !!searchQuery.trim() || statusFilter !== "all";
-  const visibleApikeyEntries =
-    isApikeySearching || showAllApikey
-      ? apikeyEntries
-      : apikeyEntries.slice(0, APIKEY_INITIAL_VISIBLE);
-  const hiddenApikeyCount = apikeyEntries.length - APIKEY_INITIAL_VISIBLE;
+
+  // Split each section into providers that have connections (cards, on top)
+  // and providers with none (one compact collapsible list per section).
+  // noAuth providers are usable without connections, so they count as active.
+  const splitEntries = (entries, statsFor) => {
+    const connected = [];
+    const empty = [];
+    for (const entry of entries) {
+      if (statsFor(entry).total > 0 || entry[1].noAuth) connected.push(entry);
+      else empty.push(entry);
+    }
+    return [connected, empty];
+  };
+  const [oauthConnected, oauthEmpty] = splitEntries(oauthEntries, ([key, info]) =>
+    getProviderStats(key, dualAuthTypes(info, key)),
+  );
+  const [freeConnected, freeEmpty] = splitEntries(freeEntries, ([key, info]) =>
+    getProviderStats(key, dualAuthTypes(info, key)),
+  );
+  const [freeTierConnected, freeTierEmpty] = splitEntries(
+    freeTierEntries,
+    ([key, info]) => getProviderStats(key, dualAuthTypes(info, key)),
+  );
+  const [apikeyConnected, apikeyEmpty] = splitEntries(apikeyEntries, ([key]) =>
+    getProviderStats(key, "apikey"),
+  );
 
   if (loading) {
     return (
@@ -416,23 +500,25 @@ export default function ProvidersPage() {
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             Custom Providers (OpenAI/Anthropic Compatible){" "}
           </h2>
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
             <Button
               size="sm"
               icon="add"
               onClick={() => setShowAddAnthropicCompatibleModal(true)}
               className="w-full sm:w-auto"
             >
-              Add Anthropic Compatible
+              <span className="sm:hidden">Add Anthropic</span>
+              <span className="hidden sm:inline">Add Anthropic Compatible</span>
             </Button>
             <Button
               size="sm"
               variant="secondary"
               icon="add"
               onClick={() => setShowAddCompatibleModal(true)}
-              className="w-full !bg-white !text-black hover:!bg-gray-100 sm:w-auto"
+              className="w-full sm:w-auto"
             >
-              Add OpenAI Compatible
+              <span className="sm:hidden">Add OpenAI</span>
+              <span className="hidden sm:inline">Add OpenAI Compatible</span>
             </Button>
           </div>
         </div>
@@ -477,13 +563,13 @@ export default function ProvidersPage() {
               className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
                 testingMode === "oauth"
                   ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                  : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
+                  : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
               }`}
               title="Test all OAuth connections"
               aria-label="Test all OAuth connections"
             >
               <span
-                className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? " animate-spin" : ""}`}
+                className={`material-symbols-outlined text-[14px]${testingMode === "oauth" ? " animate-spin" : " text-primary"}`}
               >
                 play_arrow
               </span>
@@ -491,8 +577,9 @@ export default function ProvidersPage() {
             </button>
           </div>
         </div>
+        {oauthConnected.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {oauthEntries.map(([key, info]) => {
+          {oauthConnected.map(([key, info]) => {
             const authTypes = dualAuthTypes(info, key);
             return (
               <ProviderCard
@@ -506,6 +593,8 @@ export default function ProvidersPage() {
             );
           })}
         </div>
+        )}
+        <NotConnectedProviders entries={oauthEmpty} forceOpen={isApikeySearching} />
       </div>
       )}
 
@@ -522,21 +611,22 @@ export default function ProvidersPage() {
             className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
               testingMode === "free"
                 ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
+                : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
             }`}
             title="Test all Free connections"
             aria-label="Test all Free provider connections"
           >
             <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "free" ? " animate-spin" : ""}`}
+              className={`material-symbols-outlined text-[14px]${testingMode === "free" ? " animate-spin" : " text-primary"}`}
             >
               play_arrow
             </span>
             {testingMode === "free" ? "Testing..." : "Test All"}
           </button>
         </div>
+        {(freeConnected.length > 0 || freeTierConnected.length > 0) && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {freeEntries.map(([key, info]) => {
+          {freeConnected.map(([key, info]) => {
             // Dual-auth (e.g. kiro): count/toggle oauth + apikey/api_key so the
             // card total matches the provider detail page.
             const freeAuthTypes = dualAuthTypes(info, key);
@@ -553,7 +643,7 @@ export default function ProvidersPage() {
               />
             );
           })}
-          {freeTierEntries.map(([key, info]) => {
+          {freeTierConnected.map(([key, info]) => {
             const freeAuthTypes = dualAuthTypes(info, key);
             return (
               <ApiKeyProviderCard
@@ -567,6 +657,11 @@ export default function ProvidersPage() {
             );
           })}
         </div>
+        )}
+        <NotConnectedProviders
+          entries={[...freeEmpty, ...freeTierEmpty]}
+          forceOpen={isApikeySearching}
+        />
       </div>
       )}
 
@@ -583,21 +678,22 @@ export default function ProvidersPage() {
             className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
               testingMode === "apikey"
                 ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
+                : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
             }`}
             title="Test all API Key connections"
             aria-label="Test all API Key connections"
           >
             <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? " animate-spin" : ""}`}
+              className={`material-symbols-outlined text-[14px]${testingMode === "apikey" ? " animate-spin" : " text-primary"}`}
             >
               play_arrow
             </span>
             {testingMode === "apikey" ? "Testing..." : "Test All"}
           </button>
         </div>
+        {apikeyConnected.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {visibleApikeyEntries.map(([key, info]) => (
+          {apikeyConnected.map(([key, info]) => (
             <ApiKeyProviderCard
               key={key}
               providerId={key}
@@ -608,15 +704,8 @@ export default function ProvidersPage() {
             />
           ))}
         </div>
-        {!isApikeySearching && !showAllApikey && hiddenApikeyCount > 0 && (
-          <button
-            onClick={() => setShowAllApikey(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary hover:bg-primary/5"
-          >
-            <span className="material-symbols-outlined text-[16px]">expand_more</span>
-            Show all {apikeyEntries.length} providers
-          </button>
         )}
+        <NotConnectedProviders entries={apikeyEmpty} forceOpen={isApikeySearching} />
       </div>
       )}
 
