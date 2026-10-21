@@ -16,8 +16,10 @@ export default function Modal({
   closeOnOverlay = true,
   showTrafficLights = true,
   className,
+  bodyClassName,
 }) {
   const sizes = {
+    xs: "max-w-[300px]",
     sm: "max-w-sm",
     md: "max-w-md",
     lg: "max-w-lg",
@@ -104,7 +106,7 @@ export default function Modal({
         )}
 
         {/* Body */}
-        <div className="min-h-0 overflow-y-auto p-6 custom-scrollbar">{children}</div>
+        <div className={cn("min-h-0 overflow-y-auto p-6 custom-scrollbar", bodyClassName)}>{children}</div>
 
         {/* Footer */}
         {footer && (
