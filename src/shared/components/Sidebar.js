@@ -10,6 +10,7 @@ import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useSettingsStore from "@/store/settingsStore";
 import Button from "./Button";
+import ModderSocials from "./ModderSocials";
 import { ConfirmModal } from "./Modal";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull" },
+  { href: "/dashboard/key-health", label: "Key Health", icon: "monitor_heart" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
@@ -137,6 +139,7 @@ export default function Sidebar({ onClose }) {
               </span>
             </div>
           </Link>
+          <ModderSocials className="pl-12 -mt-1" />
           {updateInfo && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-green-600 dark:text-amber-500">

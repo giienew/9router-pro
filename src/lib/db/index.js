@@ -4,13 +4,14 @@ import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { makeBackupDir, backupDbLite, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 
-// KV scopes that hold user configuration (not stats) and therefore travel
-// with a Settings backup: the four legacy ones plus the Pro-era scopes.
-// The legacy four are always replaced on import (they exist in every
-// backup file ever written); the EXTRA scopes are only replaced when the
-// payload actually carries the section, so importing an older backup
-// never wipes newer data (prompt injections, quotas) it knows nothing of.
-const EXTRA_KV_SCOPES = ["promptInjections", "keyQuotas", "disabledModels"];
+// KV scopes that travel with a Settings backup: the four legacy ones plus
+// the Pro-era scopes. The legacy four are always replaced on import (they
+// exist in every backup file ever written); the EXTRA scopes are only
+// replaced when the payload actually carries the section, so importing an
+// older backup never wipes newer data (prompt injections, quotas, brief
+// modes) it knows nothing of. tokenSaverStats is statistics rather than
+// configuration, but it rides along so a restore keeps the savings history.
+const EXTRA_KV_SCOPES = ["promptInjections", "keyQuotas", "disabledModels", "briefMode", "tokenSaverStats"];
 import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
@@ -25,6 +26,7 @@ export {
   getProviderConnectionStats, bulkSetConnectionsActive, getProviderConnectionsPage,
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
+  classifyConnectionHealth, deleteProviderConnectionsByIds,
   reorderProviderConnections, cleanupProviderConnections,
 } from "./repos/connectionsRepo.js";
 
@@ -125,6 +127,8 @@ export async function exportDb() {
     promptInjections: {},
     keyQuotas: {},
     disabledModels: {},
+    briefMode: {},
+    tokenSaverStats: {},
   };
 
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
