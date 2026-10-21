@@ -1,12 +1,12 @@
 // 9Router Pro — UI theme presets.
-// "dark-pro" is the Pro signature look: pitch-black palette with 3D depth
-// (layered shadows, top highlights, ambient brand glow). "ori" restores the
+// "dark-pro" is the Pro signature look: a flat, modern pitch-black
+// palette (tonal surface steps + hairline borders, no embossing). "ori" restores the
 // exact original upstream palette and light/dark behavior.
 // The preset lives on <html data-preset="dark-pro">; colors are CSS variable
 // overrides in globals.css. Absence of a stored choice means Dark Pro.
 export const PRESETS = [
   { id: "ori", name: "Ori", hint: "Original 9Router look" },
-  { id: "dark-pro", name: "Dark Pro", hint: "Pitch black · 3D depth" },
+  { id: "dark-pro", name: "Dark Pro", hint: "Pitch black · Flat modern" },
 ];
 
 export const PRESET_STORAGE_KEY = "9rp-preset";
