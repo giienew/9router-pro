@@ -361,54 +361,6 @@ export async function deleteProviderConnection(id) {
   return ok;
 }
 
-// 9Router Pro (Key Health): derive a single health bucket for a
-// connection from the state the request path already maintains
-// (testStatus / lastError / rateLimitedUntil / modelLock_*). Pure — the
-// caller supplies `now` so it stays unit-testable.
-// Buckets: active | cooldown | unavailable | error | unknown | disabled.
-export function classifyConnectionHealth(conn, now = Date.now()) {
-  if (!conn) return "unknown";
-  if (conn.isActive === false) return "disabled";
-  const future = (v) => {
-    if (!v) return false;
-    const t = typeof v === "number" ? v : Date.parse(v);
-    return Number.isFinite(t) && t > now;
-  };
-  if (future(conn.rateLimitedUntil)) return "cooldown";
-  for (const k of Object.keys(conn)) {
-    if (k.startsWith(MODEL_LOCK_PREFIX) && future(conn[k])) return "cooldown";
-  }
-  if (conn.testStatus === "unavailable") return "unavailable";
-  if (conn.testStatus === "error") return "error";
-  if (conn.testStatus === "active") return "active";
-  if (conn.lastError) return "error";
-  return "unknown";
-}
-
-// 9Router Pro (Key Health): bulk delete by id in ONE transaction with a
-// single priority reorder per affected provider — the per-id delete is
-// O(pool) each because of its reorder, which makes mass cleanup of a
-// large pool quadratic. Chunked IN lists keep the SQL bounded.
-export async function deleteProviderConnectionsByIds(ids) {
-  if (!Array.isArray(ids) || !ids.length) return 0;
-  const unique = [...new Set(ids.filter((x) => typeof x === "string" && x))];
-  if (!unique.length) return 0;
-  const db = await getAdapter();
-  let deleted = 0;
-  db.transaction(() => {
-    const providers = new Set();
-    for (let i = 0; i < unique.length; i += 500) {
-      const chunk = unique.slice(i, i + 500);
-      const ph = chunk.map(() => "?").join(", ");
-      for (const r of db.all(`SELECT DISTINCT provider FROM providerConnections WHERE id IN (${ph})`, chunk)) providers.add(r.provider);
-      const info = db.run(`DELETE FROM providerConnections WHERE id IN (${ph})`, chunk);
-      deleted += info?.changes ?? 0;
-    }
-    for (const p of providers) reorderInTx(db, p);
-  });
-  return deleted;
-}
-
 export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
   const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);

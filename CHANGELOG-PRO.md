@@ -4,6 +4,10 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.4.3
+
+- **Key Health page removed**: at the owner's call — per-key testing and management already live on the Providers pages, and the standalone page duplicated them. The `/dashboard/key-health` page, its API route, and its repo helpers are gone; everything else from pro.4 (Anti-Flaky Guard, backup completeness, token-saver upgrades) is unchanged.
+
 ## v0.5.104-pro.4.2
 
 - **Key Health provider dropdown fix**: the page read the providers summary as an array, but the API returns an object keyed by `provider|authType` — the parse failed silently and the page sat empty (no auto-selected provider, all counters at 0). It now aggregates per provider and auto-selects the largest pool on open, as intended.
