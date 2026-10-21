@@ -29,6 +29,44 @@
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
 
+## 🔑 Key quotas & limits — how they work
+
+On the **Endpoint** page, every API key has two independent controls. They solve different problems:
+
+- **Token quota = how much in total** (a budget)
+- **Key Limits = how fast** (a speed limit)
+
+### Token quota — the budget
+
+A quota like **100,000 tokens per 24 hours** means: the key may burn at most 100,000 tokens (input + output combined) inside the last 24 hours. It is checked before every request; a key at its limit gets **HTTP 429** until room frees up.
+
+There is **no fixed reset hour** — no midnight reset, and no "24 hours from when you turned it on". Every token counts for exactly 24 hours after it was used, then drops off, one by one:
+
+- Monday **10:00** — the key uses 100,000 tokens → quota full, key blocked
+- Tuesday **10:00** — those tokens stop counting → the key can chat again
+
+If usage is spread out, room comes back spread out too: usage from Monday 10:00 frees on Tuesday 10:00, usage from Monday 20:00 frees on Tuesday 20:00. If all usage happens in one burst, it behaves exactly like a daily reset — 24 hours after the burst.
+
+Windows are **24 hours, 7 days or 30 days**, picked per key. Two things worth knowing: the check runs *before* a request, so one request can overshoot the limit (the *next* one gets blocked), and only tokens that upstream providers actually report are counted — pair the quota with Key Limits if you need a hard count of requests.
+
+How much is 100,000 tokens? A normal chat exchange is ~500–2,000 tokens, but a single agent/coding request with a long context can burn 10,000–100,000+. A 100k/day quota suits light chat plans; agents need millions per day — or no quota, with Key Limits doing the guarding instead.
+
+### Key Limits — the speed limit
+
+Key Limits cap **how fast** a key may call, so one buyer cannot drain your pool or slow everyone else down — e.g. a buggy script looping 1,000 requests in a minute gets stopped at the key's cap while every other key is unaffected. All fields are per key and optional (**empty = unlimited**):
+
+| Field | What it caps |
+| --- | --- |
+| Requests / min | Chat requests in the last minute |
+| Tokens / min | Tokens burned in the last minute |
+| Requests / hour | Chat requests in the last hour |
+| Requests / day | Chat requests in the last 24 hours |
+| Max concurrent | Requests running at the same time |
+
+A key that crosses a limit gets **HTTP 429 with a `Retry-After` header** and a message naming the limit it hit — the request never reaches your upstreams. The Endpoint page shows each key's live usage (requests this minute, requests in flight). Request windows are tracked in memory, so they reset when Pro restarts; the token quota above is the durable budget.
+
+**Typical seller setup:** give each plan its own key — e.g. a basic plan with 10 requests/min, 500 requests/day, max 2 concurrent, plus a token quota sized to the plan — and let buyers upgrade by editing numbers, not by reissuing keys.
+
 ## 📸 Screenshots
 
 <p align="center">
