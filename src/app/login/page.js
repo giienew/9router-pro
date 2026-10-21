@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
+import ModderSocials from "@/shared/components/ModderSocials";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -159,6 +160,9 @@ export default function LoginPage() {
           <p className="mb-2 text-xs text-text-subtle">
             Modder by <span className="font-semibold text-brand-500">Gienetic</span>
           </p>
+          <div className="mb-3 flex items-center justify-center">
+            <ModderSocials />
+          </div>
           <p className="text-text-muted">
             {samlAvailable
               ? "Sign in with SAML 2.0 Single Sign-On"
