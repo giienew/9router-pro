@@ -238,14 +238,14 @@ input[type="range"].hue-slider::-moz-range-thumb {
    ============================================================ */
 :root[data-preset="dark-pro"] {
   --color-bg: #000000;
-  --color-bg-alt: #060608;
-  --color-surface: #0a0a0c;
-  --color-surface-2: #121214;
-  --color-surface-3: #1a1a1e;
-  --color-sidebar: #050506;
+  --color-bg-alt: #070709;
+  --color-surface: #121218;
+  --color-surface-2: #1c1c24;
+  --color-surface-3: #262632;
+  --color-sidebar: #0a0a0e;
 
-  --color-border: #232327;
-  --color-border-subtle: #17171a;
+  --color-border: #2e2e3a;
+  --color-border-subtle: #21212b;
 
   --color-text: #f4f4f5;
   --color-text-main: #f4f4f5;
