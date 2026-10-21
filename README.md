@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
+  <img src="./images/pro-prompt-injection.png" alt="9Router Pro — Prompt Injection" width="800"/>
 
   # 9Router Pro — by Gienetic
 
@@ -28,6 +28,18 @@
 - **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
 - **Update notifications** that follow *this* repo's releases.
 - Starter presets included (Format Rapi, Bahasa Indonesia, Coding Partner).
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="./images/pro-prompt-injection-chat.png" alt="Chat script injection editor" width="800"/>
+  <br/><em>Chat script mode — scripted user/bot turns injected as a conversation that already happened.</em>
+</p>
+
+<p align="center">
+  <img src="./images/pro-providers.png" alt="Providers dashboard" width="800"/>
+  <br/><em>Providers — every upstream in one dashboard, server-side search & pagination.</em>
+</p>
 
 ## 💎 Why Pro?
 
