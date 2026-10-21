@@ -26,6 +26,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
+import { resolveAntiFlakyConfig, inspectJsonResponse } from "open-sse/rtk/flakyGuard.js";
 
 /**
  * Handle chat completion request
@@ -184,6 +185,20 @@ export async function handleChat(request, clientRawRequest = null) {
 }
 
 /**
+ * Tag a response that only succeeded after Anti-Flaky retries, so the
+ * recovery is observable to the client. Never throws.
+ */
+function withFlakyRetriesHeader(response, retries) {
+  try {
+    const headers = new Headers(response.headers);
+    headers.set("x-9router-pro-flaky-retries", String(retries));
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  } catch {
+    return response;
+  }
+}
+
+/**
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null) {
@@ -256,12 +271,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
+  // Anti-Flaky Guard (9Router Pro): retries spent on 200-but-garbage
+  // responses, plus the last such response as a rescue if the pool runs
+  // out before a clean answer shows up.
+  let flakyAttempts = 0;
+  let lastFlakyResult = null;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
+      // Anti-Flaky rescue: a flaky 200 we already hold beats an error.
+      if (lastFlakyResult) return withFlakyRetriesHeader(lastFlakyResult.response, flakyAttempts);
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
@@ -356,7 +378,31 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      // Anti-Flaky Guard (9Router Pro): an HTTP 200 whose body is empty
+      // or a degenerate repetition loop is retried on another account
+      // instead of reaching the client. Fail-open: retries are capped by
+      // settings, the account is NOT marked unavailable (the upstream
+      // pool is flaky, the key is not necessarily bad), and the last
+      // flaky response is rescued above if the pool runs out.
+      const afConfig = resolveAntiFlakyConfig(chatSettings);
+      if (afConfig.enabled && afConfig.maxRetries > 0) {
+        const verdict = await inspectJsonResponse(result.response);
+        if (verdict.flaky) {
+          lastFlakyResult = result;
+          if (flakyAttempts < afConfig.maxRetries) {
+            flakyAttempts++;
+            log.warn("FLAKY", `[${provider}/${model}] ${verdict.reason} response from ${credentials.connectionName || credentials.connectionId} — retry ${flakyAttempts}/${afConfig.maxRetries} on another account`);
+            excludeConnectionIds.add(credentials.connectionId);
+            lastError = `Flaky (${verdict.reason}) response`;
+            lastStatus = HTTP_STATUS.BAD_GATEWAY;
+            continue;
+          }
+          log.warn("FLAKY", `[${provider}/${model}] ${verdict.reason} response — retries exhausted, passing through`);
+        }
+      }
+      return flakyAttempts > 0 ? withFlakyRetriesHeader(result.response, flakyAttempts) : result.response;
+    }
 
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;

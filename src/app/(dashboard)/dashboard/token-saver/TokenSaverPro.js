@@ -329,12 +329,91 @@ function BriefMode() {
   );
 }
 
+function AntiFlakyCard() {
+  const [enabled, setEnabled] = useState(true);
+  const [maxRetries, setMaxRetries] = useState(2);
+  const [loaded, setLoaded] = useState(false);
+  const [savedTick, setSavedTick] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/settings");
+        if (r.ok) {
+          const s = await r.json();
+          setEnabled(s.antiFlakyEnabled !== false);
+          if (Number.isFinite(s.antiFlakyMaxRetries)) setMaxRetries(s.antiFlakyMaxRetries);
+        }
+      } catch {}
+      setLoaded(true);
+    })();
+  }, []);
+
+  const save = async (patch, apply) => {
+    apply();
+    try {
+      const r = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (r.ok) {
+        setSavedTick(true);
+        setTimeout(() => setSavedTick(false), 1500);
+      }
+    } catch {}
+  };
+
+  return (
+    <Card>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="material-symbols-outlined text-brand-500">shield</span>
+        <h3 className="font-semibold">Anti-Flaky Guard</h3>
+        <span className="rounded-md bg-brand-500/10 px-2 py-0.5 text-[11px] font-semibold text-brand-500">PRO</span>
+        {savedTick && <span className="text-xs text-green-500">saved</span>}
+      </div>
+      <p className="mb-4 text-sm text-text-muted">
+        Some upstreams answer HTTP 200 with an empty body or a degenerate repetition loop
+        (&quot;OK.OK.OK...&quot;). The guard detects those responses and retries on another
+        account before anything reaches the client. Non-streaming responses only; fails open —
+        after the retries run out, the last response is passed through untouched.
+      </p>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={!loaded}
+            onChange={(e) => save({ antiFlakyEnabled: e.target.checked }, () => setEnabled(e.target.checked))}
+          />
+          Enabled
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          Max retries
+          <select
+            value={maxRetries}
+            disabled={!loaded || !enabled}
+            onChange={(e) => save({ antiFlakyMaxRetries: Number(e.target.value) }, () => setMaxRetries(Number(e.target.value)))}
+            className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
+          >
+            {[0, 1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </label>
+        <span className="text-xs text-text-muted">Recovered responses carry an <span className="font-mono">x-9router-pro-flaky-retries</span> header.</span>
+      </div>
+    </Card>
+  );
+}
+
 export default function TokenSaverPro() {
   return (
     <div className="space-y-6 px-6 pb-6">
       <SavingsPanel />
       <BriefMode />
       <TestBench />
+      <AntiFlakyCard />
     </div>
   );
 }
