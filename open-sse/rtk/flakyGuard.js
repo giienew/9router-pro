@@ -8,8 +8,9 @@
 // account instead. Fail-open by design: anything unrecognized, malformed
 // or merely unusual is treated as a good response.
 //
-// Scope: non-streaming JSON responses (including forced-SSE→JSON).
-// Streamed responses pass through uninspected.
+// Scope: finished responses — materialized JSON bodies (whatever their
+// content-type header claims) and streams that close almost immediately.
+// Genuinely live streams are released uninspected.
 
 export const ANTI_FLAKY_DEFAULTS = { enabled: true, maxRetries: 2 };
 const MAX_RETRIES_CAP = 5;
@@ -146,14 +147,121 @@ export function detectFlakyResponse(json) {
   }
 }
 
-// Inspect a fetch Response without consuming the original: only JSON
-// bodies are read (via clone); anything else is left alone.
-export async function inspectJsonResponse(response) {
+// Verdict for a stream that ENDED inside the probe window: scan its SSE
+// payloads for any assistant content. No content at all → empty; a
+// repetition loop across deltas → degenerate.
+function sseEndedVerdict(text) {
+  let acc = "";
+  let hasTools = false;
+  let hasReasoning = false;
+  let sawPayload = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const json = JSON.parse(payload);
+      sawPayload = true;
+      const sig = extractResponseSignals(json);
+      acc += sig.text;
+      hasTools = hasTools || sig.hasTools;
+      hasReasoning = hasReasoning || sig.hasReasoning;
+      if (typeof json.delta === "string" && String(json.type || "").includes("output_text")) acc += json.delta;
+    } catch { /* keep scanning */ }
+  }
+  if (!sawPayload) return { flaky: false };
+  if (hasTools || hasReasoning) return { flaky: false };
+  if (!acc.trim()) return { flaky: true, reason: "empty" };
+  if (isDegenerateText(acc)) return { flaky: true, reason: "degenerate" };
+  return { flaky: false };
+}
+
+const PROBE_BUDGET_MS = 120;
+const PROBE_MAX_BYTES = 2_000_000;
+const FULL_MAX_BYTES = 8_000_000;
+
+function judgeFinishedText(text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return { flaky: true, reason: "empty" };
+  if (trimmed.startsWith("{")) {
+    try { return detectFlakyResponse(JSON.parse(trimmed)); } catch {
+      // Malformed JSON is itself a flaky-upstream specialty (unescaped
+      // control chars, trailing junk). Salvage the content field and
+      // judge that instead of giving up on the response entirely.
+      const m = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (!m) return { flaky: false, reason: "bad-json", head: trimmed.slice(0, 60), tail: trimmed.slice(-40), len: trimmed.length };
+      if (/"tool_calls"|"function_call"/.test(trimmed)) return { flaky: false, reason: "salvaged-tools" };
+      let content = m[1];
+      try { content = JSON.parse(`"${m[1]}"`); } catch { /* judge the raw capture */ }
+      if (!String(content).trim()) return { flaky: true, reason: "empty" };
+      if (isDegenerateText(String(content))) return { flaky: true, reason: "degenerate" };
+      return { flaky: false, reason: "salvaged-ok" };
+    }
+  }
+  if (trimmed.startsWith("data:") || trimmed.startsWith("event:")) return sseEndedVerdict(trimmed);
+  return { flaky: false, reason: "unknown-shape" };
+}
+
+// Full inspection for document-style requests (client did not ask for
+// token streaming): some executors still deliver the answer as a live
+// stream carrying one JSON document, so a short probe never sees the
+// end of it. The clone is read to completion and judged whole; the
+// original response stays intact for replay (tee semantics), and an
+// over-cap body aborts the inspection fail-open.
+export async function inspectChatResponseFull(response, maxBytes = FULL_MAX_BYTES) {
   try {
-    const contentType = response?.headers?.get?.("content-type") || "";
-    if (!contentType.includes("application/json")) return { flaky: false };
-    const json = await response.clone().json();
-    return detectFlakyResponse(json);
+    if (!response?.body) return { flaky: false };
+    const reader = response.clone().body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > maxBytes) {
+        try { reader.cancel().catch(() => {}); } catch {}
+        return { flaky: false, reason: "over-cap" };
+      }
+    }
+    return judgeFinishedText(text);
+  } catch {
+    return { flaky: false, reason: "inspect-error" };
+  }
+}
+
+// Inspect a fetch Response without consuming the original. The
+// content-type header is NOT trusted (some executor paths label a
+// materialized JSON body as text/event-stream): a clone is read with a
+// short budget — bodies that finish inside the budget (materialized
+// JSON, fast-closing streams) are judged; a genuinely live stream is
+// released untouched when the budget runs out.
+export async function inspectChatResponse(response) {
+  try {
+    if (!response?.body) return { flaky: false };
+    const reader = response.clone().body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    let ended = false;
+    const deadline = Date.now() + PROBE_BUDGET_MS;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      const raced = await Promise.race([
+        reader.read(),
+        new Promise((resolve) => setTimeout(() => resolve(null), remaining)),
+      ]);
+      if (raced === null) break;
+      if (raced.done) { ended = true; break; }
+      text += decoder.decode(raced.value, { stream: true });
+      if (text.length > PROBE_MAX_BYTES) break;
+    }
+    if (!ended) {
+      // Release the clone branch without awaiting it: on a tee'd body
+      // whose source never ends, cancel() may not settle until the
+      // source does — the original branch is unaffected either way.
+      try { reader.cancel().catch(() => {}); } catch {}
+      return { flaky: false };
+    }
+    return judgeFinishedText(text);
   } catch {
     return { flaky: false };
   }

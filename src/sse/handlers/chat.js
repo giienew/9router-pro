@@ -26,7 +26,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
-import { resolveAntiFlakyConfig, inspectJsonResponse } from "open-sse/rtk/flakyGuard.js";
+import { resolveAntiFlakyConfig, inspectChatResponse, inspectChatResponseFull } from "open-sse/rtk/flakyGuard.js";
 
 /**
  * Handle chat completion request
@@ -387,7 +387,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // flaky response is rescued above if the pool runs out.
       const afConfig = resolveAntiFlakyConfig(chatSettings);
       if (afConfig.enabled && afConfig.maxRetries > 0) {
-        const verdict = await inspectJsonResponse(result.response);
+        // Streaming clients get the light probe (never held up);
+        // document-style requests are judged whole — some executors
+        // deliver them as a live stream carrying a single JSON body.
+        const verdict = body?.stream === true
+          ? await inspectChatResponse(result.response)
+          : await inspectChatResponseFull(result.response);
         if (verdict.flaky) {
           lastFlakyResult = result;
           if (flakyAttempts < afConfig.maxRetries) {

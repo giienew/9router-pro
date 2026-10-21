@@ -374,9 +374,9 @@ function AntiFlakyCard() {
       </div>
       <p className="mb-4 text-sm text-text-muted">
         Some upstreams answer HTTP 200 with an empty body or a degenerate repetition loop
-        (&quot;OK.OK.OK...&quot;). The guard detects those responses and retries on another
-        account before anything reaches the client. Non-streaming responses only; fails open —
-        after the retries run out, the last response is passed through untouched.
+        (&quot;OK.OK.OK...&quot;). The guard inspects each finished response and retries on
+        another account before anything reaches the client. Fails open — after the retries
+        run out, the last response is passed through untouched; long live streams are never held up.
       </p>
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm">
