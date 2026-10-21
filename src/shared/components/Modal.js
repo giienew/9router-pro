@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Tooltip from "./Tooltip";
@@ -43,7 +44,11 @@ export default function Modal({
 
   if (!isOpen) return null;
 
-  return (
+  // Render at <body> level: several callers live inside the dashboard
+  // header, whose backdrop-blur creates a containing block that traps
+  // position:fixed — the dialog would anchor to the header box instead of
+  // the viewport and clip off-screen. A portal escapes every ancestor.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Overlay */}
       <div
@@ -108,7 +113,8 @@ export default function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
