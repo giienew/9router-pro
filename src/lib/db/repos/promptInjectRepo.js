@@ -27,10 +27,13 @@ import { makeKv } from "../helpers/kvStore.js";
 
 const kv = makeKv("promptInjections");
 const legacyKv = makeKv("soulPrompts");
+const presetsKv = makeKv("promptPresets");
 const GLOBAL_KEY = "global";
 const BYKEY_KEY = "byKey";
 const MODELS_KEY = "prompts";
+const PRESETS_KEY = "list";
 const MAX_TURNS = 50;
+const MAX_PRESET_TARGETS = 300;
 
 function cleanTurns(raw) {
   if (!Array.isArray(raw)) return [];
@@ -176,10 +179,93 @@ export async function deleteInjectUserPrompt(keyId) {
   return true;
 }
 
+// --------------------------------------------------------------- presets
+// A preset is a reusable injection (same entry shape) with targets: it can
+// fire globally, for chosen API keys, and/or for chosen model names. One
+// preset per name is edited once and reused everywhere — the direct
+// per-target injections above keep working alongside it. In the stack a
+// preset fires at most ONCE per request, at the earliest scope it targets
+// (global → user → model), ahead of that scope's direct entry.
+//   scope "promptPresets": key "list" → [preset]
+//   preset = { id, name, mode, content, turns, position, enabled,
+//              targets: { global, models: [], keys: [] }, updatedAt }
+
+function cleanTargetNames(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const v = x.trim();
+    if (v && !out.includes(v)) out.push(v);
+    if (out.length >= MAX_PRESET_TARGETS) break;
+  }
+  return out;
+}
+
+export function cleanPreset(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 80) : "";
+  if (!id || !name) return null;
+  const entry = cleanEntry(raw);
+  if (!entry) return null;
+  const t = raw.targets && typeof raw.targets === "object" ? raw.targets : {};
+  return {
+    id,
+    name,
+    ...entry,
+    targets: {
+      global: !!t.global,
+      models: cleanTargetNames(t.models),
+      keys: cleanTargetNames(t.keys),
+    },
+  };
+}
+
+function cleanPresetList(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    const clean = cleanPreset(p);
+    if (clean) out.push(clean);
+  }
+  return out;
+}
+
+export async function getPromptPresets() {
+  return cleanPresetList(await presetsKv.get(PRESETS_KEY, null));
+}
+
+export async function upsertPromptPreset(input = {}) {
+  const list = await getPromptPresets();
+  const id =
+    typeof input.id === "string" && input.id.trim()
+      ? input.id.trim()
+      : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const preset = cleanPreset({ ...input, id, updatedAt: new Date().toISOString() });
+  if (!preset) return null;
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx >= 0) list[idx] = preset;
+  else list.push(preset);
+  await presetsKv.set(PRESETS_KEY, list);
+  invalidateInjectSnapshot();
+  return preset;
+}
+
+export async function deletePromptPreset(id) {
+  const list = await getPromptPresets();
+  const next = list.filter((p) => p.id !== id);
+  if (next.length === list.length) return false;
+  await presetsKv.set(PRESETS_KEY, next);
+  invalidateInjectSnapshot();
+  return true;
+}
+
 // --------------------------------------------------------------- resolver
 
 // Pure selection — exported for tests. Ordered: global → user → model.
-export function selectPromptInjections({ global, byKey, byModel } = {}, ctx = {}) {
+// Per scope, matching presets fire first, then the scope's direct entry.
+export function selectPromptInjections({ global, byKey, byModel, presets } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
     if (!e || !e.enabled) return;
@@ -187,15 +273,28 @@ export function selectPromptInjections({ global, byKey, byModel } = {}, ctx = {}
     else out.push({ name, mode: "single", text: e.content, position: e.position });
   };
 
+  const presetList = cleanPresetList(presets);
+  const fired = new Set();
+  const pushPreset = (p) => {
+    if (fired.has(p.id)) return;
+    fired.add(p.id);
+    push(`preset:${p.name}`, p);
+  };
+
+  for (const p of presetList) if (p.targets.global) pushPreset(p);
   push("global", cleanEntry(global));
 
   if (ctx.apiKeyId) {
+    for (const p of presetList) if (p.targets.keys.includes(ctx.apiKeyId)) pushPreset(p);
     push("user", cleanMap(byKey)[ctx.apiKeyId]);
   }
 
   const models = cleanMap(byModel);
   const names = [ctx.requestedModel, ctx.resolvedModel, ctx.bareModel]
     .filter((x) => typeof x === "string" && x);
+  for (const p of presetList) {
+    if (names.some((n) => p.targets.models.includes(n))) pushPreset(p);
+  }
   for (const name of names) {
     const entry = models[name];
     if (entry && entry.enabled) {
@@ -218,12 +317,13 @@ function invalidateInjectSnapshot() {
 
 async function getInjectSnapshot() {
   if (snapshot && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) return snapshot;
-  const [global, byKey, byModel] = await Promise.all([
+  const [global, byKey, byModel, presets] = await Promise.all([
     getInjectGlobal(),
     getInjectUserPrompts(),
     getInjectModelPrompts(),
+    getPromptPresets(),
   ]);
-  snapshot = { at: Date.now(), global, byKey, byModel };
+  snapshot = { at: Date.now(), global, byKey, byModel, presets };
   return snapshot;
 }
 

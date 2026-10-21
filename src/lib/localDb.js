@@ -19,6 +19,7 @@ export {
   getInjectModelPrompts, setInjectModelPrompt, deleteInjectModelPrompt,
   getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt,
   getInjectGlobal, setInjectGlobal, resolvePromptInjections,
+  getPromptPresets, upsertPromptPreset, deletePromptPreset,
   getBriefModes, getBriefGlobal, getBriefByKey, getBriefByModel,
   setBriefGlobal, setBriefForKey, setBriefForModel, resolveBriefLevel,
   recordRtkSavings, getTokenSaverStats,

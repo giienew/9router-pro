@@ -160,4 +160,65 @@ describe("selectPromptInjections", () => {
     );
     assert.equal(out[0].text, "RESOLVED");
   });
+
+  const preset = (name, content, targets, extra = {}) => ({
+    id: `id-${name}`,
+    name,
+    content,
+    position: "append",
+    enabled: true,
+    targets,
+    ...extra,
+  });
+
+  it("presets fire ahead of their scope's direct entry, scopes in order", () => {
+    const out = selectPromptInjections(
+      {
+        global: single("G"),
+        byKey: { k1: single("U") },
+        byModel: { mycombo: single("M") },
+        presets: [
+          preset("PG", "PG", { global: true, models: [], keys: [] }),
+          preset("PU", "PU", { global: false, models: [], keys: ["k1"] }),
+          preset("PM", "PM", { global: false, models: ["mycombo"], keys: [] }),
+        ],
+      },
+      { apiKeyId: "k1", requestedModel: "mycombo" }
+    );
+    assert.deepEqual(
+      out.map((p) => p.name),
+      ["preset:PG", "global", "preset:PU", "user", "preset:PM", "mycombo"]
+    );
+  });
+
+  it("a preset fires at most once, at its earliest matching scope", () => {
+    const out = selectPromptInjections(
+      {
+        global: null,
+        byKey: {},
+        byModel: {},
+        presets: [preset("P", "P", { global: true, models: ["m"], keys: ["k1"] })],
+      },
+      { apiKeyId: "k1", requestedModel: "m" }
+    );
+    assert.deepEqual(out.map((p) => p.name), ["preset:P"]);
+  });
+
+  it("presets skip when disabled, empty, or not targeted; model match uses any ctx name", () => {
+    const out = selectPromptInjections(
+      {
+        global: null,
+        byKey: {},
+        byModel: {},
+        presets: [
+          preset("OFF", "OFF", { global: true, models: [], keys: [] }, { enabled: false }),
+          preset("EMPTY", "  ", { global: true, models: [], keys: [] }),
+          preset("OTHER", "OTHER", { global: false, models: ["nope"], keys: [] }),
+          preset("BARE", "BARE", { global: false, models: ["mod"], keys: [] }),
+        ],
+      },
+      { requestedModel: "alias", resolvedModel: "prov/mod", bareModel: "mod" }
+    );
+    assert.deepEqual(out.map((p) => p.name), ["preset:BARE"]);
+  });
 });
