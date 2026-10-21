@@ -178,6 +178,55 @@
   --shadow-warm: 0 2px 12px -2px rgba(6, 182, 212, 0.20);
   --shadow-focus: 0 0 0 3px rgba(6, 182, 212, 0.18);
 }
+/* Custom accent: the entire scale is derived from one base color the user
+   picks freely (slider/picker in the header menu). --color-brand-base is
+   set inline on <html> and persisted in localStorage (constants/accents.js);
+   the default below keeps "custom" sane if the variable is ever missing. */
+:root {
+  --color-brand-base: #8B5CF6;
+}
+:root[data-accent="custom"] {
+  --color-brand-50: color-mix(in srgb, var(--color-brand-base) 8%, white);
+  --color-brand-100: color-mix(in srgb, var(--color-brand-base) 16%, white);
+  --color-brand-200: color-mix(in srgb, var(--color-brand-base) 32%, white);
+  --color-brand-300: color-mix(in srgb, var(--color-brand-base) 55%, white);
+  --color-brand-400: color-mix(in srgb, var(--color-brand-base) 78%, white);
+  --color-brand-500: var(--color-brand-base);
+  --color-brand-600: color-mix(in srgb, var(--color-brand-base) 82%, black);
+  --color-brand-700: color-mix(in srgb, var(--color-brand-base) 64%, black);
+  --color-brand-800: color-mix(in srgb, var(--color-brand-base) 48%, black);
+  --color-brand-900: color-mix(in srgb, var(--color-brand-base) 34%, black);
+  --color-primary: var(--color-brand-500); --color-primary-hover: var(--color-brand-600);
+  --shadow-warm: 0 2px 12px -2px color-mix(in srgb, var(--color-brand-base) 20%, transparent);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-brand-base) 18%, transparent);
+}
+/* Hue slider (Appearance section in the header menu). */
+input[type="range"].hue-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 9999px;
+  outline: none;
+}
+input[type="range"].hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+input[type="range"].hue-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
 
 /* ============================================================
    9Router Pro — Dark Pro preset (data-preset="dark-pro" on <html>)

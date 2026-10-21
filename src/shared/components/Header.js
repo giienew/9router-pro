@@ -6,9 +6,10 @@ import Link from "next/link";
 import PropTypes from "prop-types";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
-import ThemeToggle from "@/shared/components/ThemeToggle";
-import AccentToggle from "@/shared/components/AccentToggle";
 import DonateModal from "@/shared/components/DonateModal";
+import { Modal, Input, Button } from "@/shared/components";
+import { NAME_FONTS, getNameFontStyle, isValidNameFont, DEFAULT_NAME } from "@/shared/constants/nameStyles";
+import { cn } from "@/shared/utils/cn";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -185,6 +186,17 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   const [loginMethod, setLoginMethod] = useState("");
   const [donateOpen, setDonateOpen] = useState(false);
 
+  // 9Router Pro: personal display name where the theme/accent icon buttons
+  // used to sit (those moved into the header menu). Accent-colored text,
+  // click to customize name + font. Persisted server-side in settings
+  // (profileName / profileFont) so it follows the user across devices.
+  const [profileName, setProfileName] = useState(DEFAULT_NAME);
+  const [profileFont, setProfileFont] = useState("modern");
+  const [nameOpen, setNameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [fontDraft, setFontDraft] = useState("modern");
+  const [savingName, setSavingName] = useState(false);
+
   // Memoize page info to prevent unnecessary recalculations
   const pageInfo = useMemo(() => getPageInfo(pathname), [pathname]);
   const { title, description, icon, breadcrumbs } = pageInfo;
@@ -214,6 +226,49 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/settings", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (typeof data?.profileName === "string" && data.profileName.trim()) {
+          setProfileName(data.profileName.trim());
+        }
+        if (isValidNameFont(data?.profileFont)) setProfileFont(data.profileFont);
+      } catch { /* keep defaults */ }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openNameEditor = () => {
+    setNameDraft(profileName);
+    setFontDraft(profileFont);
+    setNameOpen(true);
+  };
+
+  const saveName = async () => {
+    const next = nameDraft.trim() || DEFAULT_NAME;
+    setSavingName(true);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileName: next, profileFont: fontDraft }),
+      });
+      setProfileName(next);
+      setProfileFont(fontDraft);
+      setNameOpen(false);
+    } catch (err) {
+      console.error("Failed to save display name:", err);
+    }
+    setSavingName(false);
+  };
 
   const handleLogout = async () => {
     try {
@@ -326,11 +381,67 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           <span className="material-symbols-outlined text-[18px]">volunteer_activism</span>
           <span className="hidden sm:inline">Donate</span>
         </button>
-        <ThemeToggle />
-        <AccentToggle />
+        <button
+          onClick={openNameEditor}
+          className="max-w-[110px] cursor-pointer truncate px-1 text-[15px] leading-6 text-primary transition-opacity hover:opacity-75 sm:max-w-[180px]"
+          style={getNameFontStyle(profileFont)}
+          title="Click to customize your name"
+        >
+          {profileName}
+        </button>
         <HeaderMenu onLogout={handleLogout} />
       </div>
       <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />
+      <Modal isOpen={nameOpen} onClose={() => setNameOpen(false)} title="Customize your name">
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Name"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder={DEFAULT_NAME}
+            maxLength={24}
+          />
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-text-main">Font style</p>
+            <div className="flex max-h-60 flex-col gap-1 overflow-y-auto">
+              {NAME_FONTS.map((f) => {
+                const selected = fontDraft === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFontDraft(f.id)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors cursor-pointer",
+                      selected
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border-subtle hover:bg-black/5 dark:hover:bg-white/5"
+                    )}
+                  >
+                    <span style={f.style} className="truncate text-[17px] leading-6 text-text-main">
+                      {nameDraft.trim() || DEFAULT_NAME}
+                    </span>
+                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                      <span className="text-[11px] text-text-muted">{f.name}</span>
+                      {selected && (
+                        <span className="material-symbols-outlined text-[16px] text-brand-500">check</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={saveName} fullWidth disabled={savingName}>
+              {savingName ? "Saving…" : "Save"}
+            </Button>
+            <Button onClick={() => setNameOpen(false)} variant="ghost" fullWidth>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </header>
   );
 }
