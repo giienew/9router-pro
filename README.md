@@ -169,7 +169,7 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 **1. Install globally:**
 
 ```bash
-npm install -g 9router
+npm install -g github:giienew/9router-pro
 9router
 ```
 
