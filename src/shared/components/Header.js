@@ -101,7 +101,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/quota"))
     return {
-      title: "Quota Tracker",
+      title: "Provider Quota",
       description: "Track and manage your API quota limits",
       icon: "data_usage",
       breadcrumbs: [],

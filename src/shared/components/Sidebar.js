@@ -24,7 +24,7 @@ const navItems = [
   // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
+  { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
