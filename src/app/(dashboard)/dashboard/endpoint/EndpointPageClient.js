@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
+import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   TUNNEL_BENEFITS,
@@ -24,6 +24,21 @@ export default function APIPageClient({ machineId }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  // 9Router Pro: optional settings applied to the key right at creation time,
+  // so a reseller key is fully configured in one step (editable later in the
+  // key's Settings panel).
+  const emptyKeyDraft = () => ({
+    restricted: false,
+    allow: [],
+    quotaEnabled: false,
+    quotaLimit: "100000",
+    quotaWindow: 24,
+    limits: { rpm: "", tpm: "", rph: "", rpd: "", maxConcurrent: "" },
+  });
+  const [newKeyDraft, setNewKeyDraft] = useState(emptyKeyDraft);
+  const [createPickerOpen, setCreatePickerOpen] = useState(false);
+  const [createPickerProviders, setCreatePickerProviders] = useState([]);
+  const [createPickerAliases, setCreatePickerAliases] = useState({});
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -615,6 +630,25 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setNewKeyName("");
+    setNewKeyDraft(emptyKeyDraft());
+    setCreatePickerOpen(false);
+  };
+
+  const openCreatePicker = async () => {
+    setCreatePickerOpen(true);
+    // Same sources the combo editor feeds the picker with.
+    try {
+      const [providersRes, aliasRes] = await Promise.all([fetch("/api/providers?lite=1"), fetch("/api/models/alias")]);
+      if (providersRes.ok) setCreatePickerProviders((await providersRes.json()).connections || []);
+      if (aliasRes.ok) setCreatePickerAliases((await aliasRes.json()).aliases || {});
+    } catch (error) {
+      console.log("Error loading picker data:", error);
+    }
+  };
+
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
 
@@ -627,10 +661,30 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json();
 
       if (res.ok) {
+        // Apply the optional settings picked in the create dialog.
+        const id = data.key?.id;
+        if (id) {
+          if (newKeyDraft.restricted) {
+            await handleUpdateKeyAccess(id, { restricted: true, allow: newKeyDraft.allow });
+          }
+          if (newKeyDraft.quotaEnabled) {
+            const limit = parseInt(newKeyDraft.quotaLimit, 10);
+            if (limit > 0) {
+              await handleUpdateKeyQuota(id, { enabled: true, limit, windowHours: newKeyDraft.quotaWindow });
+            }
+          }
+          const limits = {};
+          let hasLimits = false;
+          for (const f of ["rpm", "tpm", "rph", "rpd", "maxConcurrent"]) {
+            const v = parseInt(newKeyDraft.limits[f], 10);
+            limits[f] = Number.isFinite(v) && v > 0 ? v : null;
+            if (limits[f]) hasLimits = true;
+          }
+          if (hasLimits) await handleUpdateKeyLimits(id, limits);
+        }
         setCreatedKey(data.key);
         await fetchData();
-        setNewKeyName("");
-        setShowAddModal(false);
+        closeAddModal();
       }
     } catch (error) {
       console.log("Error creating key:", error);
@@ -1146,34 +1200,150 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={showAddModal}
         title="Create API Key"
-        onClose={() => {
-          setShowAddModal(false);
-          setNewKeyName("");
-        }}
+        size="lg"
+        onClose={closeAddModal}
       >
-        <div className="flex flex-col gap-4">
+        <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-0.5">
           <Input
             label="Key Name"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
+
+          {/* 9Router Pro: optional settings, applied at creation */}
+          <div className="border-t border-border-subtle pt-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Key settings</span>
+              <span className="text-[11px] text-text-muted">Optional — editable later in the key&apos;s Settings</span>
+            </div>
+
+            {/* Restrict access */}
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-sm text-text-main">Restrict access</span>
+              <Toggle
+                size="sm"
+                checked={newKeyDraft.restricted}
+                onChange={(checked) => setNewKeyDraft((d) => ({ ...d, restricted: checked }))}
+              />
+            </div>
+            {newKeyDraft.restricted && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {newKeyDraft.allow.length === 0 && (
+                  <span className="text-xs text-orange-500">Nothing added yet — this key will be able to call nothing.</span>
+                )}
+                {newKeyDraft.allow.map((entry) => (
+                  <span key={entry} className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2.5 pr-1.5 font-mono text-xs text-text-main">
+                    {entry}
+                    <button
+                      onClick={() => setNewKeyDraft((d) => ({ ...d, allow: d.allow.filter((e) => e !== entry) }))}
+                      className="rounded-full p-0.5 text-text-muted transition-colors hover:text-red-500"
+                      aria-label={`Remove ${entry}`}
+                    >
+                      <span className="material-symbols-outlined block leading-none" style={{ fontSize: "12px" }}>close</span>
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={openCreatePicker}
+                  className="flex items-center gap-0.5 rounded-full border border-dashed border-black/15 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:border-primary/50 dark:border-white/15"
+                >
+                  <span className="material-symbols-outlined leading-none" style={{ fontSize: "14px" }}>add</span>
+                  Add combo or model
+                </button>
+              </div>
+            )}
+
+            {/* Token quota */}
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
+              <span className="text-sm text-text-main">Token quota</span>
+              <Toggle
+                size="sm"
+                checked={newKeyDraft.quotaEnabled}
+                onChange={(checked) => setNewKeyDraft((d) => ({ ...d, quotaEnabled: checked }))}
+              />
+            </div>
+            {newKeyDraft.quotaEnabled && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  className="w-32 rounded-lg border border-border bg-bg px-2.5 py-1.5 font-mono text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                  value={newKeyDraft.quotaLimit}
+                  onChange={(e) => setNewKeyDraft((d) => ({ ...d, quotaLimit: e.target.value }))}
+                  placeholder="100000"
+                />
+                <span className="text-xs text-text-muted">tokens per</span>
+                <select
+                  className="rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                  value={newKeyDraft.quotaWindow}
+                  onChange={(e) => setNewKeyDraft((d) => ({ ...d, quotaWindow: Number(e.target.value) }))}
+                >
+                  <option value={24}>24 hours</option>
+                  <option value={168}>7 days</option>
+                  <option value={720}>30 days</option>
+                </select>
+              </div>
+            )}
+
+            {/* Key limits */}
+            <div className="mt-4 border-t border-border-subtle pt-3">
+              <span className="text-sm text-text-main">Key limits</span>
+              <span className="mt-0.5 block text-[11px] text-text-muted">Request-rate caps for this key. Empty = unlimited.</span>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {[
+                  { field: "rpm", label: "Requests / min" },
+                  { field: "tpm", label: "Tokens / min" },
+                  { field: "rph", label: "Requests / hour" },
+                  { field: "rpd", label: "Requests / day" },
+                  { field: "maxConcurrent", label: "Max concurrent" },
+                ].map(({ field, label }) => (
+                  <label key={field} className="block">
+                    <span className="mb-1 block text-[11px] text-text-muted">{label}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full rounded-lg border border-border bg-bg px-2.5 py-1.5 font-mono text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                      value={newKeyDraft.limits[field]}
+                      onChange={(e) => setNewKeyDraft((d) => ({ ...d, limits: { ...d.limits, [field]: e.target.value } }))}
+                      placeholder="Unlimited"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
             </Button>
-            <Button
-              onClick={() => {
-                setShowAddModal(false);
-                setNewKeyName("");
-              }}
-              variant="ghost"
-              fullWidth
-            >
+            <Button onClick={closeAddModal} variant="ghost" fullWidth>
               Cancel
             </Button>
           </div>
         </div>
+        {createPickerOpen && (
+          <ModelSelectModal
+            isOpen={createPickerOpen}
+            onClose={() => setCreatePickerOpen(false)}
+            onSelect={(model) => {
+              const value = model?.value;
+              if (value) {
+                setNewKeyDraft((d) => (d.allow.some((e) => e.toLowerCase() === value.toLowerCase()) ? d : { ...d, allow: [...d.allow, value] }));
+              }
+            }}
+            onDeselect={(model) => {
+              const value = String(model?.value || "");
+              setNewKeyDraft((d) => ({ ...d, allow: d.allow.filter((e) => e.toLowerCase() !== value.toLowerCase()) }));
+            }}
+            activeProviders={createPickerProviders}
+            modelAliases={createPickerAliases}
+            title="Allowed for the new key"
+            addedModelValues={newKeyDraft.allow}
+            closeOnSelect={false}
+          />
+        )}
       </Modal>
 
       {/* Created Key Modal */}
