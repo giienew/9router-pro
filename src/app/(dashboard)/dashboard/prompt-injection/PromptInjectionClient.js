@@ -515,7 +515,7 @@ export default function PromptInjectionClient() {
               <input
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
-                placeholder="model or combo name — e.g. dpsk_un"
+                placeholder="model or combo name — e.g. my-assistant"
                 className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
               />
               <Button
@@ -572,7 +572,7 @@ export default function PromptInjectionClient() {
                   <input
                     value={pvModel}
                     onChange={(e) => setPvModel(e.target.value)}
-                    placeholder="model or combo name — e.g. dpsk_un"
+                    placeholder="model or combo name — e.g. my-assistant"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
                   <select

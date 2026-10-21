@@ -120,7 +120,7 @@ function ResultCard({ title, result }) {
 export function InjectionTester() {
   const [keys, setKeys] = useState([]);
   const [keyId, setKeyId] = useState("");
-  const [modelA, setModelA] = useState("dpsk_un");
+  const [modelA, setModelA] = useState("my-assistant");
   const [modelB, setModelB] = useState("dahl/deepseek-ai/DeepSeek-V4-Flash-0731");
   const [models, setModels] = useState([]);
   const [prompt, setPrompt] = useState(PROBES[0].text);
@@ -131,7 +131,7 @@ export function InjectionTester() {
 
   useEffect(() => {
     try {
-      setModelA(localStorage.getItem("injectTesterA") || "dpsk_un");
+      setModelA(localStorage.getItem("injectTesterA") || "my-assistant");
       setModelB(localStorage.getItem("injectTesterB") || "dahl/deepseek-ai/DeepSeek-V4-Flash-0731");
     } catch { /* ignore */ }
     (async () => {
