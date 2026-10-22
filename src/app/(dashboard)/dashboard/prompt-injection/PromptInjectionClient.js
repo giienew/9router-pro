@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
@@ -28,6 +28,28 @@ function nextRole(turns) {
   return turns[turns.length - 1].role === "user" ? "assistant" : "user";
 }
 
+// Clipboard with a fallback: navigator.clipboard is missing in insecure
+// contexts and some webviews, where Copy used to just fail.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { /* fall through to the legacy path */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 // One editor for one target. Two modes: a single system prompt, or a
 // scripted chat whose turns are injected as fake history.
 function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
@@ -43,6 +65,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   );
   const [position, setPosition] = useState(initial?.position || "append");
   const [enabled, setEnabled] = useState(initial?.enabled !== false);
+  const [emptyWarn, setEmptyWarn] = useState(false);
 
   useEffect(() => {
     setMode(initial?.mode || "single");
@@ -60,6 +83,16 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   const text = mode === "chat" ? turns.map((t) => t.content).join("\n") : content;
 
   const save = () => {
+    // An empty save is meaningless: the server treats an empty entry as
+    // "no injection", so the old entry would silently vanish while the UI
+    // claimed "saved". Block it here and say what to do instead.
+    const isEmpty =
+      mode === "chat" ? turns.every((t) => !t.content.trim()) : !content.trim();
+    if (isEmpty) {
+      setEmptyWarn(true);
+      return;
+    }
+    setEmptyWarn(false);
     if (mode === "chat") {
       onSave({ mode: "chat", turns: turns.filter((t) => t.content.trim()), position, enabled });
     } else {
@@ -195,6 +228,11 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
           </Button>
         </div>
       </div>
+      {emptyWarn && (
+        <p className="text-xs font-medium text-red-500">
+          Write a prompt first — or use {clearLabel || "Clear"} to remove this injection.
+        </p>
+      )}
     </div>
   );
 }
@@ -221,6 +259,43 @@ function EntryBadge({ entry }) {
   );
 }
 
+const actionBtnClass =
+  "flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5";
+
+// Destructive action with a two-tap confirm: first tap arms it ("Sure?")
+// for 3 seconds, second tap actually deletes. No modal, no surprises.
+function ConfirmButton({ label, icon, onConfirm }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  if (armed) {
+    return (
+      <button
+        type="button"
+        onClick={onConfirm}
+        className="flex items-center gap-1 rounded-md bg-red-500 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+      >
+        <span className="material-symbols-outlined text-[16px]">warning</span>
+        Sure?
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setArmed(true)}
+      title={`Delete — tap twice to confirm`}
+      className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
+    >
+      <span className="material-symbols-outlined text-[16px]">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
 // Marks a target name as one of the user's combos, so it's obvious the
 // "model" here can be a combo name — the name a client calls, not a raw
 // provider model.
@@ -242,51 +317,42 @@ function targetSummary(preset) {
   return parts.length ? parts.join(" · ") : "No targets yet";
 }
 
-function PresetCard({ preset, onToggle, onEdit, onDuplicate, onDelete }) {
+function PresetCard({ preset, onToggle, onCopy, onEdit, onDuplicate, onDelete }) {
   return (
     <Card padding="sm" className={preset.enabled === false ? "opacity-60" : ""}>
-      <div className="flex items-center gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <span className="material-symbols-outlined text-[18px] text-primary">bookmarks</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{preset.name}</p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
-            <EntryBadge entry={preset} />
-            <span>{targetSummary(preset)}</span>
-            <span>~{estimateTokens(entryText(preset))} tokens</span>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <span className="material-symbols-outlined text-[18px] text-primary">bookmarks</span>
           </div>
+          <div className="min-w-0 flex-1">
+            <p className="break-words text-sm font-semibold">{preset.name}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+              <EntryBadge entry={preset} />
+              <span>{targetSummary(preset)}</span>
+              <span>~{estimateTokens(entryText(preset))} tokens</span>
+            </div>
+          </div>
+          <Toggle
+            checked={preset.enabled !== false}
+            onChange={onToggle}
+            aria-label={`Enable preset ${preset.name}`}
+          />
         </div>
-        <Toggle
-          checked={preset.enabled !== false}
-          onChange={onToggle}
-          aria-label={`Enable preset ${preset.name}`}
-        />
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            onClick={onEdit}
-            title="Edit preset"
-            className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-          >
-            <span className="material-symbols-outlined text-[18px]">edit</span>
+        <div className="flex flex-wrap items-center gap-1 pl-11">
+          <button type="button" onClick={onCopy} title="Copy preset name" className={actionBtnClass}>
+            <span className="material-symbols-outlined text-[16px]">content_copy</span>
+            Copy
           </button>
-          <button
-            type="button"
-            onClick={onDuplicate}
-            title="Duplicate preset"
-            className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-          >
-            <span className="material-symbols-outlined text-[18px]">content_copy</span>
+          <button type="button" onClick={onEdit} title="Edit preset" className={actionBtnClass}>
+            <span className="material-symbols-outlined text-[16px]">edit</span>
+            Edit
           </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            title="Delete preset"
-            className="rounded p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-          >
-            <span className="material-symbols-outlined text-[18px]">delete</span>
+          <button type="button" onClick={onDuplicate} title="Duplicate preset" className={actionBtnClass}>
+            <span className="material-symbols-outlined text-[16px]">library_add</span>
+            Duplicate
           </button>
+          <ConfirmButton label="Delete" icon="delete" onConfirm={onDelete} />
         </div>
       </div>
     </Card>
@@ -437,9 +503,11 @@ function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onC
 
 export default function PromptInjectionClient() {
   const [msg, setMsg] = useState(null);
+  const toastTimer = useRef(null);
   const showToast = useCallback((text, type = "success") => {
     setMsg({ text, type });
-    setTimeout(() => setMsg(null), 2600);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setMsg(null), 2600);
   }, []);
   const [loading, setLoading] = useState(true);
   const [global_, setGlobal] = useState(null);
@@ -449,6 +517,7 @@ export default function PromptInjectionClient() {
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [comboNames, setComboNames] = useState([]);
+  const [comboMembers, setComboMembers] = useState({}); // combo name -> member names
   const [selectedKeyId, setSelectedKeyId] = useState("");
   const [newModel, setNewModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -489,7 +558,14 @@ export default function PromptInjectionClient() {
         const combosData = await combosRes.json();
         const combos = (combosData?.combos || []).filter((c) => c && c.name);
         setComboNames(combos.map((c) => c.name));
-        for (const c of combos) names.add(c.name);
+        const members = {};
+        for (const c of combos) {
+          members[c.name] = (Array.isArray(c.models) ? c.models : [])
+            .map((m) => (typeof m === "string" ? m : m?.model || m?.id || ""))
+            .filter(Boolean);
+          names.add(c.name);
+        }
+        setComboMembers(members);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
       for (const p of inj.presets || []) for (const m of p.targets?.models || []) names.add(m);
@@ -546,14 +622,20 @@ export default function PromptInjectionClient() {
     if (ok) setEditingPreset(undefined);
   };
 
-  const copyName = async (name) => {
-    try {
-      await navigator.clipboard.writeText(name);
-      showToast("Name copied — paste it into your Hermes config or a combo", "success");
-    } catch {
+  const copyName = async (name, okMsg = "Name copied — paste it into your Hermes config or a combo") => {
+    if (await copyText(name)) {
+      showToast(okMsg, "success");
+    } else {
       showToast("Copy failed", "error");
     }
   };
+
+  // Which combos use this name as a member — the connection between this
+  // page, the Combos page and a Hermes config is the name itself.
+  const memberOf = (name) =>
+    Object.entries(comboMembers)
+      .filter(([combo, members]) => combo !== name && members.includes(name))
+      .map(([combo]) => combo);
 
   // Rename = save the same entry under the new name, then delete the old
   // one. Refuses to overwrite a name that already has an injection.
@@ -744,6 +826,7 @@ export default function PromptInjectionClient() {
                     key={p.id}
                     preset={p}
                     onToggle={(v) => put({ preset: { ...p, enabled: v } }, `preset-${p.id}`, v ? "Preset enabled" : "Preset disabled")}
+                    onCopy={() => copyName(p.name, "Preset name copied")}
                     onEdit={() => setEditingPreset(p)}
                     onDuplicate={() =>
                       put(
@@ -955,6 +1038,28 @@ export default function PromptInjectionClient() {
                         <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
                         {comboNames.includes(name) && <ComboChip />}
                       </div>
+                      {(comboNames.includes(name) || memberOf(name).length > 0) && (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
+                          {comboNames.includes(name) && (
+                            <Link href="/dashboard/combos" className="font-medium text-primary hover:underline">
+                              This is a combo — open it
+                            </Link>
+                          )}
+                          {memberOf(name).length > 0 && (
+                            <span>
+                              Member of{" "}
+                              {memberOf(name).map((c, i) => (
+                                <span key={c}>
+                                  {i > 0 && ", "}
+                                  <Link href="/dashboard/combos" className="font-mono font-medium text-primary hover:underline">
+                                    {c}
+                                  </Link>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex flex-wrap items-center gap-1">
                         <EntryBadge entry={prompts[name]} />
                         <span className="text-xs text-text-muted">
@@ -965,7 +1070,7 @@ export default function PromptInjectionClient() {
                           type="button"
                           onClick={() => copyName(name)}
                           title="Copy name"
-                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                          className={actionBtnClass}
                         >
                           <span className="material-symbols-outlined text-[16px]">content_copy</span>
                           Copy
@@ -977,7 +1082,7 @@ export default function PromptInjectionClient() {
                             setRenamingModel(name);
                           }}
                           title="Rename"
-                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                          className={actionBtnClass}
                         >
                           <span className="material-symbols-outlined text-[16px]">drive_file_rename_outline</span>
                           Rename
@@ -986,22 +1091,18 @@ export default function PromptInjectionClient() {
                           type="button"
                           onClick={() => setEditingModel(editingModel === name ? null : name)}
                           title="Edit prompt"
-                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                          className={actionBtnClass}
                         >
                           <span className="material-symbols-outlined text-[16px]">
                             {editingModel === name ? "expand_less" : "edit"}
                           </span>
                           Edit
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                          title="Delete"
-                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
-                          Delete
-                        </button>
+                        <ConfirmButton
+                          label="Delete"
+                          icon="delete"
+                          onConfirm={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
+                        />
                       </div>
                     </div>
                   )}
