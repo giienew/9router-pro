@@ -221,6 +221,17 @@ function EntryBadge({ entry }) {
   );
 }
 
+// Marks a target name as one of the user's combos, so it's obvious the
+// "model" here can be a combo name — the name a client calls, not a raw
+// provider model.
+function ComboChip() {
+  return (
+    <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+      combo
+    </span>
+  );
+}
+
 function targetSummary(preset) {
   const parts = [];
   if (preset.targets?.global) parts.push("Global");
@@ -284,7 +295,7 @@ function PresetCard({ preset, onToggle, onEdit, onDuplicate, onDelete }) {
 
 // Preset editor: name + auto-loaded target checklists + the shared
 // InjectEditor for the prompt itself (its Save saves the whole preset).
-function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, saving }) {
+function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onClose, onSave, saving }) {
   const isNew = !preset?.id;
   const [name, setName] = useState(preset?.name || "");
   const [tGlobal, setTGlobal] = useState(!!preset?.targets?.global);
@@ -366,10 +377,15 @@ function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, sav
                       className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
                     />
                     <span className="min-w-0 truncate font-mono">{m}</span>
+                    {comboNames.includes(m) && <ComboChip />}
                   </label>
                 ))
               )}
             </div>
+            <p className="mt-1.5 text-[11px] text-text-muted">
+              Combo names work too — a preset on a combo covers every request that calls
+              that combo, e.g. from a Hermes config or another combo.
+            </p>
           </div>
 
           <div>
@@ -432,6 +448,7 @@ export default function PromptInjectionClient() {
   const [presets, setPresets] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
+  const [comboNames, setComboNames] = useState([]);
   const [selectedKeyId, setSelectedKeyId] = useState("");
   const [newModel, setNewModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -439,6 +456,8 @@ export default function PromptInjectionClient() {
   const [editingPreset, setEditingPreset] = useState(undefined); // undefined=closed, null=new
   const [globalOpen, setGlobalOpen] = useState(false);
   const [editingModel, setEditingModel] = useState(null);
+  const [renamingModel, setRenamingModel] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -468,7 +487,9 @@ export default function PromptInjectionClient() {
       } catch { /* models list is a convenience, not a requirement */ }
       try {
         const combosData = await combosRes.json();
-        for (const c of combosData?.combos || []) if (c.name) names.add(c.name);
+        const combos = (combosData?.combos || []).filter((c) => c && c.name);
+        setComboNames(combos.map((c) => c.name));
+        for (const c of combos) names.add(c.name);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
       for (const p of inj.presets || []) for (const m of p.targets?.models || []) names.add(m);
@@ -523,6 +544,48 @@ export default function PromptInjectionClient() {
     }
     const ok = await put({ preset: payload }, "preset", "Preset saved");
     if (ok) setEditingPreset(undefined);
+  };
+
+  const copyName = async (name) => {
+    try {
+      await navigator.clipboard.writeText(name);
+      showToast("Name copied — paste it into your Hermes config or a combo", "success");
+    } catch {
+      showToast("Copy failed", "error");
+    }
+  };
+
+  // Rename = save the same entry under the new name, then delete the old
+  // one. Refuses to overwrite a name that already has an injection.
+  const renameModel = async (oldName) => {
+    const next = renameDraft.trim();
+    if (!next || next === oldName) {
+      setRenamingModel(null);
+      return;
+    }
+    if (prompts[next]) {
+      showToast("That name already has an injection", "error");
+      return;
+    }
+    setSaving(`model-${oldName}`);
+    try {
+      const r1 = await fetch(API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: next, ...prompts[oldName] }),
+      });
+      if (!r1.ok) throw new Error("rename failed");
+      const r2 = await fetch(`${API}?model=${encodeURIComponent(oldName)}`, { method: "DELETE" });
+      if (!r2.ok) throw new Error("rename failed");
+      showToast(`Renamed to ${next}`, "success");
+      setRenamingModel(null);
+      if (editingModel === oldName) setEditingModel(next);
+      await load();
+    } catch {
+      showToast("Failed to rename", "error");
+    } finally {
+      setSaving("");
+    }
   };
 
   const keyName = (id) => keys.find((k) => k.id === id)?.name || id;
@@ -799,6 +862,21 @@ export default function PromptInjectionClient() {
             <SectionTitle icon="smart_toy" title="Model injections">
               Matched by the name the client calls, then the resolved provider/model.
             </SectionTitle>
+            <div className="flex flex-col gap-1.5 rounded-xl border border-border-subtle bg-surface-2 px-3.5 py-3 text-[13px] leading-relaxed text-text-muted">
+              <p>
+                <span className="font-semibold text-text-main">The name is the model your client sends.</span>{" "}
+                Combo names count too — every request that calls the combo gets this injection.
+              </p>
+              <p>
+                <span className="font-semibold text-text-main">Hermes:</span> use this name as
+                the model in the Hermes config (or switch with{" "}
+                <code className="font-mono text-primary">/model</code>) — done, it applies automatically.
+              </p>
+              <p>
+                <span className="font-semibold text-text-main">Combos:</span> a member called
+                through its combo uses the combo&apos;s injection; called directly, it uses its own.
+              </p>
+            </div>
             <div className="flex gap-2">
               <input
                 value={newModel}
@@ -837,31 +915,96 @@ export default function PromptInjectionClient() {
             <div className="flex flex-col gap-2">
               {modelNames.map((name) => (
                 <Card key={name} padding="sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
-                    <EntryBadge entry={prompts[name]} />
-                    <span className="text-xs text-text-muted">
-                      ~{estimateTokens(entryText(prompts[name]))} tokens
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setEditingModel(editingModel === name ? null : name)}
-                      title="Edit"
-                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">
-                        {editingModel === name ? "expand_less" : "edit"}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                      title="Delete"
-                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
-                  </div>
+                  {renamingModel === name ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") renameModel(name);
+                            if (e.key === "Escape") setRenamingModel(null);
+                          }}
+                          className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => renameModel(name)}
+                          disabled={saving === `model-${name}`}
+                          className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-2 text-xs font-medium text-white transition-opacity disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">check</span>
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRenamingModel(null)}
+                          className="shrink-0 rounded-lg px-2 py-2 text-xs text-text-muted transition-colors hover:text-text-main"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        The injection moves to the new name — clients must call the new name to receive it.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
+                        {comboNames.includes(name) && <ComboChip />}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <EntryBadge entry={prompts[name]} />
+                        <span className="text-xs text-text-muted">
+                          ~{estimateTokens(entryText(prompts[name]))} tokens
+                        </span>
+                        <span className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={() => copyName(name)}
+                          title="Copy name"
+                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenameDraft(name);
+                            setRenamingModel(name);
+                          }}
+                          title="Rename"
+                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">drive_file_rename_outline</span>
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingModel(editingModel === name ? null : name)}
+                          title="Edit prompt"
+                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">
+                            {editingModel === name ? "expand_less" : "edit"}
+                          </span>
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
+                          title="Delete"
+                          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {editingModel === name && (
                     <div className="mt-3 border-t border-border-subtle pt-3">
                       <InjectEditor
@@ -973,6 +1116,7 @@ export default function PromptInjectionClient() {
           keys={keys}
           keyName={keyName}
           modelOptions={modelOptions}
+          comboNames={comboNames}
           onClose={() => setEditingPreset(undefined)}
           onSave={savePreset}
           saving={saving === "preset"}
