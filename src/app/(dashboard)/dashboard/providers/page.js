@@ -640,6 +640,28 @@ export default function ProvidersPage() {
             All Connection Providers
             <Badge variant="success" size="sm">{allOnProviders.length} on</Badge>
           </h2>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <button
+              onClick={() =>
+                testingMode === "all" ? handleStopBatchTest() : handleBatchTest("all")
+              }
+              disabled={!!testingMode && testingMode !== "all"}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+                testingMode === "all"
+                  ? "border-red-400/50 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                  : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
+              }`}
+              title={testingMode === "all" ? "Stop the running test" : "Test all connections that are on"}
+              aria-label={testingMode === "all" ? "Stop the running test" : "Test all connections that are on"}
+            >
+              <span
+                className={`material-symbols-outlined text-[14px]${testingMode === "all" ? "" : " text-primary"}`}
+              >
+                {testingMode === "all" ? "stop_circle" : "play_arrow"}
+              </span>
+              {testingMode === "all" ? "Stop" : "Test All"}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {allOnProviders.map((entry) => entry.card === "provider" ? (
