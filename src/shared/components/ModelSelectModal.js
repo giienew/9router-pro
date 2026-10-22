@@ -531,19 +531,20 @@ export default function ModelSelectModal({
     return combos.filter(c => matchesSearch(c.name, parsedQuery));
   }, [combos, parsedQuery, kindFilter, capFilter]);
 
-  // Custom injection names that aren't already listed as a combo or a
-  // provider model — same LLM-only treatment as combos.
+  // Every name that carries a Prompt Injection gets its own category —
+  // including names that are also combos (the common case: an injected
+  // combo is still picked from here by its injection). Only names already
+  // listed as provider models are left out, to avoid duplicate chips.
   const filteredInjections = useMemo(() => {
     if (kindFilter || capFilter) return [];
-    const comboNameSet = new Set(combos.map((c) => c.name));
     const known = new Set();
     Object.values(groupedModels).forEach((g) =>
       g.models.forEach((m) => { known.add(m.value); known.add(m.id); })
     );
-    const names = injectedNames.filter((n) => !comboNameSet.has(n) && !known.has(n));
+    const names = injectedNames.filter((n) => !known.has(n));
     if (parsedQuery.isEmpty) return names;
     return names.filter((n) => matchesSearch(n, parsedQuery));
-  }, [injectedNames, combos, groupedModels, parsedQuery, kindFilter, capFilter]);
+  }, [injectedNames, groupedModels, parsedQuery, kindFilter, capFilter]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -812,6 +813,9 @@ export default function ModelSelectModal({
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                     )}
                     {name}
+                    {combos.some((c) => c.name === name) && (
+                      <span className="text-[9px] font-normal opacity-60">combo</span>
+                    )}
                   </button>
                 );
               })}

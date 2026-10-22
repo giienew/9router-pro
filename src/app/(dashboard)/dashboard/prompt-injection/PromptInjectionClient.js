@@ -794,12 +794,12 @@ export default function PromptInjectionClient() {
             Presets and direct injections — stacked global → user → model.
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={exportInjections}>
-            <span className="material-symbols-outlined text-[16px]">download</span> Export
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
+            Export
           </Button>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-2">
-            <span className="material-symbols-outlined text-[16px]">upload</span> Import
+          <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-2 rounded-[8px] border border-border px-3 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]">
+            <span className="material-symbols-outlined text-[18px]">upload</span> Import
             <input
               type="file"
               accept="application/json"
