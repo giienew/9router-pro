@@ -578,39 +578,6 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* All Connection Providers — everything currently ON */}
-      {allOnProviders.length > 0 && (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            All Connection Providers
-            <Badge variant="success" size="sm">{allOnProviders.length} on</Badge>
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {allOnProviders.map((entry) => entry.card === "provider" ? (
-            <ProviderCard
-              key={`all-${entry.providerId}`}
-              providerId={entry.providerId}
-              provider={entry.provider}
-              stats={entry.stats}
-              authType={entry.authType}
-              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
-            />
-          ) : (
-            <ApiKeyProviderCard
-              key={`all-${entry.providerId}`}
-              providerId={entry.providerId}
-              provider={entry.provider}
-              stats={entry.stats}
-              authType={entry.authType}
-              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
-            />
-          ))}
-        </div>
-      </div>
-      )}
-
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -664,6 +631,39 @@ export default function ProvidersPage() {
           </div>
         )}
       </div>
+
+      {/* All Connection Providers — everything currently ON */}
+      {allOnProviders.length > 0 && (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+            All Connection Providers
+            <Badge variant="success" size="sm">{allOnProviders.length} on</Badge>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          {allOnProviders.map((entry) => entry.card === "provider" ? (
+            <ProviderCard
+              key={`all-${entry.providerId}`}
+              providerId={entry.providerId}
+              provider={entry.provider}
+              stats={entry.stats}
+              authType={entry.authType}
+              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+            />
+          ) : (
+            <ApiKeyProviderCard
+              key={`all-${entry.providerId}`}
+              providerId={entry.providerId}
+              provider={entry.provider}
+              stats={entry.stats}
+              authType={entry.authType}
+              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+            />
+          ))}
+        </div>
+      </div>
+      )}
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
