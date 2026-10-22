@@ -4,6 +4,12 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.6
+
+- **Apply Proxy to every connection**: the provider page's Apply Proxy dialog gains a scope switch — **Loaded** (the connections currently on screen, as before) or **All** (every connection of the provider, including pages never loaded). The All scope runs as one server-side pass in a single transaction, for all three modes: one pool for everyone, one-to-one rotation across the active pools, or unbind all. The dialog's pool list is now searchable and capped, so it stays usable with thousands of pools.
+- **Proxy Pools health check, rebuilt as a server job**: Health Check no longer fires one browser request per pool. One click starts a background job on the server (bounded concurrency, progress in the button, safe to refresh the page — the job keeps running and the page reconnects to it). Passing pools stay/become active; failing pools are deactivated and marked failed, and when the check finishes the dashboard **offers to delete the dead pools** right away — a **Delete failed** button is also there whenever failed pools exist. Pools still bound to a connection are never deleted. The button now sits next to the pool counts, always visible — no selection needed first.
+- **All Connection Providers shelf**: the Providers page gains a shelf directly under Custom Providers gathering **every provider that is currently on** — has connections (or is ready without auth) and is not fully disabled — from all categories, deduped, with the same cards and working toggles as their home sections. The shelf has its own **Test All**, which tests every active connection across providers as one stoppable job.
+
 ## v0.5.104-pro.5.1
 
 - **Default port is now 20127**: Pro's default port moves from the inherited 20128 to **20127**, matching what `npm run start` already used. The Docker image and compose file, the CLI's default target, the dashboard's default self-addresses (CLI Tools cards, MITM, tunnels, SAML), the updater's app port, `.env.example`, and the README/CLAUDE/DOCKER docs all agree now. Existing installs are unaffected — an explicit `PORT` always wins; only new installs see the new default. The original 9Router stays on 20128, so the two can run side by side on one machine (see MIGRATION.md). Translated docs (gitbook, i18n READMEs) still show the old port in places and will catch up.
