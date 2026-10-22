@@ -276,6 +276,35 @@ export default function ProxyPoolsPage() {
     }
   };
 
+  const runDeleteFailed = useCallback(async () => {
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/proxy-pools/delete-failed", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        notify.error(data.error || "Failed to delete failed proxies");
+        return;
+      }
+      await fetchProxyPools();
+      notify.success(`Deleted ${data.deleted} failed proxies${data.skippedBound ? `, ${data.skippedBound} kept (still bound)` : ""}`);
+    } catch {
+      notify.error("Failed to delete failed proxies");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [fetchProxyPools, notify]);
+
+  const confirmDeleteFailed = useCallback((count, message) => {
+    setConfirmState({
+      title: "Delete Failed Proxies",
+      message,
+      onConfirm: async () => {
+        setConfirmState(null);
+        await runDeleteFailed();
+      },
+    });
+  }, [runDeleteFailed]);
+
   const watchHealthJob = useCallback(() => {
     stopHealthPolling();
     healthPollRef.current = setInterval(async () => {
@@ -289,7 +318,14 @@ export default function ProxyPoolsPage() {
           await fetchProxyPools();
           if (state.finishedAt && healthSummaryForRef.current !== state.finishedAt) {
             healthSummaryForRef.current = state.finishedAt;
-            notify.success(`Health check done. Alive: ${state.passed}, Dead: ${state.failed}`);
+            if (state.failed > 0) {
+              confirmDeleteFailed(
+                state.failed,
+                `Health check done. Alive: ${state.passed}, Dead: ${state.failed}.\n\nDelete the ${state.failed} dead proxies? Pools still bound to a connection are kept.`
+              );
+            } else {
+              notify.success(`Health check done. Alive: ${state.passed}, Dead: 0`);
+            }
           }
         }
       } catch {
@@ -297,7 +333,7 @@ export default function ProxyPoolsPage() {
         setHealthChecking(false);
       }
     }, 2000);
-  }, [fetchProxyPools, notify]);
+  }, [fetchProxyPools, notify, confirmDeleteFailed]);
 
   // Server-side health check: one POST starts a background job on the server
   // (selected pools when a selection exists, otherwise every pool) and the
@@ -325,30 +361,9 @@ export default function ProxyPoolsPage() {
   };
 
   const handleDeleteFailed = () => {
-    const failedCount = proxyPools.filter((p) => p.testStatus === "error").length;
-    if (failedCount === 0) return;
-    setConfirmState({
-      title: "Delete Failed Proxies",
-      message: `Delete ${failedCount} proxies that failed their last test? Pools still bound to a connection are kept.`,
-      onConfirm: async () => {
-        setConfirmState(null);
-        setBulkBusy(true);
-        try {
-          const res = await fetch("/api/proxy-pools/delete-failed", { method: "POST" });
-          const data = await res.json();
-          if (!res.ok) {
-            notify.error(data.error || "Failed to delete failed proxies");
-            return;
-          }
-          await fetchProxyPools();
-          notify.success(`Deleted ${data.deleted} failed proxies${data.skippedBound ? `, ${data.skippedBound} kept (still bound)` : ""}`);
-        } catch {
-          notify.error("Failed to delete failed proxies");
-        } finally {
-          setBulkBusy(false);
-        }
-      }
-    });
+    const count = proxyPools.filter((p) => p.testStatus === "error").length;
+    if (count === 0) return;
+    confirmDeleteFailed(count, `Delete ${count} proxies that failed their last test? Pools still bound to a connection are kept.`);
   };
 
   // Resume watching if a health-check job is already running (e.g. it was
