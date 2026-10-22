@@ -132,6 +132,7 @@ export default function ModelSelectModal({
   const { getCaps } = useModelCaps();
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
+  const [injectedNames, setInjectedNames] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
@@ -171,6 +172,24 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (isOpen) fetchCombos();
+  }, [isOpen]);
+
+  // Names that carry a Prompt Injection (custom model names). They are
+  // callable exactly like combo names, so they belong in this picker too.
+  const fetchInjectedNames = async () => {
+    try {
+      const res = await fetch("/api/prompt-injection");
+      if (!res.ok) throw new Error(`Failed to fetch prompt injections: ${res.status}`);
+      const data = await res.json();
+      setInjectedNames(Object.keys(data.prompts || {}));
+    } catch (error) {
+      console.error("Error fetching prompt injections:", error);
+      setInjectedNames([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchInjectedNames();
   }, [isOpen]);
 
   const fetchProviderNodes = async () => {
@@ -512,6 +531,20 @@ export default function ModelSelectModal({
     return combos.filter(c => matchesSearch(c.name, parsedQuery));
   }, [combos, parsedQuery, kindFilter, capFilter]);
 
+  // Custom injection names that aren't already listed as a combo or a
+  // provider model — same LLM-only treatment as combos.
+  const filteredInjections = useMemo(() => {
+    if (kindFilter || capFilter) return [];
+    const comboNameSet = new Set(combos.map((c) => c.name));
+    const known = new Set();
+    Object.values(groupedModels).forEach((g) =>
+      g.models.forEach((m) => { known.add(m.value); known.add(m.id); })
+    );
+    const names = injectedNames.filter((n) => !comboNameSet.has(n) && !known.has(n));
+    if (parsedQuery.isEmpty) return names;
+    return names.filter((n) => matchesSearch(n, parsedQuery));
+  }, [injectedNames, combos, groupedModels, parsedQuery, kindFilter, capFilter]);
+
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
     const added = models.filter(m => addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
@@ -750,6 +783,42 @@ export default function ModelSelectModal({
           </div>
         )}
 
+        {/* Custom Injections section - names with a Prompt Injection, callable like combos */}
+        {filteredInjections.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
+              <span className="material-symbols-outlined text-primary text-[14px]">skull</span>
+              <span className="text-xs font-medium text-primary">Custom Injections</span>
+              <span className="text-[10px] text-text-muted">({filteredInjections.length})</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {filteredInjections.map((name) => {
+                const isSelected = selectedModel === name;
+                return (
+                  <button
+                    key={name}
+                    onClick={() => handleSelect({ id: name, name, value: name })}
+                    className={`
+                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
+                      ${isSelected
+                        ? "bg-primary text-white border-primary"
+                        : addedModelValues.includes(name)
+                          ? "bg-primary border-primary text-white hover:bg-primary-hover"
+                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
+                      }
+                    `}
+                  >
+                    {addedModelValues.includes(name) && (
+                      <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
+                    )}
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Provider models */}
         {Object.entries(filteredGroups).map(([providerId, group]) => {
           const wildcardValue = `${group.alias || providerId}/*`;
@@ -846,7 +915,7 @@ export default function ModelSelectModal({
         );
       })}
 
-      {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 && (
+      {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 && filteredInjections.length === 0 && (
         <div className="text-center py-4 text-text-muted">
           <span className="material-symbols-outlined text-2xl mb-1 block">
             search_off
