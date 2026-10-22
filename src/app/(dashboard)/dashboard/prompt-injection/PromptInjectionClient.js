@@ -443,11 +443,12 @@ function InjectionForm({
   const fromTemplate = allowTemplateSource && source === "template" && template;
 
   // ---- Custom-name pairs -------------------------------------------------
-  // A pair = a call name backed by exactly one real model (a combo) with
-  // the prompt on the name, e.g. dpsk_un -> dahl/deepseek-ai/... The form
-  // exposes the pair's other half: for a combo name, its real model
-  // (editable); for a real model, an optional custom name to publish it
-  // under; for a free custom name, an optional real model to back it.
+  // A pair = a call name backed by real models (a combo) with the prompt
+  // on the name, e.g. dpsk_un -> dahl/deepseek-ai/... The form exposes the
+  // pair's other half: for a combo name, its real models (editable, multi,
+  // like the Combos page); for a real model, an optional custom name to
+  // publish it under; for a free custom name, optional real models to
+  // back it.
   const mainName = model.trim();
   const pairCombo =
     scope === "model"
@@ -460,49 +461,57 @@ function InjectionForm({
   const pairMode =
     scope !== "model" || !mainName
       ? null
-      : pairCombo && (pairCombo.models || []).length === 1
+      : pairCombo
         ? "backing"
-        : pairCombo
-          ? "combo-multi"
-          : mainKind === "Real model"
-            ? "publish"
-            : mainKind === "Custom name"
-              ? "attach"
-              : null;
-  const [pairValue, setPairValue] = useState("");
+        : mainKind === "Real model"
+          ? "publish"
+          : mainKind === "Custom name"
+            ? "attach"
+            : null;
+  const [pairValue, setPairValue] = useState(""); // publish: the custom name text
+  const [pairModels, setPairModels] = useState([]); // backing/attach: the real models
+  const [pairInput, setPairInput] = useState("");
   const [pairTouched, setPairTouched] = useState(false);
   const [pairPickerOpen, setPairPickerOpen] = useState(false);
   const pairComboId = pairCombo?.id || null;
   const [syncedComboId, setSyncedComboId] = useState(null);
 
   useEffect(() => {
-    // Switching to another combo re-syncs the pair field from scratch.
+    // Switching to another combo re-syncs the pair fields from scratch.
     if (pairComboId !== syncedComboId) {
       setSyncedComboId(pairComboId);
       setPairTouched(false);
-      setPairValue(pairMode === "backing" && pairCombo ? pairCombo.models[0] || "" : "");
-      return;
+      setPairModels(pairCombo ? [...(pairCombo.models || [])] : []);
+      setPairValue("");
+      setPairInput("");
     }
-    if (pairTouched) return;
-    if (pairMode === "backing" && pairCombo) setPairValue(pairCombo.models[0] || "");
-    else if (pairMode !== "publish" && pairMode !== "attach") setPairValue("");
-  }, [pairComboId, pairMode, pairCombo, pairTouched, syncedComboId]);
+  }, [pairComboId, pairCombo, syncedComboId]);
+
+  const addPairModel = (v) => {
+    const value = (v || "").trim();
+    if (!value) return;
+    setPairTouched(true);
+    setPairModels((prev) => (prev.includes(value) ? prev : [...prev, value]));
+  };
+  const removePairModel = (v) => {
+    setPairTouched(true);
+    setPairModels((prev) => prev.filter((m) => m !== v));
+  };
 
   const submitEntry = (fields) => {
     const publishName = pairMode === "publish" && pairTouched ? pairValue.trim() : "";
     let pair = null;
-    if (pairMode === "backing" || pairMode === "combo-multi") {
+    if (pairMode === "backing") {
       pair = {
         type: "backing",
         comboId: pairCombo.id,
         comboName: pairCombo.name,
-        newModel:
-          pairMode === "backing" && pairTouched && pairValue.trim() ? pairValue.trim() : null,
+        models: pairTouched ? pairModels : null,
       };
     } else if (pairMode === "publish" && publishName) {
       pair = { type: "publish", customName: publishName, model: mainName };
-    } else if (pairMode === "attach" && pairTouched && pairValue.trim()) {
-      pair = { type: "attach", customName: mainName, model: pairValue.trim() };
+    } else if (pairMode === "attach" && pairTouched && pairModels.length > 0) {
+      pair = { type: "attach", customName: mainName, models: pairModels };
     }
     onSave(
       { scope, model: publishName || mainName, keyId },
@@ -585,14 +594,43 @@ function InjectionForm({
         </p>
       )}
 
-      {pairMode === "backing" && (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text-muted">Real model</span>
+      {(pairMode === "backing" || pairMode === "attach") && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-text-muted">
+            {pairMode === "backing" ? "Real models" : "Real models (optional)"}
+          </span>
+          {pairModels.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {pairModels.map((m) => (
+                <span
+                  key={m}
+                  className="inline-flex max-w-full items-center gap-1 rounded-md bg-surface-3 py-1 pl-2 pr-1 font-mono text-[11px] text-text-main"
+                >
+                  <span className="truncate">{m}</span>
+                  <button
+                    type="button"
+                    onClick={() => removePairModel(m)}
+                    aria-label={`Remove ${m}`}
+                    className="flex shrink-0 items-center justify-center rounded p-0.5 text-text-muted transition-colors hover:text-text-main"
+                  >
+                    <span className="material-symbols-outlined text-[13px] leading-none">close</span>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <span className="flex gap-2">
             <input
-              value={pairValue}
-              onChange={(e) => { setPairValue(e.target.value); setPairTouched(true); }}
-              placeholder="provider/model — the model this name routes to"
+              value={pairInput}
+              onChange={(e) => setPairInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addPairModel(pairInput);
+                  setPairInput("");
+                }
+              }}
+              placeholder="provider/model — type, then Enter to add"
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
@@ -601,17 +639,11 @@ function InjectionForm({
             </button>
           </span>
           <span className="text-[11px] leading-snug text-text-muted">
-            The real model behind this custom name. Changing it re-points the name — the prompt stays.
-            Renaming the name above renames the pair.
+            {pairMode === "backing"
+              ? "The real models behind this custom name, in order — the combo's strategy applies. Changing them re-points the name; the prompt stays. Renaming the name above renames the pair."
+              : "Back this custom name with real models so clients can call it — a combo is created behind the scenes."}
           </span>
-        </label>
-      )}
-
-      {pairMode === "combo-multi" && (
-        <p className="text-[11px] leading-snug text-text-muted">
-          This name is a combo of {(pairCombo.models || []).length} models — manage its members on the
-          Combos page. Renaming the name above renames the combo too.
-        </p>
+        </div>
       )}
 
       {pairMode === "publish" && (
@@ -630,27 +662,7 @@ function InjectionForm({
         </label>
       )}
 
-      {pairMode === "attach" && (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text-muted">Real model (optional)</span>
-          <span className="flex gap-2">
-            <input
-              value={pairValue}
-              onChange={(e) => { setPairValue(e.target.value); setPairTouched(true); }}
-              placeholder="provider/model — back this name with a real model"
-              list="pi-model-names"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-            />
-            <button type="button" onClick={() => setPairPickerOpen(true)} className={SELECT_BTN_CLASS}>
-              Select
-            </button>
-          </span>
-          <span className="text-[11px] leading-snug text-text-muted">
-            Back this custom name with a real model so clients can call it — a combo is created behind
-            the scenes.
-          </span>
-        </label>
-      )}
+
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -772,12 +784,11 @@ function InjectionForm({
       <ModelSelectModal
         isOpen={pairPickerOpen}
         onClose={() => setPairPickerOpen(false)}
-        onSelect={(m) => {
-          setPairValue(modelPickValue(m));
-          setPairTouched(true);
-          setPairPickerOpen(false);
-        }}
-        title="Select real model"
+        onSelect={(m) => addPairModel(modelPickValue(m))}
+        onDeselect={(m) => removePairModel(modelPickValue(m))}
+        addedModelValues={pairModels}
+        closeOnSelect={false}
+        title="Select real models"
       />
     </div>
   );
@@ -1019,16 +1030,19 @@ export default function PromptInjectionClient() {
           showToast("Custom name can only contain letters, numbers, -, _ and .", "error");
           return false;
         }
+        const wanted = pair.type === "publish" ? [pair.model] : pair.models;
         const res = await fetch("/api/combos");
         const data = await res.json();
         const existing = (data?.combos || []).find((c) => c.name === pair.customName);
         if (existing) {
           const models = existing.models || [];
-          if (!(models.length === 1 && models[0] === pair.model)) {
+          const sameSet =
+            models.length === wanted.length && wanted.every((m) => models.includes(m));
+          if (!sameSet) {
             showToast(`"${pair.customName}" is already a combo with different models`, "error");
             return false;
           }
-          // Already backed by the same model — nothing to create.
+          // Already backed by the same models — nothing to create.
         } else {
           if (pair.type === "publish" && routedModelNames.has(pair.customName)) {
             showToast("That name is a real model name — pick a custom name instead", "error");
@@ -1037,7 +1051,7 @@ export default function PromptInjectionClient() {
           const r = await fetch("/api/combos", {
             method: "POST",
             headers: jsonHeaders,
-            body: JSON.stringify({ name: pair.customName, models: [pair.model] }),
+            body: JSON.stringify({ name: pair.customName, models: wanted }),
           });
           if (!r.ok) {
             const e = await r.json().catch(() => null);
@@ -1056,14 +1070,19 @@ export default function PromptInjectionClient() {
       }
       if (pair.type === "backing") {
         const renamed = toCoord.model && toCoord.model !== pair.comboName;
-        if (!renamed && !pair.newModel) return true;
+        const modelsChanged = Array.isArray(pair.models);
+        if (!renamed && !modelsChanged) return true;
+        if (modelsChanged && pair.models.length === 0) {
+          showToast("A custom name needs at least one real model", "error");
+          return false;
+        }
         if (renamed && !COMBO_NAME_RE.test(toCoord.model)) {
           showToast("Name can only contain letters, numbers, -, _ and .", "error");
           return false;
         }
         const body = {};
         if (renamed) body.name = toCoord.model;
-        if (pair.newModel) body.models = [pair.newModel];
+        if (modelsChanged) body.models = pair.models;
         const r = await fetch(`/api/combos/${pair.comboId}`, {
           method: "PUT",
           headers: jsonHeaders,
@@ -1306,7 +1325,7 @@ export default function PromptInjectionClient() {
                   "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
                   "One target holds exactly one injection; saving again replaces it.",
                   "Convention: a combo's product prompt belongs on the combo name; a model's own prompt belongs on the real model name — it still fires when a combo resolves to that model. The name chip on each row shows which kind a name is.",
-                  "Custom names are pairs: a name like dpsk_un is a combo routing to one real model, with the prompt on the name. Editing a pair lets you rename the name or re-point it to another real model; from New injection you can also publish any real model under your own custom name.",
+                  "Custom names are pairs: a name like dpsk_un is a combo routing to one or more real models, with the prompt on the name. Editing a pair lets you rename the name or change its real models (multi-select, like the Combos page); from New injection you can also publish any real model under your own custom name.",
                 ],
               }}
             >
