@@ -813,9 +813,6 @@ export default function ModelSelectModal({
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                     )}
                     {name}
-                    {combos.some((c) => c.name === name) && (
-                      <span className="text-[9px] font-normal opacity-60">combo</span>
-                    )}
                   </button>
                 );
               })}

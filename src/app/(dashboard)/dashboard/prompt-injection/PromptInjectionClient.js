@@ -296,17 +296,6 @@ function ConfirmButton({ label, icon, onConfirm }) {
   );
 }
 
-// Marks a target name as one of the user's combos, so it's obvious the
-// "model" here can be a combo name — the name a client calls, not a raw
-// provider model.
-function ComboChip() {
-  return (
-    <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-      combo
-    </span>
-  );
-}
-
 function targetSummary(preset) {
   const parts = [];
   if (preset.targets?.global) parts.push("Global");
@@ -361,7 +350,7 @@ function PresetCard({ preset, onToggle, onCopy, onEdit, onDuplicate, onDelete })
 
 // Preset editor: name + auto-loaded target checklists + the shared
 // InjectEditor for the prompt itself (its Save saves the whole preset).
-function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onClose, onSave, saving }) {
+function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, saving }) {
   const isNew = !preset?.id;
   const [name, setName] = useState(preset?.name || "");
   const [tGlobal, setTGlobal] = useState(!!preset?.targets?.global);
@@ -443,14 +432,12 @@ function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onC
                       className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
                     />
                     <span className="min-w-0 truncate font-mono">{m}</span>
-                    {comboNames.includes(m) && <ComboChip />}
                   </label>
                 ))
               )}
             </div>
             <p className="mt-1.5 text-[11px] text-text-muted">
-              Combo names work too — a preset on a combo covers every request that calls
-              that combo, e.g. from a Hermes config or another combo.
+              Any model or combo name works — the preset applies to every request that calls that name.
             </p>
           </div>
 
@@ -503,14 +490,14 @@ function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onC
 
 // Model Edit panel: the target name is a field here (not a separate
 // Rename action) — change it and Save renames the injection.
-function ModelEditPanel({ name, entry, isCombo, saving, onSave, onClear }) {
+function ModelEditPanel({ name, entry, saving, onSave, onClear }) {
   const [draftName, setDraftName] = useState(name);
   const trimmed = draftName.trim();
   return (
     <div className="flex flex-col gap-3">
       <div>
         <label className="mb-1 block text-xs font-medium text-text-muted">
-          Name — the name clients call (Hermes model / combo name)
+          Name — the name clients call
         </label>
         <input
           value={draftName}
@@ -520,7 +507,6 @@ function ModelEditPanel({ name, entry, isCombo, saving, onSave, onClear }) {
         {trimmed && trimmed !== name && (
           <p className="mt-1 text-[11px] text-text-muted">
             Saving moves this injection to the new name — clients must call the new name to receive it.
-            {isCombo ? " The combo itself keeps its own name." : ""}
           </p>
         )}
       </div>
@@ -550,7 +536,6 @@ export default function PromptInjectionClient() {
   const [presets, setPresets] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
-  const [comboNames, setComboNames] = useState([]);
   const [selectedKeyId, setSelectedKeyId] = useState("");
   const [newModel, setNewModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -588,7 +573,6 @@ export default function PromptInjectionClient() {
       try {
         const combosData = await combosRes.json();
         const combos = (combosData?.combos || []).filter((c) => c && c.name);
-        setComboNames(combos.map((c) => c.name));
         for (const c of combos) names.add(c.name);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
@@ -966,21 +950,11 @@ export default function PromptInjectionClient() {
             <SectionTitle icon="smart_toy" title="Model injections">
               Matched by the name the client calls, then the resolved provider/model.
             </SectionTitle>
-            <div className="flex flex-col gap-1.5 rounded-xl border border-border-subtle bg-surface-2 px-3.5 py-3 text-[13px] leading-relaxed text-text-muted">
-              <p>
-                <span className="font-semibold text-text-main">The name is the model your client sends.</span>{" "}
-                Combo names count too — every request that calls the combo gets this injection.
-              </p>
-              <p>
-                <span className="font-semibold text-text-main">Hermes:</span> use this name as
-                the model in the Hermes config (or switch with{" "}
-                <code className="font-mono text-primary">/model</code>) — done, it applies automatically.
-              </p>
-              <p>
-                <span className="font-semibold text-text-main">Combos:</span> a member called
-                through its combo uses the combo&apos;s injection; called directly, it uses its own.
-              </p>
-            </div>
+            <p className="rounded-xl border border-border-subtle bg-surface-2 px-3.5 py-2.5 text-[13px] leading-relaxed text-text-muted">
+              The name is what your client sends — use it as the model in Hermes (or switch
+              with <code className="font-mono text-primary">/model</code>) and the injection
+              applies automatically.
+            </p>
             <div className="flex gap-2">
               <input
                 value={newModel}
@@ -1022,17 +996,9 @@ export default function PromptInjectionClient() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
-                      {comboNames.includes(name) && <ComboChip />}
-                    </div>
-                    {comboNames.includes(name) && (
-                      <div className="text-[11px]">
-                        <Link href="/dashboard/combos" className="font-medium text-primary hover:underline">
-                          This is a combo — open it
-                        </Link>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center gap-1">
                       <EntryBadge entry={prompts[name]} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
                       <span className="text-xs text-text-muted">
                         ~{estimateTokens(entryText(prompts[name]))} tokens
                       </span>
@@ -1070,7 +1036,6 @@ export default function PromptInjectionClient() {
                         key={`${name}-${prompts[name]?.updatedAt || ""}`}
                         name={name}
                         entry={prompts[name]}
-                        isCombo={comboNames.includes(name)}
                         saving={saving === `model-${name}`}
                         onSave={(newName, entry) => saveModelEntry(name, newName, entry)}
                         onClear={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
@@ -1176,7 +1141,6 @@ export default function PromptInjectionClient() {
           keys={keys}
           keyName={keyName}
           modelOptions={modelOptions}
-          comboNames={comboNames}
           onClose={() => setEditingPreset(undefined)}
           onSave={savePreset}
           saving={saving === "preset"}
