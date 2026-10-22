@@ -1,4 +1,4 @@
-import { getProxyPoolById } from "@/models";
+import { getProxyPoolById, getProxyPools } from "@/models";
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -195,5 +195,39 @@ export async function resolveConnectionProxyConfig(
 
       strictProxy: false,
     };
+  }
+}
+
+/**
+ * Auto proxy for connection TESTS (9Router Pro): when a connection has
+ * no proxy of its own, a test may borrow one from the active standard
+ * pools (round-robin) so the test reflects proxied reality instead of
+ * the server's direct IP. Best-effort only — callers fall back to a
+ * direct test when the borrowed proxy fails its pre-check. Relay pools
+ * (vercel/cloudflare/deno/netlify) are never borrowed. Returns a config
+ * in the same shape as resolveConnectionProxyConfig, or null.
+ */
+export async function resolveAutoTestProxy() {
+  try {
+    const pools = await getProxyPools({ isActive: true });
+    const RELAY_TYPES = ["vercel", "cloudflare", "deno", "netlify"];
+    const standard = (pools || []).filter(
+      (p) => p && normalizeString(p.proxyUrl) && !RELAY_TYPES.includes(p.type)
+    );
+    if (!standard.length) return null;
+    const pickedId = pickProxyPoolId(standard.map((p) => p.id), "round-robin", "__autotest__");
+    const pool = standard.find((p) => p.id === pickedId) || standard[0];
+    return {
+      source: "auto-pool",
+      proxyPoolId: pool.id,
+      proxyPool: pool,
+      connectionProxyEnabled: true,
+      connectionProxyUrl: normalizeString(pool.proxyUrl),
+      connectionNoProxy: normalizeString(pool.noProxy),
+      strictProxy: false,
+      autoProxy: true,
+    };
+  } catch {
+    return null;
   }
 }

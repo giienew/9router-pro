@@ -170,7 +170,29 @@ export default function ProvidersPage() {
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [autoProxyForTests, setAutoProxyForTests] = useState(false);
   const notify = useNotificationStore();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/settings");
+        const data = await res.json();
+        setAutoProxyForTests(data?.autoProxyForTests === true);
+      } catch { /* the toggle just stays off */ }
+    })();
+  }, []);
+
+  const toggleAutoProxyForTests = async (value) => {
+    setAutoProxyForTests(value);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoProxyForTests: value }),
+      });
+    } catch { /* server state re-read on next visit */ }
+  };
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
@@ -489,7 +511,14 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <label
+          className="flex cursor-pointer items-center gap-2 text-xs text-text-muted"
+          title="Connections without their own proxy borrow one from the active proxy pools when tested (single Test and Test All). A failed borrowed proxy falls back to a direct test."
+        >
+          <Toggle checked={autoProxyForTests} onChange={toggleAutoProxyForTests} />
+          Auto proxy for tests
+        </label>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}

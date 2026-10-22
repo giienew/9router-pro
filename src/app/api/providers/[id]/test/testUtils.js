@@ -1,5 +1,5 @@
-import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
-import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { getProviderConnectionById, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { resolveConnectionProxyConfig, resolveAutoTestProxy } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
@@ -923,18 +923,43 @@ export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
 
-  const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+  let effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
+  // Auto proxy for tests (Pro setting): a connection with no proxy of its
+  // own borrows one from the active pools, unless it explicitly opted
+  // out ("__none__"). Best-effort — a failed borrowed proxy falls back
+  // to a direct test instead of failing the connection.
+  const explicitlyNoProxy = (connection.providerSpecificData || {}).proxyPoolId === "__none__";
+  if (!effectiveProxy.connectionProxyEnabled && !effectiveProxy.vercelRelayUrl && !explicitlyNoProxy) {
+    try {
+      const settings = await getSettings();
+      if (settings?.autoProxyForTests === true) {
+        const auto = await resolveAutoTestProxy();
+        if (auto) effectiveProxy = auto;
+      }
+    } catch { /* auto proxy must never break a test */ }
+  }
 
   if (effectiveProxy.connectionProxyEnabled && effectiveProxy.connectionProxyUrl && !effectiveProxy.vercelRelayUrl) {
     const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
     if (!proxyResult.ok) {
-      const proxyError = proxyResult.error || `Proxy test failed with status ${proxyResult.status}`;
-      await updateProviderConnection(id, {
-        testStatus: "error",
-        lastError: proxyError,
-        lastErrorAt: new Date().toISOString(),
-      });
-      return { valid: false, error: proxyError, latencyMs: 0, testedAt: new Date().toISOString() };
+      if (effectiveProxy.autoProxy) {
+        effectiveProxy = {
+          ...effectiveProxy,
+          connectionProxyEnabled: false,
+          connectionProxyUrl: "",
+          autoProxy: false,
+          autoProxyFallback: true,
+        };
+      } else {
+        const proxyError = proxyResult.error || `Proxy test failed with status ${proxyResult.status}`;
+        await updateProviderConnection(id, {
+          testStatus: "error",
+          lastError: proxyError,
+          lastErrorAt: new Date().toISOString(),
+        });
+        return { valid: false, error: proxyError, latencyMs: 0, testedAt: new Date().toISOString() };
+      }
     }
   }
 
@@ -985,5 +1010,16 @@ export async function testSingleConnection(id) {
 
   await updateProviderConnection(id, updateData);
 
-  return { valid: result.valid, error: result.error, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
+  return {
+    valid: result.valid,
+    error: result.error,
+    refreshed: !!result.refreshed,
+    latencyMs,
+    testedAt: new Date().toISOString(),
+    proxyMode: effectiveProxy.autoProxy
+      ? "auto"
+      : effectiveProxy.connectionProxyEnabled || effectiveProxy.vercelRelayUrl
+        ? "connection"
+        : "direct",
+  };
 }
