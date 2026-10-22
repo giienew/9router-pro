@@ -384,10 +384,17 @@ function InjectionForm({
   const [keyId, setKeyId] = useState(initialCoord.keyId || "");
   const [source, setSource] = useState("new"); // new | template
   const [templateId, setTemplateId] = useState("");
+  const [customized, setCustomized] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const template = templates.find((t) => t.id === templateId) || null;
   const fromTemplate = allowTemplateSource && source === "template" && template;
+
+  const submitEntry = (fields) =>
+    onSave(
+      { scope, model: model.trim(), keyId },
+      fromTemplate ? { ...fields, templateName: template.name } : fields
+    );
   // The editor always shows the entry that already lives at the chosen
   // coordinate — picking a target is also how you edit it.
   const currentEntry = entryAt ? entryAt({ scope, model: model.trim(), keyId }) : null;
@@ -478,8 +485,11 @@ function InjectionForm({
           {source === "template" && (
             <select
               value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:max-w-[280px]"
+              onChange={(e) => {
+                setTemplateId(e.target.value);
+                setCustomized(false);
+              }}
+              className="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:w-auto sm:flex-1 sm:max-w-[280px]"
             >
               <option value="">— choose a template —</option>
               {templates.map((t) => (
@@ -487,27 +497,77 @@ function InjectionForm({
               ))}
             </select>
           )}
-          {fromTemplate && (
-            <span className="text-xs text-text-muted">
-              Copied in — editing here doesn&apos;t change the template.
-            </span>
-          )}
         </div>
       )}
 
-      <InjectEditor
-        key={editorKey}
-        initial={editorInitial}
-        saving={saving}
-        onSave={(fields) =>
-          onSave(
-            { scope, model: model.trim(), keyId },
-            fromTemplate ? { ...fields, templateName: template.name } : fields
-          )
-        }
-        onClear={onClear}
-        clearLabel="Delete"
-      />
+      {allowTemplateSource && source === "template" && !template ? (
+        <p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-text-muted">
+          Choose a template above — its prompt is used exactly as saved.
+        </p>
+      ) : fromTemplate && !customized ? (
+        <div className="flex flex-col gap-3">
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <EntryBadge entry={template} />
+              <span className="text-xs text-text-muted">
+                ~{estimateTokens(entryText(template))} tokens
+                {template.mode !== "chat" ? ` · ${template.position}` : ""}
+              </span>
+            </div>
+            {template.mode === "chat" ? (
+              <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                {(template.turns || []).map((t, i) => (
+                  <p key={i} className="line-clamp-2 text-[13px] leading-relaxed text-text-muted">
+                    <span className="font-semibold text-text-main">{t.role === "user" ? "You" : "Bot"}:</span>{" "}
+                    {t.content}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-text-muted">
+                {template.content}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-text-muted">Used exactly as saved in the template.</span>
+            <div className="ml-auto flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCustomized(true)}>
+                Customize
+              </Button>
+              <Button
+                size="sm"
+                disabled={saving}
+                onClick={() =>
+                  submitEntry(
+                    template.mode === "chat"
+                      ? { mode: "chat", turns: template.turns, position: template.position, enabled: true }
+                      : { mode: "single", content: template.content, position: template.position, enabled: true }
+                  )
+                }
+              >
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {fromTemplate && (
+            <p className="text-xs text-text-muted">
+              Your customized copy — the template itself stays unchanged.
+            </p>
+          )}
+          <InjectEditor
+            key={editorKey}
+            initial={editorInitial}
+            saving={saving}
+            onSave={submitEntry}
+            onClear={onClear}
+            clearLabel="Delete"
+          />
+        </>
+      )}
       <ModelSelectModal
         isOpen={pickerOpen}
         onClose={() => setPickerOpen(false)}
