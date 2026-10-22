@@ -299,9 +299,7 @@ function ConfirmButton({ label, icon, onConfirm }) {
 function targetSummary(preset) {
   const parts = [];
   if (preset.targets?.global) parts.push("Global");
-  const m = preset.targets?.models?.length || 0;
   const k = preset.targets?.keys?.length || 0;
-  if (m) parts.push(`${m} model${m === 1 ? "" : "s"}`);
   if (k) parts.push(`${k} key${k === 1 ? "" : "s"}`);
   return parts.length ? parts.join(" · ") : "No targets yet";
 }
@@ -348,21 +346,18 @@ function PresetCard({ preset, onToggle, onCopy, onEdit, onDuplicate, onDelete })
   );
 }
 
-// Preset editor: name + auto-loaded target checklists + the shared
-// InjectEditor for the prompt itself (its Save saves the whole preset).
-function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, saving }) {
+// Preset editor: a saved prompt for the USER scope — name + targets
+// (global / API keys) + the shared InjectEditor for the prompt itself
+// (its Save saves the whole preset). Model prompts live in the direct
+// Model Injections section, not here.
+function PresetModal({ preset, keys, keyName, onClose, onSave, saving }) {
   const isNew = !preset?.id;
   const [name, setName] = useState(preset?.name || "");
   const [tGlobal, setTGlobal] = useState(!!preset?.targets?.global);
-  const [tModels, setTModels] = useState(preset?.targets?.models || []);
   const [tKeys, setTKeys] = useState(preset?.targets?.keys || []);
-  const [modelQuery, setModelQuery] = useState("");
 
   const toggleIn = (list, setList, v) =>
     setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  const visibleModels = modelOptions.filter(
-    (m) => !modelQuery.trim() || m.toLowerCase().includes(modelQuery.trim().toLowerCase())
-  );
 
   return (
     <Modal
@@ -394,51 +389,6 @@ function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, sav
               Global — every request
             </span>
             <Toggle checked={tGlobal} onChange={setTGlobal} aria-label="Target all requests" />
-          </div>
-
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">
-                Models · {tModels.length} selected
-              </span>
-              <span className="flex gap-2 text-[11px] font-medium">
-                <button type="button" onClick={() => setTModels(modelOptions)} className="text-primary hover:underline">
-                  Select all
-                </button>
-                <button type="button" onClick={() => setTModels([])} className="text-text-muted hover:underline">
-                  Clear
-                </button>
-              </span>
-            </div>
-            <input
-              value={modelQuery}
-              onChange={(e) => setModelQuery(e.target.value)}
-              placeholder="Search models…"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
-            />
-            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-border">
-              {visibleModels.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-text-muted">No models match.</p>
-              ) : (
-                visibleModels.map((m) => (
-                  <label
-                    key={m}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tModels.includes(m)}
-                      onChange={() => toggleIn(tModels, setTModels, m)}
-                      className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
-                    />
-                    <span className="min-w-0 truncate font-mono">{m}</span>
-                  </label>
-                ))
-              )}
-            </div>
-            <p className="mt-1.5 text-[11px] text-text-muted">
-              Any model or combo name works — the preset applies to every request that calls that name.
-            </p>
           </div>
 
           <div>
@@ -478,7 +428,7 @@ function PresetModal({ preset, keys, keyName, modelOptions, onClose, onSave, sav
                 id: preset?.id,
                 name: name.trim(),
                 ...fields,
-                targets: { global: tGlobal, models: tModels, keys: tKeys },
+                targets: { global: tGlobal, keys: tKeys },
               })
             }
           />
@@ -576,7 +526,6 @@ export default function PromptInjectionClient() {
         for (const c of combos) names.add(c.name);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
-      for (const p of inj.presets || []) for (const m of p.targets?.models || []) names.add(m);
       setModelOptions([...names].sort());
     } catch {
       showToast("Failed to load prompt injections", "error");
@@ -811,14 +760,14 @@ export default function PromptInjectionClient() {
         <>
           <section className="flex flex-col gap-3">
             <SectionTitle icon="bookmarks" title="Presets">
-              Write once, target anywhere. A preset fires ahead of the direct entry in its
-              scope — and only once per request, at the first scope it matches.
+              Your saved prompts — fire globally or per API key, ahead of that
+              scope&apos;s direct entry.
             </SectionTitle>
             {presets.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
                 <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
                 <p className="text-sm text-text-muted">
-                  No presets yet — create one to reuse the same prompt across models and keys.
+                  No presets yet — create one to reuse the same prompt across your API keys.
                 </p>
                 <Button size="sm" icon="add" onClick={() => setEditingPreset(null)}>
                   Create preset
@@ -1140,7 +1089,6 @@ export default function PromptInjectionClient() {
           preset={editingPreset}
           keys={keys}
           keyName={keyName}
-          modelOptions={modelOptions}
           onClose={() => setEditingPreset(undefined)}
           onSave={savePreset}
           saving={saving === "preset"}

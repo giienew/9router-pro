@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { injectSystemPrompt, injectChatTurns } from "open-sse/rtk/systemInject.js";
 import { FORMATS } from "open-sse/translator/formats.js";
-import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
+import { selectPromptInjections, cleanPreset } from "@/lib/db/repos/promptInjectRepo.js";
 
 describe("injectSystemPrompt — OpenAI chat", () => {
   it("append goes after existing system text", () => {
@@ -178,16 +178,15 @@ describe("selectPromptInjections", () => {
         byKey: { k1: single("U") },
         byModel: { mycombo: single("M") },
         presets: [
-          preset("PG", "PG", { global: true, models: [], keys: [] }),
-          preset("PU", "PU", { global: false, models: [], keys: ["k1"] }),
-          preset("PM", "PM", { global: false, models: ["mycombo"], keys: [] }),
+          preset("PG", "PG", { global: true, keys: [] }),
+          preset("PU", "PU", { global: false, keys: ["k1"] }),
         ],
       },
       { apiKeyId: "k1", requestedModel: "mycombo" }
     );
     assert.deepEqual(
       out.map((p) => p.name),
-      ["preset:PG", "global", "preset:PU", "user", "preset:PM", "mycombo"]
+      ["preset:PG", "global", "preset:PU", "user", "mycombo"]
     );
   });
 
@@ -204,21 +203,45 @@ describe("selectPromptInjections", () => {
     assert.deepEqual(out.map((p) => p.name), ["preset:P"]);
   });
 
-  it("presets skip when disabled, empty, or not targeted; model match uses any ctx name", () => {
+  it("presets skip when disabled, empty, or not targeted", () => {
     const out = selectPromptInjections(
       {
         global: null,
         byKey: {},
         byModel: {},
         presets: [
-          preset("OFF", "OFF", { global: true, models: [], keys: [] }, { enabled: false }),
-          preset("EMPTY", "  ", { global: true, models: [], keys: [] }),
-          preset("OTHER", "OTHER", { global: false, models: ["nope"], keys: [] }),
-          preset("BARE", "BARE", { global: false, models: ["mod"], keys: [] }),
+          preset("OFF", "OFF", { global: true, keys: [] }, { enabled: false }),
+          preset("EMPTY", "  ", { global: true, keys: [] }),
+          preset("OTHERKEY", "OTHERKEY", { global: false, keys: ["someone-else"] }),
         ],
       },
-      { requestedModel: "alias", resolvedModel: "prov/mod", bareModel: "mod" }
+      { apiKeyId: "k1", requestedModel: "alias" }
     );
-    assert.deepEqual(out.map((p) => p.name), ["preset:BARE"]);
+    assert.deepEqual(out.map((p) => p.name), []);
+  });
+
+  it("presets are user-scope only: model targets are stripped and never fire", () => {
+    const cleaned = cleanPreset({
+      id: "x1",
+      name: "Legacy",
+      mode: "single",
+      content: "L",
+      position: "prepend",
+      enabled: true,
+      targets: { global: false, models: ["mod"], keys: [] },
+    });
+    assert.deepEqual(cleaned.targets, { global: false, keys: [] });
+
+    const out = selectPromptInjections(
+      {
+        global: null,
+        byKey: {},
+        byModel: { mod: single("M") },
+        presets: [preset("LEGACY", "LEGACY", { global: false, models: ["mod"], keys: [] })],
+      },
+      { requestedModel: "mod" }
+    );
+    // Only the direct model entry fires — the preset stays silent.
+    assert.deepEqual(out.map((p) => p.name), ["mod"]);
   });
 });

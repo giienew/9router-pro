@@ -180,15 +180,15 @@ export async function deleteInjectUserPrompt(keyId) {
 }
 
 // --------------------------------------------------------------- presets
-// A preset is a reusable injection (same entry shape) with targets: it can
-// fire globally, for chosen API keys, and/or for chosen model names. One
-// preset per name is edited once and reused everywhere — the direct
-// per-target injections above keep working alongside it. In the stack a
-// preset fires at most ONCE per request, at the earliest scope it targets
-// (global → user → model), ahead of that scope's direct entry.
+// A preset is a reusable USER-scope injection (same entry shape) with
+// targets: it fires globally and/or for chosen API keys — never on
+// models (per-model prompts live in the direct model injections; one
+// concern, one place). In the stack a preset fires at most ONCE per
+// request, at the earliest scope it targets (global → user), ahead of
+// that scope's direct entry.
 //   scope "promptPresets": key "list" → [preset]
 //   preset = { id, name, mode, content, turns, position, enabled,
-//              targets: { global, models: [], keys: [] }, updatedAt }
+//              targets: { global, keys: [] }, updatedAt }
 
 function cleanTargetNames(raw) {
   if (!Array.isArray(raw)) return [];
@@ -216,7 +216,6 @@ export function cleanPreset(raw) {
     ...entry,
     targets: {
       global: !!t.global,
-      models: cleanTargetNames(t.models),
       keys: cleanTargetNames(t.keys),
     },
   };
@@ -264,7 +263,8 @@ export async function deletePromptPreset(id) {
 // --------------------------------------------------------------- resolver
 
 // Pure selection — exported for tests. Ordered: global → user → model.
-// Per scope, matching presets fire first, then the scope's direct entry.
+// Presets fire at the global/user scopes only, ahead of the scope's
+// direct entry; the model scope carries direct entries only.
 export function selectPromptInjections({ global, byKey, byModel, presets } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
@@ -292,9 +292,6 @@ export function selectPromptInjections({ global, byKey, byModel, presets } = {},
   const models = cleanMap(byModel);
   const names = [ctx.requestedModel, ctx.resolvedModel, ctx.bareModel]
     .filter((x) => typeof x === "string" && x);
-  for (const p of presetList) {
-    if (names.some((n) => p.targets.models.includes(n))) pushPreset(p);
-  }
   for (const name of names) {
     const entry = models[name];
     if (entry && entry.enabled) {
