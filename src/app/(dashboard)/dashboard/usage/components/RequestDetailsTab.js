@@ -111,6 +111,7 @@ export default function RequestDetailsTab() {
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [observabilityEnabled, setObservabilityEnabled] = useState(null);
   const [providerNameCache, setProviderNameCache] = useState(null);
   const [filters, setFilters] = useState({
     provider: "",
@@ -146,6 +147,9 @@ export default function RequestDetailsTab() {
       const data = await res.json();
 
       setDetails(data.details || []);
+      if (typeof data.observabilityEnabled === "boolean") {
+        setObservabilityEnabled(data.observabilityEnabled);
+      }
       setPagination(prev => ({ ...prev, ...data.pagination }));
     } catch (error) {
       console.error("Failed to fetch request details:", error);
@@ -266,7 +270,7 @@ export default function RequestDetailsTab() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -275,8 +279,24 @@ export default function RequestDetailsTab() {
                 </tr>
               ) : details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
+                    {observabilityEnabled === false ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <p>
+                          Request details are <span className="font-semibold text-text-main">off</span> — nothing is
+                          being recorded, so this tab stays empty.
+                        </p>
+                        <p>
+                          Turn on <span className="font-medium text-text-main">Observability</span> in{" "}
+                          <a href="/dashboard/profile" className="font-medium text-primary underline">
+                            Profile
+                          </a>{" "}
+                          and new requests will appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      "No request details match the current filters"
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -455,6 +475,12 @@ export default function RequestDetailsTab() {
               </div>
             )}
 
+            {selectedDetail.request?.redacted || selectedDetail.response?.redacted ? (
+              <div className="rounded-lg border border-black/5 p-4 text-sm text-text-muted dark:border-white/5">
+                Request and response payloads are redacted for privacy — only the
+                metadata above is available here.
+              </div>
+            ) : (
             <div className="space-y-4">
               <CollapsibleSection title="1. Client Request (Input)" defaultOpen={true} icon="input">
                 <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
@@ -502,6 +528,7 @@ export default function RequestDetailsTab() {
                 </pre>
               </CollapsibleSection>
             </div>
+            )}
           </div>
         )}
       </Drawer>

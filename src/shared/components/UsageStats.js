@@ -470,6 +470,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
 
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
+      {!loading && stats && (
+        <p className="-mt-3 text-xs text-text-muted">
+          Some providers don&apos;t report token usage — their requests are counted,
+          but token and cost totals undercount.
+        </p>
+      )}
 
       {/* Provider topology + Recent Requests */}
       {loading ? spinner : (

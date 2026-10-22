@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRequestDetails } from "@/lib/usageDb";
+import { getRequestDetails, isObservabilityEnabled } from "@/lib/usageDb";
 
 /**
  * GET /api/usage/request-details
@@ -63,7 +63,8 @@ export async function GET(request) {
       return redacted;
     });
 
-    return NextResponse.json({ ...result, details: redactedDetails });
+    const observabilityEnabled = await isObservabilityEnabled();
+    return NextResponse.json({ ...result, details: redactedDetails, observabilityEnabled });
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(

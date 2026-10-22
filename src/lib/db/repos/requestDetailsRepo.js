@@ -54,6 +54,11 @@ async function getObservabilityConfig() {
   return cachedConfig;
 }
 
+export async function isObservabilityEnabled() {
+  const config = await getObservabilityConfig();
+  return !!config.enabled;
+}
+
 let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;

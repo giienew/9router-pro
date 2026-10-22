@@ -109,6 +109,7 @@ export {
 // Request details
 export {
   saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders,
+  isObservabilityEnabled,
 } from "./repos/requestDetailsRepo.js";
 
 // Export/import full DB

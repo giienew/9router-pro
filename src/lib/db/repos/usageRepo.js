@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import { createHash } from "crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
@@ -9,6 +10,16 @@ function maskApiKey(key) {
   if (trimmed.length <= 12) return trimmed.charAt(0) + "***";
   // Keep the tail: keys sharing a machine-id prefix (team keys) must not collide.
   return trimmed.slice(0, 8) + "***" + trimmed.slice(-4);
+}
+
+// Output bucket key for byApiKey stats. The full API key must never leave the
+// server inside a stats payload, but a bare mask can still collide between
+// keys that share prefix and suffix — so the bucket is mask + a short hash of
+// the full key: unique per real key, reveals nothing about it.
+function apiKeyBucketKey(fullKey, model, provider) {
+  if (!fullKey || typeof fullKey !== "string") return "local-no-key";
+  const digest = createHash("sha256").update(fullKey.trim()).digest("hex").slice(0, 10);
+  return `${maskApiKey(fullKey) || "key"}#${digest}|${model}|${provider || "unknown"}`;
 }
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
@@ -227,7 +238,9 @@ export async function getActiveRequests() {
       };
     })
     .filter((e) => {
-      if (e.promptTokens === 0 && e.completionTokens === 0) return false;
+      // No token-count filter: providers that don't report usage (dahl, GLM,
+      // Pollinations…) still completed these requests — hiding them made
+      // Recent Requests lie. Ring entries are only written on completion.
       const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
       const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
       if (seen.has(key)) return false;
@@ -387,7 +400,8 @@ export async function getUsageStats(period = "all") {
       };
     })
     .filter((e) => {
-      if (e.promptTokens === 0 && e.completionTokens === 0) return false;
+      // Same as getActiveRequests: keep zero-token rows — those providers
+      // simply don't report token usage; the request still happened.
       const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
       const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
       if (seen.has(key)) return false;
@@ -513,15 +527,19 @@ export async function getUsageStats(period = "all") {
         const apiKeyMasked = maskApiKey(apiKeyVal);
         const keyName = keyInfo?.name || (apiKeyVal ? (apiKeyMasked || apiKeyVal.slice(0, 8) + "...") : "Local (No API Key)");
         const apiKeyKey = apiKeyMasked || "local-no-key";
-        if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
+        // Stored rollup keys embed the full API key — never echo them into
+        // the payload. Local (no-key) rollup keys contain no secret and keep
+        // their per-model composite form.
+        const outKey = apiKeyVal ? apiKeyBucketKey(apiKeyVal, rawModel, provider || "unknown") : akKey;
+        if (!stats.byApiKey[outKey]) {
+          stats.byApiKey[outKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
-        stats.byApiKey[akKey].requests += ak.requests || 0;
-        stats.byApiKey[akKey].promptTokens += ak.promptTokens || 0;
-        stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
-        stats.byApiKey[akKey].cachedTokens += ak.cachedTokens || 0;
-        stats.byApiKey[akKey].cost += ak.cost || 0;
-        if (dateKey > (stats.byApiKey[akKey].lastUsed || "")) stats.byApiKey[akKey].lastUsed = dateKey;
+        stats.byApiKey[outKey].requests += ak.requests || 0;
+        stats.byApiKey[outKey].promptTokens += ak.promptTokens || 0;
+        stats.byApiKey[outKey].completionTokens += ak.completionTokens || 0;
+        stats.byApiKey[outKey].cachedTokens += ak.cachedTokens || 0;
+        stats.byApiKey[outKey].cost += ak.cost || 0;
+        if (dateKey > (stats.byApiKey[outKey].lastUsed || "")) stats.byApiKey[outKey].lastUsed = dateKey;
       }
 
       for (const [epKey, ep] of Object.entries(day.byEndpoint || {})) {
@@ -566,8 +584,8 @@ export async function getUsageStats(period = "all") {
       }
 
       const apiKeyKey = (e.apiKey && typeof e.apiKey === "string")
-        ? `${e.apiKey}|${e.model}|${e.provider || "unknown"}`
-        : "local-no-key";
+        ? apiKeyBucketKey(e.apiKey, e.model, e.provider || "unknown")
+        : `local-no-key|${e.model}|${e.provider || "unknown"}`;
       if (stats.byApiKey[apiKeyKey] && new Date(ts) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = ts;
 
       const endpoint = e.endpoint || "Unknown";
@@ -639,9 +657,9 @@ export async function getUsageStats(period = "all") {
         const keyInfo = apiKeyMap[apiKeyVal];
         const apiKeyMasked = maskApiKey(apiKeyVal);
         const keyName = keyInfo?.name || apiKeyMasked || r.apiKey.slice(0, 8) + "...";
-        // Key by the FULL api key (same as the daily rollup + lastUsed overlay)
-        // — masking here collided all keys sharing a prefix into one bucket.
-        const akKey = `${r.apiKey}|${r.model}|${r.provider || "unknown"}`;
+        // Bucket by mask + hash of the full key (see apiKeyBucketKey): every
+        // real key keeps its own bucket, but the secret never enters the payload.
+        const akKey = apiKeyBucketKey(r.apiKey, r.model, r.provider || "unknown");
         if (!stats.byApiKey[akKey]) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
         }

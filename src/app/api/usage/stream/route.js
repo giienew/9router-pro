@@ -2,70 +2,66 @@ import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
+// The client merges only activeRequests / recentRequests / errorProvider /
+// pending from SSE messages, so "update" and "pending" events push just
+// those fields (built from getActiveRequests, no stats recompute). The full
+// stats object is sent once on connect and refreshed on a slow interval.
 export async function GET() {
   const encoder = new TextEncoder();
-  const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
+  const state = { closed: false, keepalive: null, refresh: null, cachedStats: null, cleanup: null };
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Full stats refresh (heavy) + immediate lightweight push
-      state.send = async () => {
+      const enqueue = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+      state.cleanup = () => {
+        if (state.closed) return;
+        state.closed = true;
+        statsEmitter.off("update", sendLight);
+        statsEmitter.off("pending", sendLight);
+        clearInterval(state.keepalive);
+        clearInterval(state.refresh);
+      };
+
+      const sendFull = async () => {
         if (state.closed) return;
         try {
-          // Push lightweight update immediately so UI reflects changes fast
-          if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
-          }
-          // Then do full recalc and update cache
-          const stats = await getUsageStats();
-          state.cachedStats = stats;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+          state.cachedStats = await getUsageStats();
+          enqueue(state.cachedStats);
         } catch {
-          state.closed = true;
-          statsEmitter.off("update", state.send);
-          statsEmitter.off("pending", state.sendPending);
-          clearInterval(state.keepalive);
+          state.cleanup();
         }
       };
 
-      // Lightweight push: only refresh activeRequests + recentRequests on pending changes
-      state.sendPending = async () => {
+      const sendLight = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
           const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+          enqueue({ activeRequests, recentRequests, errorProvider, pending: state.cachedStats.pending });
         } catch {
-          state.closed = true;
-          statsEmitter.off("update", state.send);
-          statsEmitter.off("pending", state.sendPending);
-          clearInterval(state.keepalive);
+          state.cleanup();
         }
       };
 
-      await state.send();
+      await sendFull();
 
-      statsEmitter.on("update", state.send);
-      statsEmitter.on("pending", state.sendPending);
+      statsEmitter.on("update", sendLight);
+      statsEmitter.on("pending", sendLight);
+
+      state.refresh = setInterval(sendFull, 60000);
 
       state.keepalive = setInterval(() => {
         if (state.closed) { clearInterval(state.keepalive); return; }
         try {
           controller.enqueue(encoder.encode(": ping\n\n"));
         } catch {
-          state.closed = true;
-          clearInterval(state.keepalive);
+          state.cleanup();
         }
       }, 25000);
     },
 
     cancel() {
-      state.closed = true;
-      statsEmitter.off("update", state.send);
-      statsEmitter.off("pending", state.sendPending);
-      clearInterval(state.keepalive);
+      state.cleanup?.();
     },
   });
 
