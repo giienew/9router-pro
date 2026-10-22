@@ -8,8 +8,19 @@ import { summarizeBackup, normalizeKeep } from "@/lib/backup/summary.js";
 export async function GET() {
   try {
     const [payload, settings] = await Promise.all([exportDb(), getSettings()]);
+    // Per-provider connection counts for the selective-backup checklist.
+    const nodeNames = new Map((payload.providerNodes || []).map((n) => [n.id, n.name]));
+    const byProvider = new Map();
+    for (const c of payload.providerConnections || []) {
+      byProvider.set(c.provider, (byProvider.get(c.provider) || 0) + 1);
+    }
+    const providers = [...byProvider.entries()]
+      .map(([id, connections]) => ({ id, name: nodeNames.get(id) || null, connections }))
+      .sort((a, b) => b.connections - a.connections)
+      .slice(0, 100);
     return NextResponse.json({
       summary: summarizeBackup(payload),
+      providers,
       lastBackupAt: settings.lastBackupAt || null,
       autoBackupEnabled: settings.autoBackupEnabled !== false,
       autoBackupKeep: normalizeKeep(settings.autoBackupKeep),

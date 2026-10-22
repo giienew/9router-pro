@@ -9,6 +9,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
+import { BACKUP_GROUPS, BACKUP_GROUP_IDS, summarizeBackup } from "@/lib/backup/summary.js";
 
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return "en";
@@ -30,6 +31,19 @@ function formatDateTime(iso) {
   if (!iso) return "never";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "never" : d.toLocaleString();
+}
+
+// Headline count per backup group, for the section checklists.
+function groupCount(counts, id) {
+  if (!counts) return null;
+  switch (id) {
+    case "connections": return counts.connections;
+    case "apiKeys": return counts.apiKeys;
+    case "combos": return counts.combos;
+    case "proxyPools": return counts.proxyPools;
+    case "prompts": return counts.injections;
+    default: return null;
+  }
 }
 
 // Count grid shared by the Backup card (current data) and the import
@@ -73,6 +87,9 @@ export default function ProfilePage() {
   const pendingSnapshotRef = useRef(null);
   const [backupInfo, setBackupInfo] = useState(null);
   const [importPreview, setImportPreview] = useState(null);
+  const [backupSections, setBackupSections] = useState(BACKUP_GROUP_IDS);
+  const [backupProvidersSel, setBackupProvidersSel] = useState(null); // null = all providers
+  const [previewSections, setPreviewSections] = useState([]);
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
     oidcIssuerUrl: "",
@@ -794,34 +811,82 @@ export default function ProfilePage() {
     }
   };
 
-  const runSnapshotRestore = async (password) => {
+  // Restore step 1: fetch the snapshot and preview it (with section
+  // choices) — nothing is replaced until the preview is confirmed.
+  const previewSnapshotRestore = async (password) => {
     const id = pendingSnapshotRef.current;
     if (!id) return;
     setDbLoading(true);
     try {
       const res = await fetch(`/api/settings/backup/${encodeURIComponent(id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        headers: { "x-9r-password": password },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to restore snapshot");
-      await reloadSettings();
-      await loadBackupInfo();
-      setDbStatus({ type: "success", message: "Snapshot restored successfully" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "Failed to read snapshot");
+      const summary = summarizeBackup(payload);
+      setPreviewSections(summary.sections || []);
+      setImportPreview({ kind: "restore", summary, snapshotId: id, password });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Failed to restore snapshot" });
+      setDbStatus({ type: "error", message: err.message || "Failed to read snapshot" });
     } finally {
       pendingSnapshotRef.current = null;
       setDbLoading(false);
     }
   };
 
+  // Restore step 2: the preview was confirmed — restore the chosen sections.
+  const confirmRestoreSnapshot = async () => {
+    const stash = importPreview;
+    if (!stash?.snapshotId) return;
+    setDbLoading(true);
+    try {
+      const res = await fetch(`/api/settings/backup/${encodeURIComponent(stash.snapshotId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: stash.password, applySections: previewSections }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to restore snapshot");
+      await reloadSettings();
+      await loadBackupInfo();
+      setImportPreview(null);
+      setDbStatus({ type: "success", message: "Snapshot restored successfully" });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Failed to restore snapshot" });
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  const toggleBackupSection = (id) => {
+    setBackupSections((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleBackupProvider = (id) => {
+    const all = backupInfo?.providers?.map((p) => p.id) || [];
+    const current = backupProvidersSel === null ? all : backupProvidersSel;
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    setBackupProvidersSel(next.length === all.length ? null : next);
+  };
+
   const handleExportDatabase = async (password) => {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings/database", {
+      const params = new URLSearchParams();
+      if (backupSections.length < BACKUP_GROUP_IDS.length) {
+        params.set("sections", backupSections.join(","));
+      }
+      if (
+        backupSections.includes("connections") &&
+        backupProvidersSel !== null &&
+        backupInfo?.providers?.length &&
+        backupProvidersSel.length < backupInfo.providers.length
+      ) {
+        params.set("providers", backupProvidersSel.join(","));
+      }
+      const qs = params.toString();
+      const res = await fetch(qs ? `/api/settings/database?${qs}` : "/api/settings/database", {
         headers: { "x-9r-password": password },
       });
       if (!res.ok) {
@@ -880,7 +945,8 @@ export default function ProfilePage() {
       if (!res.ok) {
         throw new Error(data.error || "Failed to read backup file");
       }
-      setImportPreview({ summary: data.summary, payload, password });
+      setPreviewSections(data.summary?.sections || []);
+      setImportPreview({ kind: "import", summary: data.summary, payload, password });
     } catch (err) {
       setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
       pendingImportRef.current = null;
@@ -898,7 +964,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/database", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...stash.payload, password: stash.password }),
+        body: JSON.stringify({ ...stash.payload, password: stash.password, applySections: previewSections }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -925,7 +991,13 @@ export default function ProfilePage() {
     if (mode === "export") await handleExportDatabase(password);
     else if (mode === "import") await previewImportDatabase(password);
     else if (mode === "snapshot-download") await runSnapshotDownload(password);
-    else if (mode === "restore") await runSnapshotRestore(password);
+    else if (mode === "restore") await previewSnapshotRestore(password);
+  };
+
+  // The preview modal's confirm runs the import or the snapshot restore.
+  const handlePreviewConfirm = () => {
+    if (importPreview?.kind === "restore") return confirmRestoreSnapshot();
+    return confirmImportDatabase();
   };
 
   const observabilityEnabled = settings.enableObservability === true;
@@ -1016,12 +1088,55 @@ export default function ProfilePage() {
                 Last backup: {backupInfo?.lastBackupAt ? formatDateTime(backupInfo.lastBackupAt) : "never"}
               </p>
             </div>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-text-muted">Include in download</p>
+              {BACKUP_GROUPS.map((g) => (
+                <label key={g.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-bg px-3 py-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-indigo-500"
+                    checked={backupSections.includes(g.id)}
+                    onChange={() => toggleBackupSection(g.id)}
+                  />
+                  <span className="flex-1 text-sm">{g.label}</span>
+                  {groupCount(backupInfo?.summary?.counts, g.id) !== null && (
+                    <span className="text-xs text-text-muted">{groupCount(backupInfo?.summary?.counts, g.id)}</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            {backupSections.includes("connections") && (backupInfo?.providers?.length || 0) > 1 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-text-muted">
+                  Providers <span className="font-normal">(connections only)</span>
+                </p>
+                <div className="flex max-h-44 flex-col gap-1.5 overflow-y-auto pr-1">
+                  {backupInfo.providers.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-bg px-3 py-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="size-4 shrink-0 accent-indigo-500"
+                        checked={backupProvidersSel === null || backupProvidersSel.includes(p.id)}
+                        onChange={() => toggleBackupProvider(p.id)}
+                      />
+                      <span className="flex-1 truncate text-sm">{p.name || p.id}</span>
+                      <span className="text-xs text-text-muted">{p.connections}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  A provider-scoped download restores scoped too: only those providers&apos; connections are replaced.
+                  Snapshots (Back up now, auto-backup) always contain everything.
+                </p>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="secondary"
                 icon="download"
                 onClick={() => setDbAuth({ open: true, mode: "export", password: "" })}
                 loading={dbLoading}
+                disabled={backupSections.length === 0}
                 className="w-full sm:w-auto"
               >
                 Download Backup
@@ -1949,7 +2064,7 @@ export default function ProfilePage() {
           {dbAuth.mode === "export" && "Enter your current password to export the database."}
           {dbAuth.mode === "import" && "Enter your current password to inspect the backup file. Nothing is imported until you confirm the preview."}
           {dbAuth.mode === "snapshot-download" && "Enter your current password to download this snapshot."}
-          {dbAuth.mode === "restore" && "Enter your current password to restore this snapshot. Your current data will be replaced — a safety backup is taken first."}
+          {dbAuth.mode === "restore" && "Enter your current password to inspect the snapshot. Nothing is restored until you confirm the preview."}
         </p>
         <Input
           type="password"
@@ -1964,7 +2079,7 @@ export default function ProfilePage() {
       <Modal
         isOpen={Boolean(importPreview)}
         onClose={() => { setImportPreview(null); pendingImportRef.current = null; }}
-        title="Import this backup?"
+        title={importPreview?.kind === "restore" ? "Restore this snapshot?" : "Import this backup?"}
         size="sm"
         footer={
           <>
@@ -1973,11 +2088,11 @@ export default function ProfilePage() {
             </Button>
             <Button
               variant="primary"
-              onClick={confirmImportDatabase}
+              onClick={handlePreviewConfirm}
               loading={dbLoading}
-              disabled={!importPreview?.summary?.valid}
+              disabled={!importPreview?.summary?.valid || previewSections.length === 0}
             >
-              Import backup
+              {importPreview?.kind === "restore" ? "Restore" : "Import backup"}
             </Button>
           </>
         }
@@ -1985,10 +2100,36 @@ export default function ProfilePage() {
         {importPreview?.summary?.valid ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-text-muted">
-              This backup will replace all current data. A safety backup of the current database is
-              taken automatically before the import.
+              Only the checked sections below will be replaced — everything else stays as it is.
+              A safety backup of the current database is taken automatically first.
             </p>
             <BackupCounts counts={importPreview.summary.counts} />
+            <div className="flex flex-col gap-1.5">
+              {BACKUP_GROUPS.filter((g) => importPreview.summary.sections?.includes(g.id)).map((g) => (
+                <label key={g.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-bg px-3 py-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-indigo-500"
+                    checked={previewSections.includes(g.id)}
+                    onChange={() =>
+                      setPreviewSections((prev) =>
+                        prev.includes(g.id) ? prev.filter((x) => x !== g.id) : [...prev, g.id]
+                      )
+                    }
+                  />
+                  <span className="flex-1 text-sm">{g.label}</span>
+                  {groupCount(importPreview.summary.counts, g.id) !== null && (
+                    <span className="text-xs text-text-muted">{groupCount(importPreview.summary.counts, g.id)}</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            {importPreview.summary.providers?.length > 0 && (
+              <p className="text-xs text-text-muted">
+                Connections in this file cover only: {importPreview.summary.providers.join(", ")}.
+                Restoring replaces those providers&apos; connections and leaves the rest untouched.
+              </p>
+            )}
             <p className="text-xs text-text-muted">
               Exported {formatDateTime(importPreview.summary.exportedAt)} · App version{" "}
               {importPreview.summary.appVersion || "unknown"}

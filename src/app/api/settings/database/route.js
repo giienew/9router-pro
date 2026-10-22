@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
-import { summarizeBackup } from "@/lib/backup/summary.js";
+import { summarizeBackup, sanitizeSections, sanitizeProviders } from "@/lib/backup/summary.js";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const PASSWORD_HEADER = "x-9r-password";
@@ -17,9 +17,16 @@ export async function GET(request) {
     if (!isCliRequest(request) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
-    const payload = await exportDb();
-    // A manual download counts as the last backup for the Settings card.
-    try { await updateSettings({ lastBackupAt: new Date().toISOString() }); } catch {}
+    // Selective export: ?sections=combos,apiKeys and/or
+    // ?providers=dahl,codex limit what the file carries.
+    const params = request.nextUrl.searchParams;
+    const sections = sanitizeSections((params.get("sections") || "").split(",").filter(Boolean));
+    const providers = sanitizeProviders((params.get("providers") || "").split(",").filter(Boolean));
+    const payload = await exportDb({ sections, providers });
+    // Only a full download counts as the last backup for the Settings card.
+    if (!sections && !providers) {
+      try { await updateSettings({ lastBackupAt: new Date().toISOString() }); } catch {}
+    }
     return NextResponse.json(payload);
   } catch (error) {
     console.log("Error exporting database:", error);
@@ -39,11 +46,11 @@ export async function POST(request) {
       }
       return NextResponse.json({ summary: summarizeBackup(payload) });
     }
-    const { password, ...payload } = body;
+    const { password, applySections, ...payload } = body;
     if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
-    await importDb(payload);
+    await importDb(payload, { sections: applySections });
 
     // Ensure proxy settings take effect immediately after a DB import.
     try {

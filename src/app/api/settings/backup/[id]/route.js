@@ -29,7 +29,7 @@ export async function GET(request, { params }) {
 // takes its own pre-import safety backup, so a restore is recoverable.
 export async function POST(request, { params }) {
   try {
-    const { password } = await request.json().catch(() => ({}));
+    const { password, applySections } = await request.json().catch(() => ({}));
     if (!(await verifyDashboardPassword(password))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
@@ -38,7 +38,7 @@ export async function POST(request, { params }) {
     if (!found) {
       return NextResponse.json({ error: "Snapshot not found" }, { status: 404 });
     }
-    await importDb(found.payload);
+    await importDb(found.payload, { sections: applySections });
     try {
       const settings = await getSettings();
       applyOutboundProxyEnv(settings);

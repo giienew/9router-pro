@@ -1,5 +1,9 @@
 // 9Router Pro — backup summary + retention helpers (pure).
 import {
+  payloadSections,
+  sanitizeSections,
+  sanitizeProviders,
+  BACKUP_GROUP_IDS,
   isBackupPayload,
   summarizeBackup,
   normalizeKeep,
@@ -100,5 +104,63 @@ describe("pruneSnapshotList", () => {
     const { keep, remove } = pruneSnapshotList([mk(1)], 7);
     expect(keep.length).toBe(1);
     expect(remove.length).toBe(0);
+  });
+});
+
+describe("payloadSections", () => {
+  it("returns all groups for a legacy full backup (no declaration)", () => {
+    expect(payloadSections({ format: "9router-backup" })).toEqual(BACKUP_GROUP_IDS);
+  });
+  it("returns the declared subset, dropping unknown ids and dupes", () => {
+    expect(payloadSections({ sections: ["combos", "nope", "combos", "apiKeys"] })).toEqual(["combos", "apiKeys"]);
+  });
+  it("falls back to all groups when the declaration is unusable", () => {
+    expect(payloadSections({ sections: ["nope"] })).toEqual(BACKUP_GROUP_IDS);
+    expect(payloadSections({ sections: "combos" })).toEqual(BACKUP_GROUP_IDS);
+    expect(payloadSections(null)).toEqual(BACKUP_GROUP_IDS);
+  });
+});
+
+describe("sanitizeSections", () => {
+  it("keeps valid unique ids", () => {
+    expect(sanitizeSections(["combos", "combos", "settings"])).toEqual(["combos", "settings"]);
+  });
+  it("returns null for empty or unusable input (null means all)", () => {
+    expect(sanitizeSections([])).toBe(null);
+    expect(sanitizeSections(["nope"])).toBe(null);
+    expect(sanitizeSections(undefined)).toBe(null);
+  });
+});
+
+describe("sanitizeProviders", () => {
+  it("trims, dedupes and drops empties", () => {
+    expect(sanitizeProviders([" dahl ", "dahl", "", "codex"])).toEqual(["dahl", "codex"]);
+  });
+  it("returns null for unusable input", () => {
+    expect(sanitizeProviders([])).toBe(null);
+    expect(sanitizeProviders("dahl")).toBe(null);
+    expect(sanitizeProviders([42, null])).toBe(null);
+  });
+});
+
+describe("summarizeBackup selective declarations", () => {
+  it("exposes sections and providers, and flags provider-scoped files partial", () => {
+    const s = summarizeBackup({
+      format: "9router-backup",
+      providerConnections: [{ provider: "dahl" }],
+      providers: ["dahl"],
+    });
+    expect(s.valid).toBe(true);
+    expect(s.providers).toEqual(["dahl"]);
+    expect(s.partial).toBe(true);
+    expect(s.sections).toEqual(BACKUP_GROUP_IDS);
+  });
+  it("flags a section subset partial and a full file not partial", () => {
+    const sub = summarizeBackup({ format: "9router-backup", sections: ["combos"] });
+    expect(sub.sections).toEqual(["combos"]);
+    expect(sub.partial).toBe(true);
+    const full = summarizeBackup({ format: "9router-backup", providerConnections: [] });
+    expect(full.partial).toBe(false);
+    expect(full.providers).toBe(null);
   });
 });

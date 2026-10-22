@@ -5,6 +5,56 @@
 
 export const DEFAULT_KEEP = 7;
 
+// Selectable backup sections. A backup file declares which groups it
+// carries (payload.sections; older full backups declare nothing and are
+// treated as carrying all of them), and an import/restore can apply any
+// subset of what the file carries — the rest of the database is left
+// untouched. Auto-backup snapshots are always full.
+export const BACKUP_GROUPS = [
+  { id: "connections", label: "Providers & connections" },
+  { id: "apiKeys", label: "API keys" },
+  { id: "combos", label: "Combos" },
+  { id: "proxyPools", label: "Proxy pools" },
+  { id: "prompts", label: "Prompt Injection" },
+  { id: "settings", label: "Settings" },
+];
+export const BACKUP_GROUP_IDS = BACKUP_GROUPS.map((g) => g.id);
+
+// The groups a payload carries: its declared list when present and
+// usable, otherwise all of them (legacy full backups).
+export function payloadSections(payload) {
+  if (Array.isArray(payload?.sections)) {
+    const valid = payload.sections.filter((s) => BACKUP_GROUP_IDS.includes(s));
+    if (valid.length) return [...new Set(valid)];
+  }
+  return [...BACKUP_GROUP_IDS];
+}
+
+// Sanitize a user-supplied section selection: valid unique group ids, or
+// null when nothing usable was given (null means "all").
+export function sanitizeSections(input) {
+  if (!Array.isArray(input)) return null;
+  const valid = [...new Set(input.filter((s) => BACKUP_GROUP_IDS.includes(s)))];
+  return valid.length ? valid : null;
+}
+
+// Sanitize a provider filter (provider ids whose connections a backup
+// carries). A file that declares providers restores connections scoped
+// to exactly those providers — every other provider's connections are
+// left untouched. null means "no filter" (all providers).
+export function sanitizeProviders(input) {
+  if (!Array.isArray(input)) return null;
+  const valid = [
+    ...new Set(
+      input
+        .filter((s) => typeof s === "string")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && s.length <= 200)
+    ),
+  ].slice(0, 200);
+  return valid.length ? valid : null;
+}
+
 export function isBackupPayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
   if (payload.format === "9router-backup") return true;
@@ -54,11 +104,16 @@ const arrLen = (v) => (Array.isArray(v) ? v.length : 0);
 export function summarizeBackup(payload) {
   const valid = isBackupPayload(payload);
   const p = valid ? payload : {};
+  const sections = valid ? payloadSections(p) : [];
+  const providers = valid ? sanitizeProviders(p.providers) : null;
   return {
     valid,
     format: typeof p.format === "string" ? p.format : null,
     appVersion: typeof p.appVersion === "string" ? p.appVersion : null,
     exportedAt: typeof p.exportedAt === "string" ? p.exportedAt : null,
+    sections,
+    providers,
+    partial: valid && (sections.length < BACKUP_GROUP_IDS.length || providers !== null),
     counts: {
       connections: arrLen(p.providerConnections),
       providerNodes: arrLen(p.providerNodes),
