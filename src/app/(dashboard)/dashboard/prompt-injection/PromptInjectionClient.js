@@ -419,6 +419,7 @@ function InjectionForm({
   comboNames,
   routedModelNames,
   combos,
+  namePicker = true,
   allowTemplateSource,
   saving,
   onSave,
@@ -550,9 +551,11 @@ function InjectionForm({
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
-            <button type="button" onClick={() => setPickerOpen(true)} className={SELECT_BTN_CLASS}>
-              Select
-            </button>
+            {namePicker && (
+              <button type="button" onClick={() => setPickerOpen(true)} className={SELECT_BTN_CLASS}>
+                Select
+              </button>
+            )}
           </div>
         )}
         <label className="order-2 flex min-w-[180px] flex-1 flex-col gap-1 sm:order-3 sm:max-w-[240px]">
@@ -1409,6 +1412,7 @@ export default function PromptInjectionClient() {
                           comboNames={comboNames}
                           routedModelNames={routedModelNames}
                           combos={combos}
+                          namePicker={false}
                           templates={templates}
                           allowTemplateSource={false}
                           saving={saving === id}
