@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { injectSystemPrompt, injectChatTurns } from "open-sse/rtk/systemInject.js";
 import { FORMATS } from "open-sse/translator/formats.js";
-import { selectPromptInjections, cleanPreset } from "@/lib/db/repos/promptInjectRepo.js";
+import { selectPromptInjections, cleanTemplate } from "@/lib/db/repos/promptInjectRepo.js";
 
 describe("injectSystemPrompt — OpenAI chat", () => {
   it("append goes after existing system text", () => {
@@ -117,6 +117,46 @@ describe("selectPromptInjections", () => {
     assert.ok(out.every(p => p.mode === "single"));
   });
 
+  it("model+key is the most specific scope and stacks last", () => {
+    const out = selectPromptInjections(
+      {
+        global: single("G"),
+        byKey: { k1: single("U") },
+        byModel: { mycombo: single("M") },
+        byKeyModel: { k1: { mycombo: single("KM") } },
+      },
+      { apiKeyId: "k1", requestedModel: "mycombo" }
+    );
+    assert.deepEqual(out.map(p => p.text), ["G", "U", "M", "KM"]);
+  });
+
+  it("model+key fires only when BOTH the key and the model match", () => {
+    const data = {
+      global: null,
+      byKey: {},
+      byModel: {},
+      byKeyModel: { k1: { mycombo: single("KM") } },
+    };
+    assert.deepEqual(
+      selectPromptInjections(data, { apiKeyId: "other", requestedModel: "mycombo" }),
+      []
+    );
+    assert.deepEqual(
+      selectPromptInjections(data, { apiKeyId: "k1", requestedModel: "othermodel" }),
+      []
+    );
+    assert.deepEqual(
+      selectPromptInjections(data, { requestedModel: "mycombo" }),
+      []
+    );
+    // Name fallbacks apply inside the scope too (bare name hit).
+    const out = selectPromptInjections(
+      { ...data, byKeyModel: { k1: { mod: single("KM") } } },
+      { apiKeyId: "k1", requestedModel: "alias", resolvedModel: "prov/mod", bareModel: "mod" }
+    );
+    assert.deepEqual(out.map(p => p.text), ["KM"]);
+  });
+
   it("chat entries carry turns, not text", () => {
     const turns = [{ role: "user", content: "a" }, { role: "assistant", content: "b" }];
     const out = selectPromptInjections(
@@ -161,87 +201,21 @@ describe("selectPromptInjections", () => {
     assert.equal(out[0].text, "RESOLVED");
   });
 
-  const preset = (name, content, targets, extra = {}) => ({
-    id: `id-${name}`,
-    name,
-    content,
-    position: "append",
-    enabled: true,
-    targets,
-    ...extra,
-  });
-
-  it("presets fire ahead of their scope's direct entry, scopes in order", () => {
-    const out = selectPromptInjections(
-      {
-        global: single("G"),
-        byKey: { k1: single("U") },
-        byModel: { mycombo: single("M") },
-        presets: [
-          preset("PG", "PG", { global: true, keys: [] }),
-          preset("PU", "PU", { global: false, keys: ["k1"] }),
-        ],
-      },
-      { apiKeyId: "k1", requestedModel: "mycombo" }
-    );
-    assert.deepEqual(
-      out.map((p) => p.name),
-      ["preset:PG", "global", "preset:PU", "user", "mycombo"]
-    );
-  });
-
-  it("a preset fires at most once, at its earliest matching scope", () => {
-    const out = selectPromptInjections(
-      {
-        global: null,
-        byKey: {},
-        byModel: {},
-        presets: [preset("P", "P", { global: true, models: ["m"], keys: ["k1"] })],
-      },
-      { apiKeyId: "k1", requestedModel: "m" }
-    );
-    assert.deepEqual(out.map((p) => p.name), ["preset:P"]);
-  });
-
-  it("presets skip when disabled, empty, or not targeted", () => {
-    const out = selectPromptInjections(
-      {
-        global: null,
-        byKey: {},
-        byModel: {},
-        presets: [
-          preset("OFF", "OFF", { global: true, keys: [] }, { enabled: false }),
-          preset("EMPTY", "  ", { global: true, keys: [] }),
-          preset("OTHERKEY", "OTHERKEY", { global: false, keys: ["someone-else"] }),
-        ],
-      },
-      { apiKeyId: "k1", requestedModel: "alias" }
-    );
-    assert.deepEqual(out.map((p) => p.name), []);
-  });
-
-  it("presets are user-scope only: model targets are stripped and never fire", () => {
-    const cleaned = cleanPreset({
+  it("templates are library-only: legacy targets are dropped, prompt survives", () => {
+    const cleaned = cleanTemplate({
       id: "x1",
       name: "Legacy",
       mode: "single",
       content: "L",
       position: "prepend",
       enabled: true,
-      targets: { global: false, models: ["mod"], keys: [] },
+      targets: { global: true, models: ["mod"], keys: ["k1"] },
     });
-    assert.deepEqual(cleaned.targets, { global: false, keys: [] });
-
-    const out = selectPromptInjections(
-      {
-        global: null,
-        byKey: {},
-        byModel: { mod: single("M") },
-        presets: [preset("LEGACY", "LEGACY", { global: false, models: ["mod"], keys: [] })],
-      },
-      { requestedModel: "mod" }
-    );
-    // Only the direct model entry fires — the preset stays silent.
-    assert.deepEqual(out.map((p) => p.name), ["mod"]);
+    assert.equal(cleaned.name, "Legacy");
+    assert.equal(cleaned.content, "L");
+    assert.equal("targets" in cleaned, false);
+    // A nameless or empty template is rejected.
+    assert.equal(cleanTemplate({ id: "x", name: " ", content: "L" }), null);
+    assert.equal(cleanTemplate({ id: "x", name: "N", content: "  " }), null);
   });
 });

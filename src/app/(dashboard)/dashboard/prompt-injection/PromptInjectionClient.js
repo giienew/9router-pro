@@ -6,7 +6,6 @@ import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
-import Toggle from "@/shared/components/Toggle";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { InjectionTester } from "./InjectExtras";
 
@@ -50,7 +49,7 @@ async function copyText(text) {
   }
 }
 
-// One editor for one target. Two modes: a single system prompt, or a
+// One editor for one prompt. Two modes: a single system prompt, or a
 // scripted chat whose turns are injected as fake history.
 function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   const [mode, setMode] = useState(initial?.mode || "single");
@@ -127,15 +126,13 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
       </div>
 
       {mode === "single" ? (
-        <>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={7}
-            placeholder="Write the system prompt for this target…"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
-          />
-        </>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={7}
+          placeholder="Write the system prompt…"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
+        />
       ) : (
         <>
           <div className="flex flex-col gap-2">
@@ -237,13 +234,16 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   );
 }
 
-function SectionTitle({ icon, title, children }) {
+function SectionTitle({ icon, title, children, action }) {
   return (
     <div className="mb-1">
-      <h2 className="flex items-center gap-2 text-base font-semibold uppercase tracking-wide">
-        <span className="material-symbols-outlined text-primary">{icon}</span>
-        {title}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 className="flex flex-1 items-center gap-2 text-base font-semibold uppercase tracking-wide">
+          <span className="material-symbols-outlined text-primary">{icon}</span>
+          {title}
+        </h2>
+        {action}
+      </div>
       {children && <p className="mt-1 text-sm text-text-muted">{children}</p>}
     </div>
   );
@@ -287,7 +287,7 @@ function ConfirmButton({ label, icon, onConfirm }) {
     <button
       type="button"
       onClick={() => setArmed(true)}
-      title={`Delete — tap twice to confirm`}
+      title="Delete — tap twice to confirm"
       className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
     >
       <span className="material-symbols-outlined text-[16px]">{icon}</span>
@@ -296,48 +296,28 @@ function ConfirmButton({ label, icon, onConfirm }) {
   );
 }
 
-function targetSummary(preset) {
-  const parts = [];
-  if (preset.targets?.global) parts.push("Global");
-  const k = preset.targets?.keys?.length || 0;
-  if (k) parts.push(`${k} key${k === 1 ? "" : "s"}`);
-  return parts.length ? parts.join(" · ") : "No targets yet";
-}
+// ------------------------------------------------------------ templates
 
-function PresetCard({ preset, onToggle, onCopy, onEdit, onDuplicate, onDelete }) {
+function TemplateCard({ template, onCopy, onEdit, onDelete }) {
   return (
-    <Card padding="sm" className={preset.enabled === false ? "opacity-60" : ""}>
+    <Card padding="sm">
       <div className="flex flex-col gap-2">
-        <div className="flex items-start gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <span className="material-symbols-outlined text-[18px] text-primary">bookmarks</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="break-words text-sm font-semibold">{preset.name}</p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
-              <EntryBadge entry={preset} />
-              <span>{targetSummary(preset)}</span>
-              <span>~{estimateTokens(entryText(preset))} tokens</span>
-            </div>
-          </div>
-          <Toggle
-            checked={preset.enabled !== false}
-            onChange={onToggle}
-            aria-label={`Enable preset ${preset.name}`}
-          />
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 break-words text-sm font-semibold">{template.name}</p>
+          <EntryBadge entry={template} />
         </div>
-        <div className="flex flex-wrap items-center gap-1 pl-11">
-          <button type="button" onClick={onCopy} title="Copy preset name" className={actionBtnClass}>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-xs text-text-muted">
+            ~{estimateTokens(entryText(template))} tokens
+          </span>
+          <span className="flex-1" />
+          <button type="button" onClick={onCopy} title="Copy prompt text" className={actionBtnClass}>
             <span className="material-symbols-outlined text-[16px]">content_copy</span>
             Copy
           </button>
-          <button type="button" onClick={onEdit} title="Edit preset" className={actionBtnClass}>
+          <button type="button" onClick={onEdit} title="Edit template" className={actionBtnClass}>
             <span className="material-symbols-outlined text-[16px]">edit</span>
             Edit
-          </button>
-          <button type="button" onClick={onDuplicate} title="Duplicate preset" className={actionBtnClass}>
-            <span className="material-symbols-outlined text-[16px]">library_add</span>
-            Duplicate
           </button>
           <ConfirmButton label="Delete" icon="delete" onConfirm={onDelete} />
         </div>
@@ -346,130 +326,202 @@ function PresetCard({ preset, onToggle, onCopy, onEdit, onDuplicate, onDelete })
   );
 }
 
-// Preset editor: a saved prompt for the USER scope — name + targets
-// (global / API keys) + the shared InjectEditor for the prompt itself
-// (its Save saves the whole preset). Model prompts live in the direct
-// Model Injections section, not here.
-function PresetModal({ preset, keys, keyName, onClose, onSave, saving }) {
-  const isNew = !preset?.id;
-  const [name, setName] = useState(preset?.name || "");
-  const [tGlobal, setTGlobal] = useState(!!preset?.targets?.global);
-  const [tKeys, setTKeys] = useState(preset?.targets?.keys || []);
-
-  const toggleIn = (list, setList, v) =>
-    setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-
+// Template editor: a name + the prompt itself. Nothing else — a template
+// is library content, not a live setting.
+function TemplateModal({ template, onClose, onSave, saving }) {
+  const isNew = !template?.id;
+  const [name, setName] = useState(template?.name || "");
   return (
     <Modal
       isOpen
       onClose={onClose}
-      title={isNew ? "New preset" : "Edit preset"}
+      title={isNew ? "New template" : "Edit template"}
       size="lg"
       bodyClassName="p-4 sm:p-6"
     >
       <div className="flex flex-col gap-4">
         <Input
-          label="Preset name"
+          label="Template name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Persona — Friendly"
         />
-
-        <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium">
-            Targets
-            <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-              loaded automatically
-            </span>
-          </p>
-
-          <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
-            <span className="flex items-center gap-2 text-sm">
-              <span className="material-symbols-outlined text-[18px] text-text-muted">public</span>
-              Global — every request
-            </span>
-            <Toggle checked={tGlobal} onChange={setTGlobal} aria-label="Target all requests" />
-          </div>
-
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-text-muted">
-              API keys · {tKeys.length} selected
-            </p>
-            <div className="max-h-36 overflow-y-auto rounded-lg border border-border">
-              {keys.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-text-muted">No API keys yet.</p>
-              ) : (
-                keys.map((k) => (
-                  <label
-                    key={k.id}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-2"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tKeys.includes(k.id)}
-                      onChange={() => toggleIn(tKeys, setTKeys, k.id)}
-                      className="h-4 w-4 shrink-0 accent-[var(--color-primary)]"
-                    />
-                    <span className="min-w-0 truncate">{keyName(k.id)}</span>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-border-subtle pt-4">
-          <InjectEditor
-            key={preset?.id || "new"}
-            initial={preset || null}
-            saving={saving}
-            onSave={(fields) =>
-              onSave({
-                id: preset?.id,
-                name: name.trim(),
-                ...fields,
-                targets: { global: tGlobal, keys: tKeys },
-              })
-            }
-          />
-        </div>
+        <InjectEditor
+          key={template?.id || "new"}
+          initial={template || null}
+          saving={saving}
+          onSave={(fields) => onSave({ id: template?.id, name: name.trim(), ...fields })}
+        />
       </div>
     </Modal>
   );
 }
 
-// Model Edit panel: the target name is a field here (not a separate
-// Rename action) — change it and Save renames the injection.
-function ModelEditPanel({ name, entry, saving, onSave, onClear }) {
-  const [draftName, setDraftName] = useState(name);
-  const trimmed = draftName.trim();
+// ------------------------------------------------------------ injections
+// One coordinate = one injection. A coordinate is a scope (global, or a
+// model name) optionally narrowed to one API key.
+
+function coordId(c) {
+  if (c.scope === "global") return c.keyId ? `key:${c.keyId}` : "global";
+  return c.keyId ? `km:${c.keyId}::${c.model}` : `model:${c.model}`;
+}
+
+// The shared create/edit form: target coordinate on top, the prompt
+// editor below. In create mode the prompt can start from a template.
+function InjectionForm({
+  initialCoord,
+  entryAt,
+  keys,
+  keyName,
+  templates,
+  allowTemplateSource,
+  saving,
+  onSave,
+  onClear,
+}) {
+  const [scope, setScope] = useState(initialCoord.scope);
+  const [model, setModel] = useState(initialCoord.model || "");
+  const [keyId, setKeyId] = useState(initialCoord.keyId || "");
+  const [source, setSource] = useState("new"); // new | template
+  const [templateId, setTemplateId] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const template = templates.find((t) => t.id === templateId) || null;
+  const fromTemplate = allowTemplateSource && source === "template" && template;
+  // The editor always shows the entry that already lives at the chosen
+  // coordinate — picking a target is also how you edit it.
+  const currentEntry = entryAt ? entryAt({ scope, model: model.trim(), keyId }) : null;
+  const editorInitial = fromTemplate
+    ? { ...template, enabled: true }
+    : currentEntry;
+  const editorKey = fromTemplate
+    ? `tpl-${template.id}`
+    : `coord-${coordId({ scope, model: model.trim(), keyId })}-${currentEntry?.updatedAt || "new"}`;
+
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <label className="mb-1 block text-xs font-medium text-text-muted">
-          Name — the name clients call
-        </label>
-        <input
-          value={draftName}
-          onChange={(e) => setDraftName(e.target.value)}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-        />
-        {trimmed && trimmed !== name && (
-          <p className="mt-1 text-[11px] text-text-muted">
-            Saving moves this injection to the new name — clients must call the new name to receive it.
-          </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-text-muted">Target</span>
+          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+            <button
+              type="button"
+              onClick={() => setScope("model")}
+              className={`px-3 py-2 font-medium transition-colors ${
+                scope === "model" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              }`}
+            >
+              Model
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope("global")}
+              className={`px-3 py-2 font-medium transition-colors ${
+                scope === "global" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              }`}
+            >
+              Global
+            </button>
+          </div>
+        </div>
+        {scope === "model" && (
+          <div className="flex min-w-0 flex-1 gap-2">
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="model or combo name — e.g. my-assistant"
+              list="pi-model-names"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+            />
+            <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
+              Browse
+            </Button>
+          </div>
         )}
+        <label className="flex min-w-[180px] flex-1 flex-col gap-1 sm:max-w-[240px]">
+          <span className="text-xs font-medium text-text-muted">API key (optional)</span>
+          <select
+            value={keyId}
+            onChange={(e) => setKeyId(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+          >
+            <option value="">All keys</option>
+            {keys.map((k) => (
+              <option key={k.id} value={k.id}>{keyName(k.id)}</option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      {allowTemplateSource && templates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+            <button
+              type="button"
+              onClick={() => setSource("new")}
+              className={`px-3 py-1.5 font-medium transition-colors ${
+                source === "new" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              }`}
+            >
+              New prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setSource("template")}
+              className={`px-3 py-1.5 font-medium transition-colors ${
+                source === "template" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              }`}
+            >
+              From template
+            </button>
+          </div>
+          {source === "template" && (
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:max-w-[280px]"
+            >
+              <option value="">— choose a template —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+          {fromTemplate && (
+            <span className="text-xs text-text-muted">
+              Copied in — editing here doesn&apos;t change the template.
+            </span>
+          )}
+        </div>
+      )}
+
       <InjectEditor
-        initial={entry}
+        key={editorKey}
+        initial={editorInitial}
         saving={saving}
-        onSave={(fields) => onSave(trimmed, fields)}
+        onSave={(fields) =>
+          onSave(
+            { scope, model: model.trim(), keyId },
+            fromTemplate ? { ...fields, templateName: template.name } : fields
+          )
+        }
         onClear={onClear}
         clearLabel="Delete"
+      />
+      <ModelSelectModal
+        isOpen={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(m) => {
+          setModel(m.value || m.id || "");
+          setPickerOpen(false);
+        }}
+        title="Select model"
       />
     </div>
   );
 }
+
+// ------------------------------------------------------------ page
 
 export default function PromptInjectionClient() {
   const [msg, setMsg] = useState(null);
@@ -483,16 +535,14 @@ export default function PromptInjectionClient() {
   const [global_, setGlobal] = useState(null);
   const [userPrompts, setUserPrompts] = useState({});
   const [prompts, setPrompts] = useState({});
-  const [presets, setPresets] = useState([]);
+  const [keyModelPrompts, setKeyModelPrompts] = useState({});
+  const [templates, setTemplates] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
-  const [selectedKeyId, setSelectedKeyId] = useState("");
-  const [newModel, setNewModel] = useState("");
-  const [showModelPicker, setShowModelPicker] = useState(false);
   const [saving, setSaving] = useState("");
-  const [editingPreset, setEditingPreset] = useState(undefined); // undefined=closed, null=new
-  const [globalOpen, setGlobalOpen] = useState(false);
-  const [editingModel, setEditingModel] = useState(null);
+  const [editingTemplate, setEditingTemplate] = useState(undefined); // undefined=closed, null=new
+  const [editingCoordId, setEditingCoordId] = useState(null);
+  const [createSaving, setCreateSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -506,7 +556,8 @@ export default function PromptInjectionClient() {
       setGlobal(inj.global || null);
       setUserPrompts(inj.userPrompts || {});
       setPrompts(inj.prompts || {});
-      setPresets(Array.isArray(inj.presets) ? inj.presets : []);
+      setKeyModelPrompts(inj.keyModelPrompts || {});
+      setTemplates(Array.isArray(inj.templates) ? inj.templates : []);
       const keyData = await keyRes.json();
       const list = Array.isArray(keyData?.keys) ? keyData.keys : Array.isArray(keyData) ? keyData : [];
       setKeys(list);
@@ -526,6 +577,9 @@ export default function PromptInjectionClient() {
         for (const c of combos) names.add(c.name);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
+      for (const models of Object.values(inj.keyModelPrompts || {})) {
+        for (const name of Object.keys(models || {})) names.add(name);
+      }
       setModelOptions([...names].sort());
     } catch {
       showToast("Failed to load prompt injections", "error");
@@ -570,52 +624,103 @@ export default function PromptInjectionClient() {
     }
   };
 
-  const savePreset = async (payload) => {
-    if (!payload.name) {
-      showToast("Preset name is required", "error");
-      return;
+  const keyName = useCallback(
+    (id) => keys.find((k) => k.id === id)?.name || id,
+    [keys]
+  );
+
+  // ---- coordinates ----
+  const entryAt = useCallback(
+    (coord) => {
+      if (!coord) return null;
+      if (coord.scope === "global") {
+        return coord.keyId ? userPrompts[coord.keyId] || null : global_;
+      }
+      if (!coord.model) return null;
+      return coord.keyId
+        ? keyModelPrompts[coord.keyId]?.[coord.model] || null
+        : prompts[coord.model] || null;
+    },
+    [global_, userPrompts, prompts, keyModelPrompts]
+  );
+
+  const putCoord = (coord, fields) => {
+    if (coord.scope === "global") {
+      if (coord.keyId) return { payload: { keyId: coord.keyId, ...fields } };
+      return { payload: { global: fields } };
     }
-    const ok = await put({ preset: payload }, "preset", "Preset saved");
-    if (ok) setEditingPreset(undefined);
+    if (coord.keyId) return { payload: { keyId: coord.keyId, model: coord.model, ...fields } };
+    return { payload: { model: coord.model, ...fields } };
   };
 
-  const copyName = async (name, okMsg = "Name copied — paste it into your Hermes config or a combo") => {
-    if (await copyText(name)) {
-      showToast(okMsg, "success");
-    } else {
-      showToast("Copy failed", "error");
+  const deleteCoord = async (coord) => {
+    if (coord.scope === "global" && !coord.keyId) {
+      await put({ global: {} }, "global", "Injection deleted");
+      return;
     }
+    if (coord.scope === "global") {
+      await del(`keyId=${encodeURIComponent(coord.keyId)}`, coordId(coord), "Injection deleted");
+      return;
+    }
+    if (coord.keyId) {
+      await del(
+        `keyId=${encodeURIComponent(coord.keyId)}&model=${encodeURIComponent(coord.model)}`,
+        coordId(coord),
+        "Injection deleted"
+      );
+      return;
+    }
+    await del(`model=${encodeURIComponent(coord.model)}`, coordId(coord), "Injection deleted");
   };
 
-  // Save from the model Edit panel: the name is a field in that panel, so
-  // a changed name renames the injection — save under the new name, then
-  // delete the old one. Refuses to overwrite a name that already has an
-  // injection.
-  const saveModelEntry = async (oldName, newName, entry) => {
-    if (!newName) {
-      showToast("Name can't be empty", "error");
+  // Save an injection at a coordinate. When editing and the coordinate
+  // changed, the entry moves: write the new coordinate, delete the old —
+  // and refuse to land on a coordinate that already has an injection.
+  const saveInjection = async (fromCoord, toCoord, fields) => {
+    if (toCoord.scope === "model" && !toCoord.model) {
+      showToast("Model name is required — or switch the target to Global", "error");
       return;
     }
-    if (newName !== oldName && prompts[newName]) {
-      showToast("That name already has an injection", "error");
+    const fromId = fromCoord ? coordId(fromCoord) : null;
+    const toId = coordId(toCoord);
+    const moving = fromCoord && fromId !== toId;
+    if (moving && entryAt(toCoord)) {
+      showToast("That target already has an injection — edit it instead", "error");
       return;
     }
-    if (newName === oldName) {
-      await put({ model: oldName, ...entry }, `model-${oldName}`, "Model injection saved");
+    if (!moving) {
+      const { payload } = putCoord(toCoord, fields);
+      const ok = await put(payload, toId, "Injection saved");
+      if (ok && fromCoord) setEditingCoordId(null);
       return;
     }
-    setSaving(`model-${oldName}`);
+    setSaving(fromId);
     try {
+      const { payload } = putCoord(toCoord, fields);
       const r1 = await fetch(API, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: newName, ...entry }),
+        body: JSON.stringify(payload),
       });
-      if (!r1.ok) throw new Error("rename failed");
-      const r2 = await fetch(`${API}?model=${encodeURIComponent(oldName)}`, { method: "DELETE" });
-      if (!r2.ok) throw new Error("rename failed");
-      showToast(`Renamed to ${newName} and saved`, "success");
-      setEditingModel(null);
+      if (!r1.ok) throw new Error("move failed");
+      // Delete the old coordinate directly (no toast of its own).
+      if (fromCoord.scope === "global" && !fromCoord.keyId) {
+        await fetch(API, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ global: {} }),
+        });
+      } else {
+        const qs =
+          fromCoord.scope === "global"
+            ? `keyId=${encodeURIComponent(fromCoord.keyId)}`
+            : fromCoord.keyId
+              ? `keyId=${encodeURIComponent(fromCoord.keyId)}&model=${encodeURIComponent(fromCoord.model)}`
+              : `model=${encodeURIComponent(fromCoord.model)}`;
+        await fetch(`${API}?${qs}`, { method: "DELETE" });
+      }
+      showToast("Injection saved", "success");
+      setEditingCoordId(null);
       await load();
     } catch {
       showToast("Failed to save", "error");
@@ -624,17 +729,53 @@ export default function PromptInjectionClient() {
     }
   };
 
-  const keyName = (id) => keys.find((k) => k.id === id)?.name || id;
-  const selectedKeyEntry = selectedKeyId ? userPrompts[selectedKeyId] || null : null;
-  const modelNames = Object.keys(prompts).sort();
+  // Unified rows in stack order: global → key → model → model+key.
+  const rows = [];
+  if (global_) rows.push({ coord: { scope: "global" }, entry: global_ });
+  for (const keyId of Object.keys(userPrompts).sort((a, b) => keyName(a).localeCompare(keyName(b)))) {
+    rows.push({ coord: { scope: "global", keyId }, entry: userPrompts[keyId] });
+  }
+  for (const model of Object.keys(prompts).sort()) {
+    rows.push({ coord: { scope: "model", model }, entry: prompts[model] });
+  }
+  for (const keyId of Object.keys(keyModelPrompts).sort((a, b) => keyName(a).localeCompare(keyName(b)))) {
+    for (const model of Object.keys(keyModelPrompts[keyId]).sort()) {
+      rows.push({ coord: { scope: "model", model, keyId }, entry: keyModelPrompts[keyId][model] });
+    }
+  }
 
-  // ---- Import / Export (Pro) ----
+  const saveTemplate = async (payload) => {
+    if (!payload.name) {
+      showToast("Template name is required", "error");
+      return;
+    }
+    const ok = await put({ template: payload }, "template", "Template saved");
+    if (ok) setEditingTemplate(undefined);
+  };
+
+  const copyName = async (name) => {
+    if (await copyText(name)) {
+      showToast("Name copied — paste it into your Hermes config or a combo", "success");
+    } else {
+      showToast("Copy failed", "error");
+    }
+  };
+
+  const copyPrompt = async (entry) => {
+    if (await copyText(entryText(entry))) {
+      showToast("Prompt copied", "success");
+    } else {
+      showToast("Copy failed", "error");
+    }
+  };
+
+  // ---- Import / Export ----
   const exportInjections = async () => {
     try {
       const res = await fetch(API);
       const data = await res.json();
       const blob = new Blob(
-        [JSON.stringify({ app: "9router-pro", kind: "prompt-injections", version: 1, ...data }, null, 2)],
+        [JSON.stringify({ app: "9router-pro", kind: "prompt-injections", version: 2, ...data }, null, 2)],
         { type: "application/json" }
       );
       const a = document.createElement("a");
@@ -652,47 +793,41 @@ export default function PromptInjectionClient() {
       const data = JSON.parse(await file.text());
       let applied = 0;
       let skipped = 0;
-      if (data.global) {
+      const send = async (payload) => {
         const res = await fetch(API, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ global: data.global }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) applied++; else skipped++;
-      }
-      for (const preset of data.presets || []) {
-        const res = await fetch(API, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ preset }),
-        });
-        if (res.ok) applied++; else skipped++;
+      };
+      if (data.global) await send({ global: data.global });
+      // Legacy files call templates "presets" — both are accepted.
+      for (const template of data.templates || data.presets || []) {
+        const { targets, ...rest } = template || {};
+        await send({ template: rest });
       }
       for (const [model, entry] of Object.entries(data.prompts || {})) {
-        const res = await fetch(API, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, ...entry }),
-        });
-        if (res.ok) applied++; else skipped++;
+        await send({ model, ...entry });
       }
       for (const [keyId, entry] of Object.entries(data.userPrompts || {})) {
         if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
-        const res = await fetch(API, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyId, ...entry }),
-        });
-        if (res.ok) applied++; else skipped++;
+        await send({ keyId, ...entry });
       }
-      showToast(`Imported ${applied} injection(s)${skipped ? `, ${skipped} skipped` : ""}`, "success");
+      for (const [keyId, models] of Object.entries(data.keyModelPrompts || {})) {
+        if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
+        for (const [model, entry] of Object.entries(models || {})) {
+          await send({ keyId, model, ...entry });
+        }
+      }
+      showToast(`Imported ${applied} item(s)${skipped ? `, ${skipped} skipped` : ""}`, "success");
       await load();
     } catch {
       showToast("Import failed — not a valid injections file", "error");
     }
   };
 
-  // ---- Stack Preview (Pro) — re-runs automatically on any change ----
+  // ---- Stack Preview — re-runs automatically on any change ----
   const [pvModel, setPvModel] = useState("");
   const [pvKeyId, setPvKeyId] = useState("");
   const [pvStack, setPvStack] = useState(null);
@@ -711,9 +846,7 @@ export default function PromptInjectionClient() {
     if (loading) return;
     const t = setTimeout(runPreview, 400);
     return () => clearTimeout(t);
-  }, [runPreview, loading, global_, userPrompts, prompts, presets]);
-
-  const globalEditorOpen = globalOpen || !global_;
+  }, [runPreview, loading, global_, userPrompts, prompts, keyModelPrompts]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
@@ -724,7 +857,7 @@ export default function PromptInjectionClient() {
             Prompt Injection
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Presets and direct injections — stacked global → user → model.
+            Templates, injections, and proof — stacked Global → Key → Model → Model + Key.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -743,9 +876,6 @@ export default function PromptInjectionClient() {
               }}
             />
           </label>
-          <Button size="sm" icon="add" onClick={() => setEditingPreset(null)}>
-            New Preset
-          </Button>
         </div>
       </div>
       {msg && (
@@ -754,42 +884,45 @@ export default function PromptInjectionClient() {
         </p>
       )}
 
+      <datalist id="pi-model-names">
+        {modelOptions.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
       {loading ? (
         <p className="text-sm text-text-muted">Loading…</p>
       ) : (
         <>
           <section className="flex flex-col gap-3">
-            <SectionTitle icon="bookmarks" title="Presets">
-              Your saved prompts — fire globally or per API key, ahead of that
-              scope&apos;s direct entry.
+            <SectionTitle
+              icon="bookmarks"
+              title="Templates"
+              action={
+                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)}>
+                  New template
+                </Button>
+              }
+            >
+              A library of reusable prompts. A template never fires on its own — use one
+              when creating an injection and its content is copied in.
             </SectionTitle>
-            {presets.length === 0 ? (
+            {templates.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
                 <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
                 <p className="text-sm text-text-muted">
-                  No presets yet — create one to reuse the same prompt across your API keys.
+                  No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
                 </p>
-                <Button size="sm" icon="add" onClick={() => setEditingPreset(null)}>
-                  Create preset
-                </Button>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                {presets.map((p) => (
-                  <PresetCard
-                    key={p.id}
-                    preset={p}
-                    onToggle={(v) => put({ preset: { ...p, enabled: v } }, `preset-${p.id}`, v ? "Preset enabled" : "Preset disabled")}
-                    onCopy={() => copyName(p.name, "Preset name copied")}
-                    onEdit={() => setEditingPreset(p)}
-                    onDuplicate={() =>
-                      put(
-                        { preset: { ...p, id: "", name: `${p.name} copy` } },
-                        `preset-${p.id}`,
-                        "Preset duplicated"
-                      )
-                    }
-                    onDelete={() => del(`presetId=${encodeURIComponent(p.id)}`, `preset-${p.id}`, "Preset deleted")}
+                {templates.map((t) => (
+                  <TemplateCard
+                    key={t.id}
+                    template={t}
+                    onCopy={() => copyPrompt(t)}
+                    onEdit={() => setEditingTemplate(t)}
+                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
                   />
                 ))}
               </div>
@@ -797,204 +930,111 @@ export default function PromptInjectionClient() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <SectionTitle icon="public" title="Global injection">
-              Applies to every chat request, whatever the model or key.
+            <SectionTitle icon="vaccines" title="Injections">
+              One prompt per target — a model name or Global, optionally for one API key only.
+              The name is what your client sends (Hermes model, <code className="font-mono text-primary">/model</code>, a combo name).
             </SectionTitle>
             <Card>
-              {global_ && !globalEditorOpen ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <EntryBadge entry={global_} />
-                  <span className="text-xs text-text-muted">
-                    ~{estimateTokens(entryText(global_))} tokens
-                  </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-muted">
-                    {entryText(global_).split("\n")[0]}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={() => setGlobalOpen(true)}>
-                    Edit
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  {global_ && (
-                    <div className="mb-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setGlobalOpen(false)}
-                        className="text-xs font-medium text-text-muted hover:text-text-main"
-                      >
-                        Collapse
-                      </button>
-                    </div>
-                  )}
-                  <InjectEditor
-                    key={`global-${global_?.updatedAt || "new"}`}
-                    initial={global_}
-                    saving={saving === "global"}
-                    onSave={(entry) => put({ global: entry }, "global", "Global injection saved")}
-                    onClear={global_ ? () => put({ global: {} }, "global", "Global injection cleared") : undefined}
-                    clearLabel="Clear"
-                  />
-                </>
-              )}
-            </Card>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <SectionTitle icon="key" title="User injections — per API key">
-              Whoever calls with that key gets this injection, on any model.
-            </SectionTitle>
-            <div className="flex flex-col gap-2">
-              {Object.keys(userPrompts).map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setSelectedKeyId(id)}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                    selectedKeyId === id ? "border-primary bg-primary/5" : "border-border hover:bg-surface-2"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px] text-text-muted">key</span>
-                  <span className="font-medium">{keyName(id)}</span>
-                  <span className="ml-auto"><EntryBadge entry={userPrompts[id]} /></span>
-                </button>
-              ))}
-              <label className="flex items-center gap-2 text-sm">
-                <span className="text-text-muted">Key:</span>
-                <select
-                  value={selectedKeyId}
-                  onChange={(e) => setSelectedKeyId(e.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2"
-                >
-                  <option value="">— select a key —</option>
-                  {keys.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name || k.id}{userPrompts[k.id] ? " · has injection" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {selectedKeyId && (
-              <Card>
-                <InjectEditor
-                  key={`key-${selectedKeyId}-${selectedKeyEntry?.updatedAt || "new"}`}
-                  initial={selectedKeyEntry}
-                  saving={saving === `key-${selectedKeyId}`}
-                  onSave={(entry) =>
-                    put({ keyId: selectedKeyId, ...entry }, `key-${selectedKeyId}`, "User injection saved")
+              <p className="mb-3 text-sm font-semibold">New injection</p>
+              <InjectionForm
+                initialCoord={{ scope: "model", model: "", keyId: "" }}
+                entryAt={entryAt}
+                keys={keys}
+                keyName={keyName}
+                templates={templates}
+                allowTemplateSource
+                saving={createSaving}
+                onSave={async (coord, fields) => {
+                  setCreateSaving(true);
+                  try {
+                    await saveInjection(null, coord, fields);
+                  } finally {
+                    setCreateSaving(false);
                   }
-                  onClear={
-                    selectedKeyEntry
-                      ? () => del(`keyId=${encodeURIComponent(selectedKeyId)}`, `key-${selectedKeyId}`, "User injection deleted")
-                      : undefined
-                  }
-                  clearLabel="Delete"
-                />
-              </Card>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <SectionTitle icon="smart_toy" title="Model injections">
-              Matched by the name the client calls, then the resolved provider/model.
-            </SectionTitle>
-            <p className="rounded-xl border border-border-subtle bg-surface-2 px-3.5 py-2.5 text-[13px] leading-relaxed text-text-muted">
-              The name is what your client sends — use it as the model in Hermes (or switch
-              with <code className="font-mono text-primary">/model</code>) and the injection
-              applies automatically.
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={newModel}
-                onChange={(e) => setNewModel(e.target.value)}
-                placeholder="model or combo name — e.g. my-assistant"
-                list="pi-model-names"
-                className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+                }}
               />
-              <datalist id="pi-model-names">
-                {modelOptions.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowModelPicker(true)}
-                className="shrink-0 whitespace-nowrap"
-              >
-                Browse models
-              </Button>
-            </div>
-            {newModel.trim() && !prompts[newModel.trim()] && (
-              <Card>
-                <p className="mb-3 font-mono text-[13px] text-primary">{newModel.trim()}</p>
-                <InjectEditor
-                  key={`newmodel-${newModel.trim()}`}
-                  initial={null}
-                  saving={saving === `model-${newModel.trim()}`}
-                  onSave={(entry) =>
-                    put({ model: newModel.trim(), ...entry }, `model-${newModel.trim()}`, "Model injection saved")
-                  }
-                />
-              </Card>
-            )}
+            </Card>
             <div className="flex flex-col gap-2">
-              {modelNames.map((name) => (
-                <Card key={name} padding="sm">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
-                      <EntryBadge entry={prompts[name]} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-xs text-text-muted">
-                        ~{estimateTokens(entryText(prompts[name]))} tokens
-                      </span>
-                      <span className="flex-1" />
-                      <button
-                        type="button"
-                        onClick={() => copyName(name)}
-                        title="Copy name"
-                        className={actionBtnClass}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                        Copy
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingModel(editingModel === name ? null : name)}
-                        title="Edit"
-                        className={actionBtnClass}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">
-                          {editingModel === name ? "expand_less" : "edit"}
+              {rows.map(({ coord, entry }) => {
+                const id = coordId(coord);
+                const isEditing = editingCoordId === id;
+                return (
+                  <Card key={id} padding="sm" className={entry.enabled === false ? "opacity-70" : ""}>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        {coord.scope === "global" ? (
+                          <p className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold">
+                            <span className="material-symbols-outlined text-[18px] text-text-muted">public</span>
+                            Global
+                          </p>
+                        ) : (
+                          <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{coord.model}</p>
+                        )}
+                        <EntryBadge entry={entry} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-xs text-text-muted">
+                          ~{estimateTokens(entryText(entry))} tokens
                         </span>
-                        Edit
-                      </button>
-                      <ConfirmButton
-                        label="Delete"
-                        icon="delete"
-                        onConfirm={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                      />
+                        <span className="flex items-center gap-1 text-xs text-text-muted">
+                          <span className="material-symbols-outlined text-[14px]">key</span>
+                          {coord.keyId ? keyName(coord.keyId) : "All keys"}
+                        </span>
+                        {entry.templateName && (
+                          <span className="text-xs text-text-muted">from template “{entry.templateName}”</span>
+                        )}
+                        <span className="flex-1" />
+                        {coord.scope === "model" && (
+                          <button
+                            type="button"
+                            onClick={() => copyName(coord.model)}
+                            title="Copy name"
+                            className={actionBtnClass}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                            Copy
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setEditingCoordId(isEditing ? null : id)}
+                          title="Edit"
+                          className={actionBtnClass}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">
+                            {isEditing ? "expand_less" : "edit"}
+                          </span>
+                          Edit
+                        </button>
+                        <ConfirmButton
+                          label="Delete"
+                          icon="delete"
+                          onConfirm={() => deleteCoord(coord)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                  {editingModel === name && (
-                    <div className="mt-3 border-t border-border-subtle pt-3">
-                      <ModelEditPanel
-                        key={`${name}-${prompts[name]?.updatedAt || ""}`}
-                        name={name}
-                        entry={prompts[name]}
-                        saving={saving === `model-${name}`}
-                        onSave={(newName, entry) => saveModelEntry(name, newName, entry)}
-                        onClear={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                      />
-                    </div>
-                  )}
-                </Card>
-              ))}
-              {modelNames.length === 0 && (
-                <p className="text-sm text-text-muted">No model injections yet — add one above.</p>
+                    {isEditing && (
+                      <div className="mt-3 border-t border-border-subtle pt-3">
+                        <InjectionForm
+                          key={`${id}-${entry.updatedAt || ""}`}
+                          initialCoord={coord}
+                          entryAt={entryAt}
+                          keys={keys}
+                          keyName={keyName}
+                          modelOptions={modelOptions}
+                          templates={templates}
+                          allowTemplateSource={false}
+                          saving={saving === id}
+                          onSave={(newCoord, fields) => saveInjection(coord, newCoord, fields)}
+                          onClear={() => deleteCoord(coord)}
+                        />
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+              {rows.length === 0 && (
+                <p className="text-sm text-text-muted">No injections yet — create one above.</p>
               )}
             </div>
           </section>
@@ -1018,50 +1058,34 @@ export default function PromptInjectionClient() {
                     onChange={(e) => setPvKeyId(e.target.value)}
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
                   >
-                    <option value="">— no key —</option>
+                    <option value="">No key</option>
                     {keys.map((k) => (
-                      <option key={k.id} value={k.id}>{k.name || k.id}</option>
+                      <option key={k.id} value={k.id}>{keyName(k.id)}</option>
                     ))}
                   </select>
                 </div>
-                {pvStack !== null && (
-                  pvStack.length === 0 ? (
-                    <p className="text-sm text-text-muted">No injections would fire for this combination.</p>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {pvStack.map((item, i) => (
-                        <div key={i} className="rounded-lg border border-border bg-surface p-3">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                              {i + 1}. {item.name}
-                            </span>
-                            <EntryBadge entry={item.mode === "chat" ? { mode: "chat", turns: item.turns } : { mode: "single" }} />
-                            {item.mode === "single" && (
-                              <span className="text-xs text-text-muted">
-                                {item.position} · ~{estimateTokens(item.text)} tokens
-                              </span>
-                            )}
-                          </div>
-                          {item.mode === "single" ? (
-                            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-text-muted">{item.text}</pre>
-                          ) : (
-                            <div className="flex flex-col gap-1.5">
-                              {item.turns.map((t, j) => (
-                                <div key={j} className={`max-w-[92%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
-                                  t.role === "user" ? "self-start bg-surface-3" : "self-end bg-primary/10"
-                                }`}>
-                                  <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                                    {t.role === "user" ? "You" : "Bot"}
-                                  </span>
-                                  <span className="whitespace-pre-wrap">{t.content}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                {pvStack === null ? (
+                  <p className="text-sm text-text-muted">…</p>
+                ) : pvStack.length === 0 ? (
+                  <p className="text-sm text-text-muted">This request receives no injection.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {pvStack.map((item, i) => (
+                      <div key={i} className="flex items-start gap-2 rounded-lg bg-surface-2 px-3 py-2">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">
+                          {i + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-semibold text-primary">{item.name}</p>
+                          <p className="line-clamp-2 text-xs text-text-muted">
+                            {item.mode === "chat"
+                              ? `${item.turns?.length || 0} scripted turns`
+                              : item.text}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </Card>
@@ -1069,7 +1093,7 @@ export default function PromptInjectionClient() {
 
           <section className="flex flex-col gap-3">
             <SectionTitle icon="science" title="Injection tester">
-              Same probe, two models — see what the injection changes.
+              Proof, not promises — fire a probe through the router and read the verdict.
             </SectionTitle>
             <Card>
               <InjectionTester />
@@ -1077,29 +1101,20 @@ export default function PromptInjectionClient() {
           </section>
 
           <p className="text-center text-xs text-text-muted">
-            Tip: one strong injection beats a pile of small ones.{" "}
-            <Link href="/dashboard/token-saver" className="underline">Token Saver</Link>{" "}
-            handles compression; this page handles persona.
+            Compression lives in <Link href="/dashboard/token-saver" className="underline">Token Saver</Link> —
+            this page handles persona.
           </p>
         </>
       )}
 
-      {editingPreset !== undefined && (
-        <PresetModal
-          preset={editingPreset}
-          keys={keys}
-          keyName={keyName}
-          onClose={() => setEditingPreset(undefined)}
-          onSave={savePreset}
-          saving={saving === "preset"}
+      {editingTemplate !== undefined && (
+        <TemplateModal
+          template={editingTemplate}
+          onClose={() => setEditingTemplate(undefined)}
+          onSave={saveTemplate}
+          saving={saving === "template"}
         />
       )}
-
-      <ModelSelectModal
-        isOpen={showModelPicker}
-        onClose={() => setShowModelPicker(false)}
-        onSelect={(m) => setNewModel(m.value || m.id || "")}
-      />
     </div>
   );
 }

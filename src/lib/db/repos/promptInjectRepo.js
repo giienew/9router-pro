@@ -1,22 +1,31 @@
-// Prompt Injection (9Router Pro) — injected context with a deliberately
-// flat shape but three scopes:
-//   · GLOBAL — one injection for the whole router
-//   · USER   — one injection per API key (whoever holds the key)
-//   · MODEL  — one injection per model (combo / alias / provider-model name)
-// Every target owns exactly ONE injection — no profile library, no binding
-// step. A request receives at most three, stacked global → user → model.
+// Prompt Injection (9Router Pro) — prompts attached to a request by
+// TARGET COORDINATE: a scope (global / model name) optionally narrowed
+// to one API key. Four combinations, one mental model — "who gets this
+// prompt?": everyone, one key, one model, or one model for one key.
+//   · GLOBAL     — scope "promptInjections" key "global"
+//   · KEY        — key "byKey":      { [apiKeyId]: entry }
+//   · MODEL      — key "prompts":    { [modelName]: entry }
+//   · MODEL+KEY  — key "byKeyModel": { [apiKeyId]: { [modelName]: entry } }
+// Every coordinate owns exactly ONE injection (saving replaces it). A
+// request stacks its matches least → most specific:
+//   global → key → model → model+key.
 //
 // Each injection is one of two modes:
 //   · "single" — one system prompt (position prepend/append into system)
 //   · "chat"   — a scripted conversation (user/assistant turns) inserted
 //                as fake history right after the system message(s), so the
 //                model treats it as something that already happened
-//
-//   scope "promptInjections": key "global"  → entry
-//                             key "byKey"   → { [apiKeyId]: entry }
-//                             key "prompts" → { [modelName]: entry }
 //   entry = { mode, content, turns: [{ role, content }], position,
-//             enabled, updatedAt }
+//             enabled, updatedAt, templateName? }
+//
+// TEMPLATES (scope "promptPresets", key "list") are a pure prompt
+// library: name + entry, no targets, never fired on their own. Using a
+// template COPIES its content into an injection (snapshot semantics, so
+// editing a template never silently changes live behavior) and stamps
+// the injection with templateName as provenance. (The KV scope keeps its
+// historical name so existing installs keep their data; entries written
+// by the earlier preset-with-targets build lose their targets on read —
+// the prompt itself is preserved.)
 //
 // Model lookup: the name the client called → resolved "provider/model" →
 // bare model name. First enabled, non-empty hit wins per scope.
@@ -27,13 +36,13 @@ import { makeKv } from "../helpers/kvStore.js";
 
 const kv = makeKv("promptInjections");
 const legacyKv = makeKv("soulPrompts");
-const presetsKv = makeKv("promptPresets");
+const templatesKv = makeKv("promptPresets");
 const GLOBAL_KEY = "global";
 const BYKEY_KEY = "byKey";
 const MODELS_KEY = "prompts";
-const PRESETS_KEY = "list";
+const BYKEYMODEL_KEY = "byKeyModel";
+const TEMPLATES_KEY = "list";
 const MAX_TURNS = 50;
-const MAX_PRESET_TARGETS = 300;
 
 function cleanTurns(raw) {
   if (!Array.isArray(raw)) return [];
@@ -54,6 +63,11 @@ function cleanEntry(raw) {
     position: raw.position === "prepend" ? "prepend" : "append",
     enabled: raw.enabled !== false,
     updatedAt: raw.updatedAt || null,
+    // Provenance only: set when the entry was copied from a template.
+    templateName:
+      typeof raw.templateName === "string" && raw.templateName.trim()
+        ? raw.templateName.trim().slice(0, 80)
+        : null,
   };
   if (raw.mode === "chat") {
     const turns = cleanTurns(raw.turns);
@@ -82,6 +96,7 @@ function stamp(input = {}) {
     turns: input.turns,
     position: input.position,
     enabled: input.enabled,
+    templateName: input.templateName,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -179,93 +194,114 @@ export async function deleteInjectUserPrompt(keyId) {
   return true;
 }
 
-// --------------------------------------------------------------- presets
-// A preset is a reusable USER-scope injection (same entry shape) with
-// targets: it fires globally and/or for chosen API keys — never on
-// models (per-model prompts live in the direct model injections; one
-// concern, one place). In the stack a preset fires at most ONCE per
-// request, at the earliest scope it targets (global → user), ahead of
-// that scope's direct entry.
-//   scope "promptPresets": key "list" → [preset]
-//   preset = { id, name, mode, content, turns, position, enabled,
-//              targets: { global, keys: [] }, updatedAt }
+// ------------------------------------------------------- per model + key
 
-function cleanTargetNames(raw) {
-  if (!Array.isArray(raw)) return [];
-  const out = [];
-  for (const x of raw) {
-    if (typeof x !== "string") continue;
-    const v = x.trim();
-    if (v && !out.includes(v)) out.push(v);
-    if (out.length >= MAX_PRESET_TARGETS) break;
+function cleanKeyModelMap(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [keyId, models] of Object.entries(raw)) {
+    const cleaned = cleanMap(models);
+    if (keyId && Object.keys(cleaned).length) out[keyId] = cleaned;
   }
   return out;
 }
 
-export function cleanPreset(raw) {
+export async function getInjectKeyModelPrompts() {
+  await ensureMigrated();
+  return cleanKeyModelMap(await kv.get(BYKEYMODEL_KEY, null));
+}
+
+export async function setInjectKeyModelPrompt(keyId, model, input = {}) {
+  const id = typeof keyId === "string" ? keyId.trim() : "";
+  const name = typeof model === "string" ? model.trim() : "";
+  if (!id || !name) return null;
+  const all = await getInjectKeyModelPrompts();
+  const entry = stamp(input);
+  if (!entry) {
+    if (all[id]) {
+      delete all[id][name];
+      if (!Object.keys(all[id]).length) delete all[id];
+    }
+  } else {
+    if (!all[id]) all[id] = {};
+    all[id][name] = entry;
+  }
+  await kv.set(BYKEYMODEL_KEY, all);
+  invalidateInjectSnapshot();
+  return entry;
+}
+
+export async function deleteInjectKeyModelPrompt(keyId, model) {
+  const all = await getInjectKeyModelPrompts();
+  if (!all[keyId] || !(model in all[keyId])) return false;
+  delete all[keyId][model];
+  if (!Object.keys(all[keyId]).length) delete all[keyId];
+  await kv.set(BYKEYMODEL_KEY, all);
+  invalidateInjectSnapshot();
+  return true;
+}
+
+// ------------------------------------------------------------- templates
+// A template is a named, reusable prompt — library only. It has no
+// targets and no runtime role: applying one copies its content into an
+// injection (see the header note on snapshot semantics).
+//   scope "promptPresets": key "list" → [template]
+//   template = { id, name, mode, content, turns, position, enabled,
+//                updatedAt }
+
+export function cleanTemplate(raw) {
   if (!raw || typeof raw !== "object") return null;
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   const name = typeof raw.name === "string" ? raw.name.trim().slice(0, 80) : "";
   if (!id || !name) return null;
   const entry = cleanEntry(raw);
   if (!entry) return null;
-  const t = raw.targets && typeof raw.targets === "object" ? raw.targets : {};
-  return {
-    id,
-    name,
-    ...entry,
-    targets: {
-      global: !!t.global,
-      keys: cleanTargetNames(t.keys),
-    },
-  };
+  return { id, name, ...entry };
 }
 
-function cleanPresetList(raw) {
+function cleanTemplateList(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
-  for (const p of raw) {
-    const clean = cleanPreset(p);
+  for (const t of raw) {
+    const clean = cleanTemplate(t);
     if (clean) out.push(clean);
   }
   return out;
 }
 
-export async function getPromptPresets() {
-  return cleanPresetList(await presetsKv.get(PRESETS_KEY, null));
+export async function getPromptTemplates() {
+  return cleanTemplateList(await templatesKv.get(TEMPLATES_KEY, null));
 }
 
-export async function upsertPromptPreset(input = {}) {
-  const list = await getPromptPresets();
+export async function upsertPromptTemplate(input = {}) {
+  const list = await getPromptTemplates();
   const id =
     typeof input.id === "string" && input.id.trim()
       ? input.id.trim()
-      : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const preset = cleanPreset({ ...input, id, updatedAt: new Date().toISOString() });
-  if (!preset) return null;
-  const idx = list.findIndex((p) => p.id === id);
-  if (idx >= 0) list[idx] = preset;
-  else list.push(preset);
-  await presetsKv.set(PRESETS_KEY, list);
-  invalidateInjectSnapshot();
-  return preset;
+      : `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const template = cleanTemplate({ ...input, id, updatedAt: new Date().toISOString() });
+  if (!template) return null;
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx >= 0) list[idx] = template;
+  else list.push(template);
+  await templatesKv.set(TEMPLATES_KEY, list);
+  return template;
 }
 
-export async function deletePromptPreset(id) {
-  const list = await getPromptPresets();
-  const next = list.filter((p) => p.id !== id);
+export async function deletePromptTemplate(id) {
+  const list = await getPromptTemplates();
+  const next = list.filter((t) => t.id !== id);
   if (next.length === list.length) return false;
-  await presetsKv.set(PRESETS_KEY, next);
-  invalidateInjectSnapshot();
+  await templatesKv.set(TEMPLATES_KEY, next);
   return true;
 }
 
 // --------------------------------------------------------------- resolver
 
-// Pure selection — exported for tests. Ordered: global → user → model.
-// Presets fire at the global/user scopes only, ahead of the scope's
-// direct entry; the model scope carries direct entries only.
-export function selectPromptInjections({ global, byKey, byModel, presets } = {}, ctx = {}) {
+// Pure selection — exported for tests. Stacked least → most specific:
+// global → key → model → model+key. Per scope, the first enabled,
+// non-empty hit across the model-name fallbacks wins.
+export function selectPromptInjections({ global, byKey, byModel, byKeyModel } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
     if (!e || !e.enabled) return;
@@ -273,30 +309,30 @@ export function selectPromptInjections({ global, byKey, byModel, presets } = {},
     else out.push({ name, mode: "single", text: e.content, position: e.position });
   };
 
-  const presetList = cleanPresetList(presets);
-  const fired = new Set();
-  const pushPreset = (p) => {
-    if (fired.has(p.id)) return;
-    fired.add(p.id);
-    push(`preset:${p.name}`, p);
-  };
-
-  for (const p of presetList) if (p.targets.global) pushPreset(p);
   push("global", cleanEntry(global));
 
   if (ctx.apiKeyId) {
-    for (const p of presetList) if (p.targets.keys.includes(ctx.apiKeyId)) pushPreset(p);
     push("user", cleanMap(byKey)[ctx.apiKeyId]);
   }
 
-  const models = cleanMap(byModel);
   const names = [ctx.requestedModel, ctx.resolvedModel, ctx.bareModel]
     .filter((x) => typeof x === "string" && x);
-  for (const name of names) {
-    const entry = models[name];
-    if (entry && entry.enabled) {
-      push(name, entry);
-      break;
+  const firstHit = (map) => {
+    for (const name of names) {
+      const entry = map[name];
+      if (entry && entry.enabled) return { name, entry };
+    }
+    return null;
+  };
+
+  const modelHit = firstHit(cleanMap(byModel));
+  if (modelHit) push(modelHit.name, modelHit.entry);
+
+  if (ctx.apiKeyId) {
+    const scoped = cleanKeyModelMap(byKeyModel)[ctx.apiKeyId];
+    if (scoped) {
+      const hit = firstHit(scoped);
+      if (hit) push(hit.name, hit.entry);
     }
   }
   return out;
@@ -314,17 +350,18 @@ function invalidateInjectSnapshot() {
 
 async function getInjectSnapshot() {
   if (snapshot && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) return snapshot;
-  const [global, byKey, byModel, presets] = await Promise.all([
+  const [global, byKey, byModel, byKeyModel] = await Promise.all([
     getInjectGlobal(),
     getInjectUserPrompts(),
     getInjectModelPrompts(),
-    getPromptPresets(),
+    getInjectKeyModelPrompts(),
   ]);
-  snapshot = { at: Date.now(), global, byKey, byModel, presets };
+  snapshot = { at: Date.now(), global, byKey, byModel, byKeyModel };
   return snapshot;
 }
 
-// Resolve the injections for one request (global → user → model). Fail-open.
+// Resolve the injections for one request
+// (global → key → model → model+key). Fail-open.
 export async function resolvePromptInjections(ctx = {}) {
   try {
     const snap = await getInjectSnapshot();

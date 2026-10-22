@@ -59,12 +59,13 @@ export {
   getMitmAlias, setMitmAliasAll,
 } from "./repos/aliasRepo.js";
 
-// Prompt Injection (9Router Pro) — global + per-user + per-model injections
+// Prompt Injection (9Router Pro) — target-coordinate injections + templates
 export {
   getInjectModelPrompts, setInjectModelPrompt, deleteInjectModelPrompt,
   getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt,
+  getInjectKeyModelPrompts, setInjectKeyModelPrompt, deleteInjectKeyModelPrompt,
   getInjectGlobal, setInjectGlobal, resolvePromptInjections,
-  getPromptPresets, upsertPromptPreset, deletePromptPreset,
+  getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
 } from "./repos/promptInjectRepo.js";
 
 // Key Quotas (9Router Pro)
