@@ -50,14 +50,14 @@ npx 9router
 **Option 2 — Docker (server/VPS):**
 
 ```bash
-docker run -d --name 9router -p 20128:20128 \
+docker run -d --name 9router -p 20127:20127 \
   -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data \
   decolua/9router:latest
 ```
 
 Published images: [Docker Hub](https://hub.docker.com/r/decolua/9router) • [GHCR](https://github.com/decolua/9router/pkgs/container/9router) (multi-platform amd64/arm64).
 
-🎉 Dashboard opens at `http://localhost:20128`
+🎉 Dashboard opens at `http://localhost:20127`
 
 **2. Connect a FREE provider (no signup needed):**
 
@@ -67,7 +67,7 @@ Dashboard → Providers → Connect **Kiro AI** (free Claude unlimited) or **Ope
 
 ```
 Claude Code/Codex/OpenClaw/Cursor/Cline Settings:
-  Endpoint: http://localhost:20128/v1
+  Endpoint: http://localhost:20127/v1
   API Key:  [copy from dashboard]
   Model:    kr/claude-sonnet-4.5
 ```
@@ -86,7 +86,7 @@ That's it! Start coding with FREE AI models.
 9router --help             # Show all options
 ```
 
-**Dashboard**: `http://localhost:20128/dashboard`
+**Dashboard**: `http://localhost:20127/dashboard`
 
 ---
 
@@ -95,8 +95,8 @@ That's it! Start coding with FREE AI models.
 Already running 9Router on another machine (e.g. a team server on your LAN)? Point this machine's CLI tools at it — no local server is started:
 
 ```bash
-npx 9router connect http://<server-host>:20128                       # pick tools interactively
-npx 9router connect http://<server-host>:20128 --tools claude,codex  # or choose up front
+npx 9router connect http://<server-host>:20127                       # pick tools interactively
+npx 9router connect http://<server-host>:20127 --tools claude,codex  # or choose up front
 npx 9router connect --reset --tools claude,codex                     # undo
 ```
 
@@ -119,25 +119,25 @@ Models come from the **server's own CLI-tools configuration**, so a client gets 
 
 ```bash
 # One Claude tier; the other tiers still come from the server
-npx 9router connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
+npx 9router connect http://<server-host>:20127 --tools claude --sonnet cc/claude-sonnet-5-5
 
 # Every Claude tier
-npx 9router connect http://<server-host>:20128 --tools claude \
+npx 9router connect http://<server-host>:20127 --tools claude \
   --fable cc/claude-fable-5-1 --opus cc/claude-opus-5-5 \
   --sonnet cc/claude-sonnet-5-5 --haiku cc/claude-haiku-4-5-20251001
 
 # All non-Claude tools at once
-npx 9router connect http://<server-host>:20128 --tools codex,opencode,kilo --model ocg/deepseek-flash
+npx 9router connect http://<server-host>:20127 --tools codex,opencode,kilo --model ocg/deepseek-flash
 
 # Claude and other tools in one run
-npx 9router connect http://<server-host>:20128 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
+npx 9router connect http://<server-host>:20127 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
 
 # A different model per tool: --model covers every non-Claude tool in a run, so run once per tool
-npx 9router connect http://<server-host>:20128 --tools codex --model gpt-6
-npx 9router connect http://<server-host>:20128 --tools opencode --model ocg/glm-5.3
+npx 9router connect http://<server-host>:20127 --tools codex --model gpt-6
+npx 9router connect http://<server-host>:20127 --tools opencode --model ocg/glm-5.3
 ```
 
-A model the server doesn't list is still written, with a `not listed by server` warning. To see the ids it serves: `curl http://<server-host>:20128/v1/models -H "Authorization: Bearer <your key>"`.
+A model the server doesn't list is still written, with a `not listed by server` warning. To see the ids it serves: `curl http://<server-host>:20127/v1/models -H "Authorization: Bearer <your key>"`.
 
 ### Checking the current config
 
@@ -153,7 +153,7 @@ npx 9router show claude --json   # machine-readable (key still masked)
 ```
 ✅ Claude Code
    File:     ~/.claude/settings.json
-   Base URL: http://<server-host>:20128/v1
+   Base URL: http://<server-host>:20127/v1
    API key:  sk-a1b…9f3c
    Models:
      fable   cc/claude-fable-5-1

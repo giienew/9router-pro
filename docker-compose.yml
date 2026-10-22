@@ -4,14 +4,14 @@ services:
     container_name: 9router
     restart: always
     ports:
-      - "20128:20128"
+      - "20127:20127"
     volumes:
       - 9router-data:/app/data
     env_file:
       - .env
     environment:
       DATA_DIR: /app/data
-      PORT: "20128"
+      PORT: "20127"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       HEADROOM_URL: http://headroom:8787

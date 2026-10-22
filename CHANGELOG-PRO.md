@@ -4,6 +4,11 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.104-pro.5.1
+
+- **Default port is now 20127**: Pro's default port moves from the inherited 20128 to **20127**, matching what `npm run start` already used. The Docker image and compose file, the CLI's default target, the dashboard's default self-addresses (CLI Tools cards, MITM, tunnels, SAML), the updater's app port, `.env.example`, and the README/CLAUDE/DOCKER docs all agree now. Existing installs are unaffected — an explicit `PORT` always wins; only new installs see the new default. The original 9Router stays on 20128, so the two can run side by side on one machine (see MIGRATION.md). Translated docs (gitbook, i18n READMEs) still show the old port in places and will catch up.
+- **README refreshed**: the screenshots are regenerated from the current build — the redesigned Prompt Injection page (Templates / Injections / Tester) and the current Providers page, captured on a clean demo install.
+
 ## v0.5.104-pro.5
 
 - **Backup, completed**: the Settings page grows a dedicated Backup card. It shows what a backup actually contains (connections, API keys, combos, proxy pools, prompt injections, templates) and when the last one was taken; imports now open a **preview** of the file — version, date, contents — before anything is replaced. **Auto-backup** takes a full snapshot every day (on by default, keep the newest 7, adjustable 3–30), listed in the card with per-snapshot download and restore; restoring goes through the normal import path, so the pre-import safety backup still applies. Download/Import moved out of the Local Mode card into this one — one concern, one place.

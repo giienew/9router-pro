@@ -32,7 +32,7 @@ const checkForgeInstalled = async () => {
 
 const has9RouterConfig = (content) => {
   if (!content) return false;
-  return content.includes("managed by 9Router") || content.includes("localhost:20128");
+  return content.includes("managed by 9Router") || content.includes("localhost:20127");
 };
 
 const readConfig = async () => {

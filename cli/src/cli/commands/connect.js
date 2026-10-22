@@ -18,8 +18,8 @@ Usage: 9router connect <server-url> [options]
 Configure CLI tools on THIS machine to use a remote 9router server.
 No local server is started. Run without installing:
 
-  npx 9router connect http://<server-host>:20128
-  npx 9router connect http://<server-host>:20128 --tools claude,codex,opencode
+  npx 9router connect http://<server-host>:20127
+  npx 9router connect http://<server-host>:20127 --tools claude,codex,opencode
 
 Options:
   --tools <list>         Comma-separated tools to configure (prompted if omitted
@@ -45,8 +45,8 @@ Models come from the server's own CLI-tools config (set on its dashboard).
 Nothing is hardcoded: a Claude tier the server leaves unset is left unset,
 and a non-Claude tool with no model anywhere is skipped. Flags override:
 
-  npx 9router connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
-  npx 9router connect http://<server-host>:20128 --tools codex,opencode --model ocg/deepseek-flash
+  npx 9router connect http://<server-host>:20127 --tools claude --sonnet cc/claude-sonnet-5-5
+  npx 9router connect http://<server-host>:20127 --tools codex,opencode --model ocg/deepseek-flash
 `;
 
 function parseArgs(argv) {

@@ -104,7 +104,7 @@ export default function DeepSeekTuiToolCard({
     if (typeof window !== "undefined") {
       return normalizeLocalhost(window.location.origin);
     }
-    return "http://127.0.0.1:20128";
+    return "http://127.0.0.1:20127";
   };
 
   const getEffectiveBaseUrl = () => {

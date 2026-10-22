@@ -18,7 +18,7 @@ const lingerMs = parseInt(process.env.UPDATER_LINGER_MS || "30000", 10);
 const waitMinMs = parseInt(process.env.UPDATER_WAIT_MIN_MS || "3000", 10);
 const waitMaxMs = parseInt(process.env.UPDATER_WAIT_MAX_MS || "15000", 10);
 const waitCheckMs = parseInt(process.env.UPDATER_WAIT_CHECK_MS || "500", 10);
-const appPort = parseInt(process.env.UPDATER_APP_PORT || "20128", 10);
+const appPort = parseInt(process.env.UPDATER_APP_PORT || "20127", 10);
 
 // Data directory (match mitm/paths.js logic)
 function getDataDir() {

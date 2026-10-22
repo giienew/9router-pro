@@ -57,7 +57,7 @@ describe("parseArgs", () => {
     expect(opts.prompt).toBe("hi");
     expect(opts.model).toBe("xai/grok-imagine-video");
     expect(opts.output).toBe("video.mp4");
-    expect(opts.port).toBe(20128);
+    expect(opts.port).toBe(20127);
   });
 
   it("parses all documented flags", () => {

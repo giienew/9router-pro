@@ -33,7 +33,7 @@ const has9RouterConfig = (settings) => {
   if (!settings) return false;
   return (
     settings._managedBy === "9router" ||
-    (typeof settings.baseUrl === "string" && settings.baseUrl.length > 0 && settings.baseUrl.includes("20128"))
+    (typeof settings.baseUrl === "string" && settings.baseUrl.length > 0 && settings.baseUrl.includes("20127"))
   );
 };
 

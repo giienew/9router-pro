@@ -29,9 +29,10 @@ about two minutes, and your client API keys keep working unchanged.
 ## Step 2 — Install 9Router Pro
 
 Follow the **Quick Start (Pro)** in the [README](./README.md) (from source or
-Docker). If Pro will take over the original's machine and port (20128), stop
-the original first — or run Pro on a different port while you verify, and
-swap later. Both can coexist; they are separate apps with separate data.
+Docker). The original listens on port 20128 by default and Pro on **20127**,
+so both can run side by side on the same machine while you verify — they are
+separate apps with separate data. When you are ready to switch, point your
+clients at Pro and stop the original.
 
 ## Step 3 — Import the backup into Pro
 

@@ -148,7 +148,7 @@ export const isCustomBlock = (cfg) => cfg?.provider === "custom";
 //     provider: "openai"
 //     openai:
 //       model: "groq/whisper-large-v3"   # provider-qualified — 9router routes on it
-//       base_url: "http://127.0.0.1:20128/v1"
+//       base_url: "http://127.0.0.1:20127/v1"
 //       api_key: ${OPENAI_API_KEY}
 
 // Top-level "stt:" block — same capture shape as delegation. Children are 2-space
