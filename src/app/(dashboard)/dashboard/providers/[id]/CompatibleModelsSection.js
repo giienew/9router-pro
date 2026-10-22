@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -74,9 +74,18 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, connections, isAnthropic }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
+  // Auto-detection from the provider's /models endpoint (server route
+  // /api/providers/[connectionId]/models handles both OpenAI and
+  // Anthropic shapes). Runs on its own when a connection exists; the
+  // manual input below stays as the fallback.
+  const [detected, setDetected] = useState([]);
+  const [detectState, setDetectState] = useState("idle"); // idle|loading|done|error
+  const [detectError, setDetectError] = useState("");
+  const [addingDetectedId, setAddingDetectedId] = useState(null);
+  const [addingAllDetected, setAddingAllDetected] = useState(false);
+  const detectedForRef = useRef(null);
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -122,53 +131,157 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     }
   };
 
-  const handleImport = async () => {
-    if (importing) return;
-    const activeConnection = connections.find((conn) => conn.isActive !== false);
-    if (!activeConnection) return;
+  const activeConnection = connections.find((conn) => conn.isActive !== false);
+  const canImport = !!activeConnection;
 
-    setImporting(true);
+  const detectModels = async () => {
+    if (!activeConnection) return;
+    setDetectState("loading");
+    setDetectError("");
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Failed to import models");
+        setDetectState("error");
+        setDetectError(data.error || "Detection failed");
         return;
       }
-      const models = data.models || [];
-      if (models.length === 0) {
-        alert("No models returned from /models.");
-        return;
-      }
-      let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (allModels.some((entry) => entry.id === modelId)) continue;
-        await onAddCustomModel(modelId);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
-        alert("No new models were added.");
-      }
-    } catch (error) {
-      console.log("Error importing models:", error);
-    } finally {
-      setImporting(false);
+      const ids = [...new Set(
+        (data.models || []).map((m) => m.id || m.name || m.model).filter(Boolean)
+      )];
+      setDetected(ids);
+      setDetectState("done");
+    } catch {
+      setDetectState("error");
+      setDetectError("Could not reach the models endpoint");
     }
   };
 
-  const canImport = connections.some((conn) => conn.isActive !== false);
+  // Auto-detect once per connection — no button hunting.
+  useEffect(() => {
+    if (!activeConnection) return;
+    if (detectedForRef.current === activeConnection.id) return;
+    detectedForRef.current = activeConnection.id;
+    detectModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnection?.id]);
+
+  const detectedNotAdded = detected.filter((id) => !allModels.some((m) => m.id === id));
+
+  const handleAddDetected = async (modelId) => {
+    if (addingDetectedId) return;
+    setAddingDetectedId(modelId);
+    try {
+      await onAddCustomModel(modelId);
+    } catch (error) {
+      console.log("Error adding detected model:", error);
+    } finally {
+      setAddingDetectedId(null);
+    }
+  };
+
+  const handleAddAllDetected = async () => {
+    if (addingAllDetected) return;
+    setAddingAllDetected(true);
+    try {
+      for (const modelId of detectedNotAdded) {
+        await onAddCustomModel(modelId);
+      }
+    } catch (error) {
+      console.log("Error adding detected models:", error);
+    } finally {
+      setAddingAllDetected(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-text-muted">
-        Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models manually or import them from the /models endpoint.
+        Models are detected automatically from this provider&apos;s /models endpoint —
+        add them with one click, or type a model ID manually below.
       </p>
+
+      {canImport ? (
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="material-symbols-outlined text-[18px] text-primary">radar</span>
+            <span className="text-sm font-medium">Detected models</span>
+            {detectState === "done" && (
+              <span className="text-xs text-text-muted">({detected.length} found)</span>
+            )}
+            <span className="flex-1" />
+            {detectState === "done" && detectedNotAdded.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={handleAddAllDetected} disabled={addingAllDetected}>
+                {addingAllDetected ? "Adding..." : `Add all (${detectedNotAdded.length})`}
+              </Button>
+            )}
+            <button
+              type="button"
+              onClick={detectModels}
+              disabled={detectState === "loading"}
+              title="Detect again"
+              className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:opacity-50 dark:hover:bg-white/5"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${detectState === "loading" ? "animate-spin" : ""}`}>
+                {detectState === "loading" ? "progress_activity" : "refresh"}
+              </span>
+              {detectState === "loading" ? "Detecting..." : "Refresh"}
+            </button>
+          </div>
+
+          {detectState === "error" && (
+            <p className="mt-2 text-xs text-red-500">
+              Auto-detect failed: {detectError}. You can still add models manually below.
+            </p>
+          )}
+          {detectState === "done" && detected.length === 0 && (
+            <p className="mt-2 text-xs text-text-muted">
+              The endpoint returned no models — add them manually below.
+            </p>
+          )}
+          {detected.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {detected.map((id) => {
+                const isAdded = allModels.some((m) => m.id === id);
+                if (isAdded) {
+                  return (
+                    <span
+                      key={id}
+                      className="flex items-center gap-1 rounded-xl border border-primary/40 bg-primary/10 px-2 py-1 font-mono text-xs text-primary"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">check</span>
+                      {id}
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleAddDetected(id)}
+                    disabled={addingDetectedId === id || addingAllDetected}
+                    title="Add this model"
+                    className="flex items-center gap-1 rounded-xl border border-border bg-surface px-2 py-1 font-mono text-xs transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">
+                      {addingDetectedId === id ? "progress_activity" : "add"}
+                    </span>
+                    {id}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-text-muted">
+          Add a connection to enable auto-detection from /models.
+        </p>
+      )}
 
       <div className="flex items-end gap-2 flex-wrap">
         <div className="flex-1 min-w-[240px]">
-          <label htmlFor="new-compatible-model-input" className="text-xs text-text-muted mb-1 block">Model ID</label>
+          <label htmlFor="new-compatible-model-input" className="text-xs text-text-muted mb-1 block">Model ID (manual)</label>
           <input
             id="new-compatible-model-input"
             type="text"
@@ -182,16 +295,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
-        <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
-        </Button>
       </div>
-
-      {!canImport && (
-        <p className="text-xs text-text-muted">
-          Add a connection to enable importing models.
-        </p>
-      )}
 
       {allModels.length > 0 && (
         <div className="flex flex-col gap-3">
