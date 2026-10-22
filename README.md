@@ -1462,7 +1462,7 @@ docker pull decolua/9router:latest   # update to latest
 | Variable                                             | Default                                  | Description                                                                         |
 | ---------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
 | `JWT_SECRET`                                         | Auto-generated (`~/.9router/jwt-secret`) | JWT signing secret for dashboard auth cookie (override to share across instances)   |
-| `INITIAL_PASSWORD`                                   | `123456`                                 | First login password when no saved hash exists                                      |
+| `INITIAL_PASSWORD`                                   | `9routerpro`                             | First login password when no saved hash exists                                      |
 | `DATA_DIR`                                           | `~/.9router`                             | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`)                       |
 | `PORT`                                               | framework default                        | Service port (`20128` in examples)                                                  |
 | `HOSTNAME`                                           | framework default                        | Bind host (Docker defaults to `0.0.0.0`)                                            |
@@ -1605,7 +1605,7 @@ Notes:
 **First login not working**
 
 - Check `INITIAL_PASSWORD` in `.env`
-- If unset, fallback password is `123456`
+- If unset, fallback password is `9routerpro`
 
 **No request logs under `logs/`**
 

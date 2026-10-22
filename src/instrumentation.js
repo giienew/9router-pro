@@ -10,5 +10,8 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
+
+    const { startAutoBackupScheduler } = await import("@/lib/backup/autoBackup.js");
+    startAutoBackupScheduler();
   }
 }

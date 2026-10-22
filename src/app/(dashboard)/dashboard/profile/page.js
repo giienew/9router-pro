@@ -19,6 +19,42 @@ function getLocaleFromCookie() {
   return normalizeLocale(value);
 }
 
+function formatBytes(n) {
+  if (!Number.isFinite(n)) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDateTime(iso) {
+  if (!iso) return "never";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "never" : d.toLocaleString();
+}
+
+// Count grid shared by the Backup card (current data) and the import
+// preview (the file about to replace it).
+function BackupCounts({ counts }) {
+  const items = [
+    ["Connections", counts?.connections],
+    ["API keys", counts?.apiKeys],
+    ["Combos", counts?.combos],
+    ["Proxy pools", counts?.proxyPools],
+    ["Injections", counts?.injections],
+    ["Templates", counts?.templates],
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-lg bg-bg border border-border px-2.5 py-2">
+          <p className="text-base font-semibold leading-tight">{value ?? "—"}</p>
+          <p className="text-[11px] text-text-muted">{label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { theme, setTheme, isDark } = useTheme();
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
@@ -34,6 +70,9 @@ export default function ProfilePage() {
   const [dbStatus, setDbStatus] = useState({ type: "", message: "" });
   const [dbAuth, setDbAuth] = useState({ open: false, mode: "", password: "" });
   const pendingImportRef = useRef(null);
+  const pendingSnapshotRef = useRef(null);
+  const [backupInfo, setBackupInfo] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
     oidcIssuerUrl: "",
@@ -660,6 +699,124 @@ export default function ProfilePage() {
     }
   };
 
+  const loadBackupInfo = async () => {
+    try {
+      const res = await fetch("/api/settings/backup");
+      if (res.ok) setBackupInfo(await res.json());
+    } catch { /* the Backup card renders without live info */ }
+  };
+
+  useEffect(() => { loadBackupInfo(); }, []);
+
+  const handleBackupNow = async () => {
+    setDbLoading(true);
+    setDbStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/settings/backup", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to create backup");
+      await loadBackupInfo();
+      setDbStatus({ type: "success", message: "Backup snapshot created" });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Failed to create backup" });
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  const handleAutoBackupToggle = async () => {
+    const next = !(backupInfo?.autoBackupEnabled ?? true);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoBackupEnabled: next }),
+      });
+      setBackupInfo((prev) => (prev ? { ...prev, autoBackupEnabled: next } : prev));
+    } catch (err) {
+      console.error("Failed to update auto-backup:", err);
+    }
+  };
+
+  const handleAutoBackupKeep = async (keep) => {
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoBackupKeep: keep }),
+      });
+      setBackupInfo((prev) => (prev ? { ...prev, autoBackupKeep: keep } : prev));
+    } catch (err) {
+      console.error("Failed to update auto-backup retention:", err);
+    }
+  };
+
+  const handleSnapshotDownload = (id) => {
+    pendingSnapshotRef.current = id;
+    setDbStatus({ type: "", message: "" });
+    setDbAuth({ open: true, mode: "snapshot-download", password: "" });
+  };
+
+  const handleSnapshotRestore = (id) => {
+    pendingSnapshotRef.current = id;
+    setDbStatus({ type: "", message: "" });
+    setDbAuth({ open: true, mode: "restore", password: "" });
+  };
+
+  const runSnapshotDownload = async (password) => {
+    const id = pendingSnapshotRef.current;
+    if (!id) return;
+    setDbLoading(true);
+    try {
+      const res = await fetch(`/api/settings/backup/${encodeURIComponent(id)}`, {
+        headers: { "x-9r-password": password },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to download snapshot");
+      }
+      const payload = await res.json();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `9router-snapshot-${id}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      setDbStatus({ type: "success", message: "Snapshot downloaded" });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Failed to download snapshot" });
+    } finally {
+      pendingSnapshotRef.current = null;
+      setDbLoading(false);
+    }
+  };
+
+  const runSnapshotRestore = async (password) => {
+    const id = pendingSnapshotRef.current;
+    if (!id) return;
+    setDbLoading(true);
+    try {
+      const res = await fetch(`/api/settings/backup/${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to restore snapshot");
+      await reloadSettings();
+      await loadBackupInfo();
+      setDbStatus({ type: "success", message: "Snapshot restored successfully" });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Failed to restore snapshot" });
+    } finally {
+      pendingSnapshotRef.current = null;
+      setDbLoading(false);
+    }
+  };
+
   const handleExportDatabase = async (password) => {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
@@ -685,6 +842,7 @@ export default function ProfilePage() {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
 
+      await loadBackupInfo();
       setDbStatus({ type: "success", message: "Database backup downloaded" });
     } catch (err) {
       setDbStatus({ type: "error", message: err.message || "Failed to export database" });
@@ -702,7 +860,9 @@ export default function ProfilePage() {
     setDbAuth({ open: true, mode: "import", password: "" });
   };
 
-  const runImportDatabase = async (password) => {
+  // Step 1 of import: summarize the file server-side and show a preview —
+  // nothing is replaced until the user confirms the preview modal.
+  const previewImportDatabase = async (password) => {
     const file = pendingImportRef.current;
     if (!file) return;
     setDbLoading(true);
@@ -713,7 +873,32 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/database", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, password }),
+        body: JSON.stringify({ ...payload, password, preview: true }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to read backup file");
+      }
+      setImportPreview({ summary: data.summary, payload, password });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
+      pendingImportRef.current = null;
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  // Step 2 of import: the preview was confirmed — run the real import.
+  const confirmImportDatabase = async () => {
+    const stash = importPreview;
+    if (!stash) return;
+    setDbLoading(true);
+    try {
+      const res = await fetch("/api/settings/database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...stash.payload, password: stash.password }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -722,6 +907,8 @@ export default function ProfilePage() {
       }
 
       await reloadSettings();
+      await loadBackupInfo();
+      setImportPreview(null);
       setDbStatus({ type: "success", message: "Database imported successfully" });
     } catch (err) {
       setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
@@ -731,12 +918,14 @@ export default function ProfilePage() {
     }
   };
 
-  // Confirm password modal, then run export or import.
+  // Confirm password modal, then run the mode's action.
   const handleDbAuthConfirm = async () => {
     const { mode, password } = dbAuth;
     setDbAuth({ open: false, mode: "", password: "" });
     if (mode === "export") await handleExportDatabase(password);
-    else if (mode === "import") await runImportDatabase(password);
+    else if (mode === "import") await previewImportDatabase(password);
+    else if (mode === "snapshot-download") await runSnapshotDownload(password);
+    else if (mode === "restore") await runSnapshotRestore(password);
   };
 
   const observabilityEnabled = settings.enableObservability === true;
@@ -806,6 +995,27 @@ export default function ProfilePage() {
                 <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
               </div>
             </div>
+          </div>
+        </Card>
+
+        {/* Backup */}
+        <Card>
+          <div className="flex items-center gap-3 sm:gap-4 mb-4">
+            <div className="size-10 sm:size-12 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-xl sm:text-2xl">backup</span>
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-semibold">Backup</h2>
+              <p className="text-sm text-text-muted">Everything in this router — providers, keys, combos, prompts</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <BackupCounts counts={backupInfo?.summary?.counts} />
+              <p className="text-xs text-text-muted">
+                Last backup: {backupInfo?.lastBackupAt ? formatDateTime(backupInfo.lastBackupAt) : "never"}
+              </p>
+            </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="secondary"
@@ -838,6 +1048,56 @@ export default function ProfilePage() {
                 {dbStatus.message}
               </p>
             )}
+            <div className="flex flex-col gap-3 pt-4 border-t border-border">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-sm sm:text-base">Auto-backup</p>
+                  <p className="text-xs sm:text-sm text-text-muted">
+                    Take a snapshot every day, keep the newest {backupInfo?.autoBackupKeep ?? 7}
+                  </p>
+                </div>
+                <Toggle
+                  checked={backupInfo?.autoBackupEnabled ?? true}
+                  onChange={handleAutoBackupToggle}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm text-text-muted" htmlFor="auto-backup-keep">Keep</label>
+                <select
+                  id="auto-backup-keep"
+                  value={backupInfo?.autoBackupKeep ?? 7}
+                  onChange={(e) => handleAutoBackupKeep(Number(e.target.value))}
+                  className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
+                >
+                  {[3, 7, 14, 30].map((n) => (
+                    <option key={n} value={n}>{n} snapshots</option>
+                  ))}
+                </select>
+                <Button variant="outline" size="sm" onClick={handleBackupNow} loading={dbLoading}>
+                  Back up now
+                </Button>
+              </div>
+              {backupInfo?.snapshots?.length > 0 && (
+                <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                  {backupInfo.snapshots.map((s) => (
+                    <div key={s.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{formatDateTime(s.createdAt)}</p>
+                        <p className="text-[11px] text-text-muted">
+                          {s.reason === "scheduled" ? "Scheduled" : "Manual"} · {formatBytes(s.sizeBytes)} · v{s.appVersion || "?"}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" icon="download" onClick={() => handleSnapshotDownload(s.id)}>
+                        Download
+                      </Button>
+                      <Button variant="ghost" size="sm" icon="settings_backup_restore" onClick={() => handleSnapshotRestore(s.id)}>
+                        Restore
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </Card>
 
@@ -898,7 +1158,7 @@ export default function ProfilePage() {
                 {/* {!settings.hasPassword && (
                   <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
                     <p className="text-sm text-blue-600 dark:text-blue-400">
-                      Setting password for the first time. Leave current password empty or use default: <code className="bg-blue-500/20 px-1 rounded">123456</code>
+                      Setting password for the first time. Leave current password empty or use default: <code className="bg-blue-500/20 px-1 rounded">9routerpro</code>
                     </p>
                   </div>
                 )} */}
@@ -1686,7 +1946,10 @@ export default function ProfilePage() {
         }
       >
         <p className="text-text-muted mb-3 text-sm">
-          Enter your current password to {dbAuth.mode === "export" ? "export" : "import"} the database.
+          {dbAuth.mode === "export" && "Enter your current password to export the database."}
+          {dbAuth.mode === "import" && "Enter your current password to inspect the backup file. Nothing is imported until you confirm the preview."}
+          {dbAuth.mode === "snapshot-download" && "Enter your current password to download this snapshot."}
+          {dbAuth.mode === "restore" && "Enter your current password to restore this snapshot. Your current data will be replaced — a safety backup is taken first."}
         </p>
         <Input
           type="password"
@@ -1696,6 +1959,46 @@ export default function ProfilePage() {
           placeholder="Current password"
           autoFocus
         />
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(importPreview)}
+        onClose={() => { setImportPreview(null); pendingImportRef.current = null; }}
+        title="Import this backup?"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setImportPreview(null); pendingImportRef.current = null; }} disabled={dbLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={confirmImportDatabase}
+              loading={dbLoading}
+              disabled={!importPreview?.summary?.valid}
+            >
+              Import backup
+            </Button>
+          </>
+        }
+      >
+        {importPreview?.summary?.valid ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-text-muted">
+              This backup will replace all current data. A safety backup of the current database is
+              taken automatically before the import.
+            </p>
+            <BackupCounts counts={importPreview.summary.counts} />
+            <p className="text-xs text-text-muted">
+              Exported {formatDateTime(importPreview.summary.exportedAt)} · App version{" "}
+              {importPreview.summary.appVersion || "unknown"}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-red-500">
+            This file is not a 9Router backup — it cannot be imported.
+          </p>
+        )}
       </Modal>
     </div>
   );
