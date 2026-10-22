@@ -213,17 +213,45 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   );
 }
 
-function SectionTitle({ icon, title, children, action }) {
+function SectionTitle({ icon, title, children, action, info }) {
+  const [infoOpen, setInfoOpen] = useState(false);
   return (
     <div className="mb-1">
       <div className="flex items-center gap-2">
         <h2 className="flex flex-1 items-center gap-2 text-base font-semibold uppercase tracking-wide">
           <span className="material-symbols-outlined text-primary">{icon}</span>
           {title}
+          {info && (
+            <button
+              type="button"
+              onClick={() => setInfoOpen(true)}
+              title={`About ${title}`}
+              aria-label={`About ${title}`}
+              className="shrink-0 text-text-muted transition-colors hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-[18px]">info</span>
+            </button>
+          )}
         </h2>
         {action}
       </div>
       {children && <p className="mt-1 text-sm text-text-muted">{children}</p>}
+      {info && infoOpen && (
+        <Modal isOpen onClose={() => setInfoOpen(false)} title={info.title} size="md" bodyClassName="p-4 sm:p-6">
+          <div className="flex flex-col gap-3 text-sm leading-relaxed text-text-muted">
+            {(info.paras || []).map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+            {info.bullets && (
+              <ul className="flex list-disc flex-col gap-1 pl-5">
+                {info.bullets.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -934,6 +962,18 @@ export default function PromptInjectionClient() {
             <SectionTitle
               icon="bookmarks"
               title="Templates"
+              info={{
+                title: "How Templates work",
+                paras: [
+                  "A template is a saved prompt in your library. It never runs on its own and has no target — it is just content, ready to reuse.",
+                  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.",
+                ],
+                bullets: [
+                  "Good for: a persona you reuse across several models.",
+                  "Good for: a prompt you are still drafting — keep it here until it is ready to attach.",
+                  "To change a prompt everywhere, edit the template, then re-apply it to each injection.",
+                ],
+              }}
               action={
                 <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)}>
                   New template
@@ -967,7 +1007,23 @@ export default function PromptInjectionClient() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <SectionTitle icon="vaccines" title="Injections">
+            <SectionTitle
+              icon="vaccines"
+              title="Injections"
+              info={{
+                title: "How Injections work",
+                paras: [
+                  "An injection attaches one prompt to one target. The target is a model name — or Global, meaning every model — optionally narrowed to a single API key.",
+                  "When a request arrives, every matching injection is added to it, stacked from least to most specific: Global → Key → Model → Model + Key.",
+                  "The model name is the name your client sends: the model in your chat app or Hermes config, a combo name, or a provider model name. If the name does not match, the injection does not fire — check with Stack Preview.",
+                ],
+                bullets: [
+                  "Single prompt — one system prompt, appended or prepended to the request's system text.",
+                  "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
+                  "One target holds exactly one injection; saving again replaces it.",
+                ],
+              }}
+            >
               One prompt per target — a model name or Global, optionally for one API key only.
               The name is what your client sends (Hermes model, <code className="font-mono text-primary">/model</code>, a combo name).
             </SectionTitle>
@@ -1079,7 +1135,22 @@ export default function PromptInjectionClient() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <SectionTitle icon="layers" title="Stack preview">
+            <SectionTitle
+              icon="layers"
+              title="Stack preview"
+              info={{
+                title: "How Stack Preview works",
+                paras: [
+                  "Stack Preview shows exactly which injections one request would receive, in stacking order — without sending anything. No model is called and nothing is billed.",
+                  "Type a model name or pick one with Browse, optionally choose an API key, and the list updates automatically.",
+                ],
+                bullets: [
+                  "Verify a new injection lands on the right model and key.",
+                  "See everything stacked on a model when it behaves unexpectedly.",
+                  "Catch a misspelled model name — no match means no injection.",
+                ],
+              }}
+            >
               Exactly what one request receives, in order — updates automatically.
             </SectionTitle>
             <Card>
@@ -1143,7 +1214,22 @@ export default function PromptInjectionClient() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <SectionTitle icon="science" title="Injection tester">
+            <SectionTitle
+              icon="science"
+              title="Injection tester"
+              info={{
+                title: "How the Injection Tester works",
+                paras: [
+                  "The tester sends a real prompt through this router's /v1 endpoint using the client key you pick, to the model you pick — exactly like a real client request, injections included.",
+                  "Single tests one model. VS sends the same prompt to two models side by side, so you can compare a model with an injection against one without.",
+                  "The verdict badge reads the opening of the reply: REFUSED when it starts with a refusal, ANSWERED otherwise. It is a heuristic — the raw reply under it is what counts.",
+                ],
+                bullets: [
+                  "The chosen key's token quotas and rate limits apply, just like a real request.",
+                  "The preset chips fill the prompt box with common test asks — or type any prompt of your own.",
+                ],
+              }}
+            >
               Proof, not promises — fire a probe through the router and read the verdict.
             </SectionTitle>
             <Card>
