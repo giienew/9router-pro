@@ -17,7 +17,7 @@ import {
 
 // OpenCode v2 UA shape: opencode/<channel>/<version>/<client>. Upstream rejects
 // the v1 "opencode/1.18.x" form with 403 FreeTierError since 2026-10-14.
-const OPENCODE_UA = "opencode/latest/2.0.26/cli";
+const OPENCODE_UA = "opencode/latest/2.0.29/cli";
 const OPENCODE_CLIENT = "cli";
 const MAX_SESSION_LENGTH = 256;
 const MAX_TOOL_NAME_LEN = 128;
