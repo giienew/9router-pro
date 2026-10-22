@@ -252,8 +252,8 @@ function SectionTitle({ icon, title, children, action, info }) {
   const [infoOpen, setInfoOpen] = useState(false);
   return (
     <div className="mb-1">
-      <div className="flex items-center gap-2">
-        <h2 className="flex flex-1 items-center gap-2 text-base font-semibold uppercase tracking-wide">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="flex flex-1 items-center gap-2 text-lg font-semibold">
           <span className="material-symbols-outlined text-primary">{icon}</span>
           {title}
         </h2>
@@ -1205,7 +1205,7 @@ export default function PromptInjectionClient() {
             Prompt Injection
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Templates, injections, and proof — stacked Global → Key → Model → Model + Key.
+            Attach a prompt to any name your clients call — a model, a combo, or every request at once.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1259,13 +1259,13 @@ export default function PromptInjectionClient() {
                 ],
               }}
               action={
-                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)}>
+                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
                   New template
                 </Button>
               }
             >
-              A library of reusable prompts. A template never fires on its own — use one
-              when creating an injection and its content is copied in.
+              A library of reusable prompts. Using a template copies its content into an
+              injection — the template itself never runs.
             </SectionTitle>
             {templates.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
@@ -1310,8 +1310,7 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              One prompt per target — a model name or Global, optionally for one API key only.
-              The name is what your client sends (Hermes model, <code className="font-mono text-primary">/model</code>, a combo name).
+              One prompt per target — a model name or Global, optionally scoped to a single API key.
             </SectionTitle>
             <Card>
               <p className="mb-3 text-sm font-semibold">New injection</p>
@@ -1447,7 +1446,7 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              Exactly what one request receives, in order — updates automatically.
+              The exact injections one request would receive, in stacking order. Nothing is sent.
             </SectionTitle>
             <Card>
               <div className="flex flex-col gap-3">
@@ -1526,7 +1525,8 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              Proof, not promises — fire a probe through the router and read the verdict.
+              Send a real request through the router and read the verdict — injections applied,
+              exactly as a client receives it.
             </SectionTitle>
             <Card>
               <InjectionTester />
