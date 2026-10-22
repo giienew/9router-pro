@@ -121,6 +121,13 @@ const getPageInfo = (pathname) => {
       icon: "savings",
       breadcrumbs: [],
     };
+  if (pathname.includes("/prompt-injection"))
+    return {
+      title: "Prompt Injection",
+      description: "Attach prompts to models, combos, keys, or every request",
+      icon: "skull",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/cli-tools"))
     return {
       title: "CLI Tools",
