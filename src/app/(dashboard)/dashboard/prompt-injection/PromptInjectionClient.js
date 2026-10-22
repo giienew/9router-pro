@@ -866,6 +866,7 @@ export default function PromptInjectionClient() {
   const [pvModel, setPvModel] = useState("");
   const [pvKeyId, setPvKeyId] = useState("");
   const [pvStack, setPvStack] = useState(null);
+  const [pvPickerOpen, setPvPickerOpen] = useState(false);
   const runPreview = useCallback(async () => {
     try {
       const qs = new URLSearchParams({ preview: "1", model: pvModel, keyId: pvKeyId });
@@ -1091,6 +1092,9 @@ export default function PromptInjectionClient() {
                     list="pi-model-names"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
+                  <Button variant="outline" size="sm" onClick={() => setPvPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
+                    Browse
+                  </Button>
                   <select
                     value={pvKeyId}
                     onChange={(e) => setPvKeyId(e.target.value)}
@@ -1102,6 +1106,15 @@ export default function PromptInjectionClient() {
                     ))}
                   </select>
                 </div>
+                <ModelSelectModal
+                  isOpen={pvPickerOpen}
+                  onClose={() => setPvPickerOpen(false)}
+                  onSelect={(m) => {
+                    setPvModel(m.value || m.id || "");
+                    setPvPickerOpen(false);
+                  }}
+                  title="Select model"
+                />
                 {pvStack === null ? (
                   <p className="text-sm text-text-muted">…</p>
                 ) : pvStack.length === 0 ? (
