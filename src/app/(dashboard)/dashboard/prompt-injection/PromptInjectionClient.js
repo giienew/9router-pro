@@ -17,6 +17,17 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
 
+// ModelSelectModal hands back a model object; be liberal in what we accept.
+function modelPickValue(m) {
+  if (typeof m === "string") return m;
+  return m?.value || m?.name || m?.id || "";
+}
+
+// The original 9Router opens its model picker from a plain bordered
+// "Select" button (see the CLI tools cards) — same pattern here.
+const SELECT_BTN_CLASS =
+  "shrink-0 cursor-pointer whitespace-nowrap rounded border border-border bg-surface px-2.5 py-2 text-xs text-text-main transition-colors hover:border-primary";
+
 function entryText(entry) {
   if (!entry) return "";
   if (entry.mode === "chat") return (entry.turns || []).map((t) => t.content).join("\n");
