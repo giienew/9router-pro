@@ -501,6 +501,40 @@ function PresetModal({ preset, keys, keyName, modelOptions, comboNames = [], onC
   );
 }
 
+// Model Edit panel: the target name is a field here (not a separate
+// Rename action) — change it and Save renames the injection.
+function ModelEditPanel({ name, entry, isCombo, saving, onSave, onClear }) {
+  const [draftName, setDraftName] = useState(name);
+  const trimmed = draftName.trim();
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-text-muted">
+          Name — the name clients call (Hermes model / combo name)
+        </label>
+        <input
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
+        />
+        {trimmed && trimmed !== name && (
+          <p className="mt-1 text-[11px] text-text-muted">
+            Saving moves this injection to the new name — clients must call the new name to receive it.
+            {isCombo ? " The combo itself keeps its own name." : ""}
+          </p>
+        )}
+      </div>
+      <InjectEditor
+        initial={entry}
+        saving={saving}
+        onSave={(fields) => onSave(trimmed, fields)}
+        onClear={onClear}
+        clearLabel="Delete"
+      />
+    </div>
+  );
+}
+
 export default function PromptInjectionClient() {
   const [msg, setMsg] = useState(null);
   const toastTimer = useRef(null);
@@ -517,7 +551,6 @@ export default function PromptInjectionClient() {
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [comboNames, setComboNames] = useState([]);
-  const [comboMembers, setComboMembers] = useState({}); // combo name -> member names
   const [selectedKeyId, setSelectedKeyId] = useState("");
   const [newModel, setNewModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -525,8 +558,6 @@ export default function PromptInjectionClient() {
   const [editingPreset, setEditingPreset] = useState(undefined); // undefined=closed, null=new
   const [globalOpen, setGlobalOpen] = useState(false);
   const [editingModel, setEditingModel] = useState(null);
-  const [renamingModel, setRenamingModel] = useState(null);
-  const [renameDraft, setRenameDraft] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -558,14 +589,7 @@ export default function PromptInjectionClient() {
         const combosData = await combosRes.json();
         const combos = (combosData?.combos || []).filter((c) => c && c.name);
         setComboNames(combos.map((c) => c.name));
-        const members = {};
-        for (const c of combos) {
-          members[c.name] = (Array.isArray(c.models) ? c.models : [])
-            .map((m) => (typeof m === "string" ? m : m?.model || m?.id || ""))
-            .filter(Boolean);
-          names.add(c.name);
-        }
-        setComboMembers(members);
+        for (const c of combos) names.add(c.name);
       } catch { /* same */ }
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
       for (const p of inj.presets || []) for (const m of p.targets?.models || []) names.add(m);
@@ -630,23 +654,21 @@ export default function PromptInjectionClient() {
     }
   };
 
-  // Which combos use this name as a member — the connection between this
-  // page, the Combos page and a Hermes config is the name itself.
-  const memberOf = (name) =>
-    Object.entries(comboMembers)
-      .filter(([combo, members]) => combo !== name && members.includes(name))
-      .map(([combo]) => combo);
-
-  // Rename = save the same entry under the new name, then delete the old
-  // one. Refuses to overwrite a name that already has an injection.
-  const renameModel = async (oldName) => {
-    const next = renameDraft.trim();
-    if (!next || next === oldName) {
-      setRenamingModel(null);
+  // Save from the model Edit panel: the name is a field in that panel, so
+  // a changed name renames the injection — save under the new name, then
+  // delete the old one. Refuses to overwrite a name that already has an
+  // injection.
+  const saveModelEntry = async (oldName, newName, entry) => {
+    if (!newName) {
+      showToast("Name can't be empty", "error");
       return;
     }
-    if (prompts[next]) {
+    if (newName !== oldName && prompts[newName]) {
       showToast("That name already has an injection", "error");
+      return;
+    }
+    if (newName === oldName) {
+      await put({ model: oldName, ...entry }, `model-${oldName}`, "Model injection saved");
       return;
     }
     setSaving(`model-${oldName}`);
@@ -654,17 +676,16 @@ export default function PromptInjectionClient() {
       const r1 = await fetch(API, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: next, ...prompts[oldName] }),
+        body: JSON.stringify({ model: newName, ...entry }),
       });
       if (!r1.ok) throw new Error("rename failed");
       const r2 = await fetch(`${API}?model=${encodeURIComponent(oldName)}`, { method: "DELETE" });
       if (!r2.ok) throw new Error("rename failed");
-      showToast(`Renamed to ${next}`, "success");
-      setRenamingModel(null);
-      if (editingModel === oldName) setEditingModel(next);
+      showToast(`Renamed to ${newName} and saved`, "success");
+      setEditingModel(null);
       await load();
     } catch {
-      showToast("Failed to rename", "error");
+      showToast("Failed to save", "error");
     } finally {
       setSaving("");
     }
@@ -998,123 +1019,61 @@ export default function PromptInjectionClient() {
             <div className="flex flex-col gap-2">
               {modelNames.map((name) => (
                 <Card key={name} padding="sm">
-                  {renamingModel === name ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          autoFocus
-                          value={renameDraft}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") renameModel(name);
-                            if (e.key === "Escape") setRenamingModel(null);
-                          }}
-                          className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => renameModel(name)}
-                          disabled={saving === `model-${name}`}
-                          className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-2 text-xs font-medium text-white transition-opacity disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">check</span>
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRenamingModel(null)}
-                          className="shrink-0 rounded-lg px-2 py-2 text-xs text-text-muted transition-colors hover:text-text-main"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                      <p className="text-xs text-text-muted">
-                        The injection moves to the new name — clients must call the new name to receive it.
-                      </p>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
+                      {comboNames.includes(name) && <ComboChip />}
                     </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{name}</p>
-                        {comboNames.includes(name) && <ComboChip />}
+                    {comboNames.includes(name) && (
+                      <div className="text-[11px]">
+                        <Link href="/dashboard/combos" className="font-medium text-primary hover:underline">
+                          This is a combo — open it
+                        </Link>
                       </div>
-                      {(comboNames.includes(name) || memberOf(name).length > 0) && (
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-text-muted">
-                          {comboNames.includes(name) && (
-                            <Link href="/dashboard/combos" className="font-medium text-primary hover:underline">
-                              This is a combo — open it
-                            </Link>
-                          )}
-                          {memberOf(name).length > 0 && (
-                            <span>
-                              Member of{" "}
-                              {memberOf(name).map((c, i) => (
-                                <span key={c}>
-                                  {i > 0 && ", "}
-                                  <Link href="/dashboard/combos" className="font-mono font-medium text-primary hover:underline">
-                                    {c}
-                                  </Link>
-                                </span>
-                              ))}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap items-center gap-1">
-                        <EntryBadge entry={prompts[name]} />
-                        <span className="text-xs text-text-muted">
-                          ~{estimateTokens(entryText(prompts[name]))} tokens
+                    )}
+                    <div className="flex flex-wrap items-center gap-1">
+                      <EntryBadge entry={prompts[name]} />
+                      <span className="text-xs text-text-muted">
+                        ~{estimateTokens(entryText(prompts[name]))} tokens
+                      </span>
+                      <span className="flex-1" />
+                      <button
+                        type="button"
+                        onClick={() => copyName(name)}
+                        title="Copy name"
+                        className={actionBtnClass}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingModel(editingModel === name ? null : name)}
+                        title="Edit"
+                        className={actionBtnClass}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {editingModel === name ? "expand_less" : "edit"}
                         </span>
-                        <span className="flex-1" />
-                        <button
-                          type="button"
-                          onClick={() => copyName(name)}
-                          title="Copy name"
-                          className={actionBtnClass}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                          Copy
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRenameDraft(name);
-                            setRenamingModel(name);
-                          }}
-                          title="Rename"
-                          className={actionBtnClass}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">drive_file_rename_outline</span>
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingModel(editingModel === name ? null : name)}
-                          title="Edit prompt"
-                          className={actionBtnClass}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">
-                            {editingModel === name ? "expand_less" : "edit"}
-                          </span>
-                          Edit
-                        </button>
-                        <ConfirmButton
-                          label="Delete"
-                          icon="delete"
-                          onConfirm={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                        />
-                      </div>
+                        Edit
+                      </button>
+                      <ConfirmButton
+                        label="Delete"
+                        icon="delete"
+                        onConfirm={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
+                      />
                     </div>
-                  )}
+                  </div>
                   {editingModel === name && (
                     <div className="mt-3 border-t border-border-subtle pt-3">
-                      <InjectEditor
+                      <ModelEditPanel
                         key={`${name}-${prompts[name]?.updatedAt || ""}`}
-                        initial={prompts[name]}
+                        name={name}
+                        entry={prompts[name]}
+                        isCombo={comboNames.includes(name)}
                         saving={saving === `model-${name}`}
-                        onSave={(entry) => put({ model: name, ...entry }, `model-${name}`, "Model injection saved")}
+                        onSave={(newName, entry) => saveModelEntry(name, newName, entry)}
                         onClear={() => del(`model=${encodeURIComponent(name)}`, `model-${name}`, "Model injection deleted")}
-                        clearLabel="Delete"
                       />
                     </div>
                   )}
