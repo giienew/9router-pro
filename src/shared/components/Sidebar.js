@@ -26,7 +26,7 @@ const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
-  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull" },
+  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", badge: "PRO" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];
@@ -188,6 +188,11 @@ export default function Sidebar({ onClose }) {
                 {item.icon}
               </span>
               <span className="text-[13px] font-medium">{item.label}</span>
+              {item.badge && (
+                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-blue-500/15 text-blue-400">
+                  {item.badge}
+                </span>
+              )}
             </Link>
           ))}
 
