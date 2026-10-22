@@ -107,6 +107,11 @@ export default function UsageTable({
   emptyMessage,
 }) {
   const [expanded, setExpanded] = useState(new Set());
+  const [showAllGroups, setShowAllGroups] = useState(false);
+
+  // Cap the initial render — "All" periods can hold thousands of groups.
+  useEffect(() => { setShowAllGroups(false); }, [storageKey]);
+  const visibleGroups = showAllGroups ? groupedData : groupedData.slice(0, 50);
 
   // Load expanded state from localStorage
   useEffect(() => {
@@ -186,7 +191,7 @@ export default function UsageTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {groupedData.map((group) => (
+            {visibleGroups.map((group) => (
               <Fragment key={group.groupKey}>
                 {/* Group summary row */}
                 <tr
@@ -228,6 +233,15 @@ export default function UsageTable({
           </tbody>
         </table>
       </div>
+      {!showAllGroups && groupedData.length > 50 && (
+        <button
+          type="button"
+          onClick={() => setShowAllGroups(true)}
+          className="w-full border-t border-border px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-bg-subtle/50"
+        >
+          Show all {groupedData.length} groups
+        </button>
+      )}
     </Card>
   );
 }

@@ -203,7 +203,7 @@ const PERIODS = [
   { value: "all", label: "All" },
 ];
 
-export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false } = {}) {
+export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false, range = null } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -257,6 +257,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
 
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
+    if (period === "custom" && !(range?.start && range?.end)) return;
     // First load: show full spinner; subsequent: show subtle fetching indicator
     if (isInitialLoad.current) {
       isInitialLoad.current = false;
@@ -265,7 +266,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       setFetching(true);
     }
 
-    fetch(`/api/usage/stats?period=${period}`)
+    const rangeQuery = period === "custom" ? `&start=${range.start}&end=${range.end}` : "";
+    fetch(`/api/usage/stats?period=${period}${rangeQuery}`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) {
@@ -278,7 +280,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         setLoading(false);
         setFetching(false);
       });
-  }, [period]);
+  }, [period, range?.start, range?.end]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {
@@ -437,6 +439,42 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     }
   }, [stats, tableView, sortBy, sortOrder]);
 
+  // Client-side CSV of the currently loaded breakdown (no extra request).
+  const exportCsv = () => {
+    if (!activeTableConfig) return;
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const dataCols = activeTableConfig.columns.filter((c) => !["requests", "lastUsed"].includes(c.field));
+    const cell = (item, field) => (field === "keyName" ? item.apiKeyMasked || item.keyName || "" : item[field] ?? "");
+    const lines = [
+      ["Group", ...dataCols.map((c) => c.label), "Requests", "Input Tokens", "Cached Tokens", "Output Tokens", "Total Tokens", "Cost (USD)", "Last Used"].map(esc).join(","),
+    ];
+    for (const group of activeTableConfig.groupedData) {
+      for (const item of group.items) {
+        lines.push([
+          group.groupKey,
+          ...dataCols.map((c) => cell(item, c.field)),
+          item.requests || 0,
+          item.promptTokens || 0,
+          item.cachedTokens || 0,
+          item.completionTokens || 0,
+          item.totalTokens || 0,
+          (item.totalCost || item.cost || 0).toFixed(4),
+          item.lastUsed || "",
+        ].map(esc).join(","));
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `usage-${tableView}-${period}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
   const spinner = (
@@ -490,8 +528,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         </div>
       )}
 
-      {/* Token / Cost chart - sync period */}
-      {loading ? spinner : <UsageChart period={period} />}
+      {/* Token / Cost chart - sync period (no chart for custom ranges) */}
+      {loading ? spinner : period === "custom" ? null : <UsageChart period={period} />}
 
       {/* Provider and model breakdown charts */}
       {!loading && (stats.byProvider || stats.byModel) && (
@@ -504,16 +542,28 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <select
-            value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}
-          >
-            {TABLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={tableView}
+              onChange={(e) => setTableView(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
+              style={{ colorScheme: 'auto' }}
+            >
+              {TABLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={exportCsv}
+              disabled={!stats || loading}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-text-muted transition-colors hover:text-primary disabled:opacity-50"
+              title="Download this breakdown as CSV"
+            >
+              <span className="material-symbols-outlined text-[16px]">download</span>
+              CSV
+            </button>
+          </div>
           <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
             <button
               onClick={() => setViewMode("costs")}

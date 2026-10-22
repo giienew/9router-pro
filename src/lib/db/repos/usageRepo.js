@@ -358,7 +358,9 @@ function loadDaysInRange(adapter, maxDays) {
   return adapter.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? ORDER BY dateKey ASC`, [cutoffKey]);
 }
 
-export async function getUsageStats(period = "all") {
+// period: today | 24h | 7d | 30d | 60d | all | custom (custom needs
+// range = { startKey, endKey } as local YYYY-MM-DD keys, inclusive)
+export async function getUsageStats(period = "all", range = null) {
   const db = await getAdapter();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
@@ -466,7 +468,10 @@ export async function getUsageStats(period = "all") {
   if (useDailySummary) {
     const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
     const maxDays = periodDays[period] || null;
-    const dayRows = loadDaysInRange(db, maxDays);
+    // Custom range reads whole-day rollups between the two date keys.
+    const dayRows = period === "custom" && range?.startKey && range?.endKey
+      ? db.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? ORDER BY dateKey ASC`, [range.startKey, range.endKey])
+      : loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;

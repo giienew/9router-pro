@@ -13,7 +13,12 @@ const PERIODS = [
   { value: "30d", label: "30D" },
   { value: "60d", label: "60D" },
   { value: "all", label: "All" },
+  { value: "custom", label: "Custom" },
 ];
+
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export default function UsagePage() {
   return (
@@ -28,6 +33,12 @@ function UsageContent() {
   const router = useRouter();
 
   const [period, setPeriod] = useState("today");
+  const [customRange, setCustomRange] = useState(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    return { start: localDateKey(start), end: localDateKey(end) };
+  });
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -49,6 +60,7 @@ function UsageContent() {
           options={[
             { value: "overview", label: "Overview" },
             { value: "details", label: "Details" },
+            { value: "logs", label: "Logs" },
           ]}
           value={activeTab}
           onChange={handleTabChange}
@@ -65,9 +77,37 @@ function UsageContent() {
         )}
       </div>
 
+      {activeTab === "overview" && period === "custom" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            value={customRange.start}
+            max={customRange.end}
+            onChange={(e) => setCustomRange((r) => ({ ...r, start: e.target.value }))}
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
+            aria-label="Start date"
+          />
+          <span className="text-sm text-text-muted">to</span>
+          <input
+            type="date"
+            value={customRange.end}
+            min={customRange.start}
+            onChange={(e) => setCustomRange((r) => ({ ...r, end: e.target.value }))}
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
+            aria-label="End date"
+          />
+          <span className="text-xs text-text-muted">Whole days, from daily rollups.</span>
+        </div>
+      )}
+
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
+          <UsageStats
+            period={period}
+            setPeriod={setPeriod}
+            hidePeriodSelector
+            range={period === "custom" ? customRange : null}
+          />
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger />}
