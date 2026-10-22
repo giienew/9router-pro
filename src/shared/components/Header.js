@@ -8,7 +8,7 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
 import DonateModal from "@/shared/components/DonateModal";
 import { Modal, Input, Button } from "@/shared/components";
-import { NAME_FONTS, getNameFontStyle, isValidNameFont, DEFAULT_NAME } from "@/shared/constants/nameStyles";
+import { getNameFontStyle, DEFAULT_NAME } from "@/shared/constants/nameStyles";
 import { cn } from "@/shared/utils/cn";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
@@ -194,14 +194,12 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   const [donateOpen, setDonateOpen] = useState(false);
 
   // 9Router Pro: personal display name where the theme/accent icon buttons
-  // used to sit (those moved into the header menu). Accent-colored text,
-  // click to customize name + font. Persisted server-side in settings
-  // (profileName / profileFont) so it follows the user across devices.
+  // used to sit (those moved into the header menu). Accent-colored text in a
+  // fixed handwriting style, click to edit the name. Persisted server-side
+  // in settings (profileName) so it follows the user across devices.
   const [profileName, setProfileName] = useState(DEFAULT_NAME);
-  const [profileFont, setProfileFont] = useState("modern");
   const [nameOpen, setNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  const [fontDraft, setFontDraft] = useState("modern");
   const [savingName, setSavingName] = useState(false);
 
   // Memoize page info to prevent unnecessary recalculations
@@ -245,7 +243,6 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         if (typeof data?.profileName === "string" && data.profileName.trim()) {
           setProfileName(data.profileName.trim());
         }
-        if (isValidNameFont(data?.profileFont)) setProfileFont(data.profileFont);
       } catch { /* keep defaults */ }
     })();
     return () => {
@@ -255,7 +252,6 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
 
   const openNameEditor = () => {
     setNameDraft(profileName);
-    setFontDraft(profileFont);
     setNameOpen(true);
   };
 
@@ -266,10 +262,9 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileName: next, profileFont: fontDraft }),
+        body: JSON.stringify({ profileName: next }),
       });
       setProfileName(next);
-      setProfileFont(fontDraft);
       setNameOpen(false);
     } catch (err) {
       console.error("Failed to save display name:", err);
@@ -391,7 +386,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         <button
           onClick={openNameEditor}
           className="max-w-[110px] cursor-pointer truncate px-1 text-[15px] leading-6 text-primary transition-opacity hover:opacity-75 sm:max-w-[180px]"
-          style={getNameFontStyle(profileFont)}
+          style={getNameFontStyle("caveat")}
           title="Click to customize your name"
         >
           {profileName}
@@ -408,44 +403,9 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
             placeholder={DEFAULT_NAME}
             maxLength={24}
           />
-          <div>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">Font style</p>
-            <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto pr-0.5">
-              {NAME_FONTS.map((f, i) => {
-                const selected = fontDraft === f.id;
-                const groupHeader = i === 0 || NAME_FONTS[i - 1].group !== f.group;
-                return (
-                  <div key={f.id} className="flex flex-col gap-1">
-                    {groupHeader && (
-                      <p className="px-0.5 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-text-subtle first:pt-0">
-                        {f.group}
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setFontDraft(f.id)}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors cursor-pointer",
-                        selected
-                          ? "border-primary/40 bg-primary/5"
-                          : "border-transparent hover:bg-black/5 dark:hover:bg-white/5"
-                      )}
-                    >
-                      <span style={f.style} className="truncate px-0.5 text-sm text-text-main">
-                        {nameDraft.trim() || DEFAULT_NAME}
-                      </span>
-                      <span className="ml-auto flex shrink-0 items-center gap-1">
-                        <span className="text-[10px] text-text-muted">{f.name}</span>
-                        {selected && (
-                          <span className="material-symbols-outlined text-[14px] text-brand-500">check</span>
-                        )}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <p style={getNameFontStyle("caveat")} className="truncate px-0.5 text-xl text-primary">
+            {nameDraft.trim() || DEFAULT_NAME}
+          </p>
           <div className="flex gap-2">
             <Button onClick={saveName} fullWidth disabled={savingName}>
               {savingName ? "Saving…" : "Save"}

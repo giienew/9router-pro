@@ -258,9 +258,15 @@ function SectionTitle({ icon, title, children, action, info }) {
           {title}
         </h2>
         {info && (
-          <Button variant="outline" size="sm" icon="info" onClick={() => setInfoOpen(true)} className="shrink-0">
-            Info
-          </Button>
+          <button
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            aria-label="Info"
+            title="Info"
+            className="flex shrink-0 items-center justify-center p-1 text-text-muted transition-colors hover:text-text-main"
+          >
+            <span className="material-symbols-outlined text-[19px] leading-none">info</span>
+          </button>
         )}
         {action}
       </div>
