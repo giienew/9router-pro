@@ -7,6 +7,7 @@ import Button from "@/shared/components/Button";
 import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { InjectionTester } from "./InjectExtras";
 
 const API = "/api/prompt-injection";
@@ -25,28 +26,6 @@ function entryText(entry) {
 function nextRole(turns) {
   if (!turns.length) return "user";
   return turns[turns.length - 1].role === "user" ? "assistant" : "user";
-}
-
-// Clipboard with a fallback: navigator.clipboard is missing in insecure
-// contexts and some webviews, where Copy used to just fail.
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch { /* fall through to the legacy path */ }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  } catch {
-    return false;
-  }
 }
 
 // One editor for one prompt. Two modes: a single system prompt, or a
@@ -298,7 +277,8 @@ function ConfirmButton({ label, icon, onConfirm }) {
 
 // ------------------------------------------------------------ templates
 
-function TemplateCard({ template, onCopy, onEdit, onDelete }) {
+function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete }) {
+  const isCopied = copiedId === `tpl:${template.id}`;
   return (
     <Card padding="sm">
       <div className="flex flex-col gap-2">
@@ -311,9 +291,14 @@ function TemplateCard({ template, onCopy, onEdit, onDelete }) {
             ~{estimateTokens(entryText(template))} tokens
           </span>
           <span className="flex-1" />
-          <button type="button" onClick={onCopy} title="Copy prompt text" className={actionBtnClass}>
-            <span className="material-symbols-outlined text-[16px]">content_copy</span>
-            Copy
+          <button
+            type="button"
+            onClick={onCopy}
+            title="Copy prompt text"
+            className={`${actionBtnClass} ${isCopied ? "text-emerald-500 hover:text-emerald-500" : ""}`}
+          >
+            <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
+            {isCopied ? "Copied" : "Copy"}
           </button>
           <button type="button" onClick={onEdit} title="Edit template" className={actionBtnClass}>
             <span className="material-symbols-outlined text-[16px]">edit</span>
@@ -813,21 +798,11 @@ export default function PromptInjectionClient() {
     if (ok) setEditingTemplate(undefined);
   };
 
-  const copyName = async (name) => {
-    if (await copyText(name)) {
-      showToast("Name copied — paste it into your Hermes config or a combo", "success");
-    } else {
-      showToast("Copy failed", "error");
-    }
-  };
-
-  const copyPrompt = async (entry) => {
-    if (await copyText(entryText(entry))) {
-      showToast("Prompt copied", "success");
-    } else {
-      showToast("Copy failed", "error");
-    }
-  };
+  // Copy feedback follows the base app: the button itself flips to a
+  // check + "Copied" for 2s (useCopyToClipboard), right where you tapped.
+  const { copied, copy: copyWithFeedback } = useCopyToClipboard(2000);
+  const copyName = (name) => copyWithFeedback(name, `name:${name}`);
+  const copyPrompt = (entry, id) => copyWithFeedback(entryText(entry), id);
 
   // ---- Import / Export ----
   const exportInjections = async () => {
@@ -980,7 +955,8 @@ export default function PromptInjectionClient() {
                   <TemplateCard
                     key={t.id}
                     template={t}
-                    onCopy={() => copyPrompt(t)}
+                    copiedId={copied}
+                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
                     onEdit={() => setEditingTemplate(t)}
                     onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
                   />
@@ -1049,10 +1025,12 @@ export default function PromptInjectionClient() {
                             type="button"
                             onClick={() => copyName(coord.model)}
                             title="Copy name"
-                            className={actionBtnClass}
+                            className={`${actionBtnClass} ${copied === `name:${coord.model}` ? "text-emerald-500 hover:text-emerald-500" : ""}`}
                           >
-                            <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                            Copy
+                            <span className="material-symbols-outlined text-[16px]">
+                              {copied === `name:${coord.model}` ? "check" : "content_copy"}
+                            </span>
+                            {copied === `name:${coord.model}` ? "Copied" : "Copy"}
                           </button>
                         )}
                         <button
