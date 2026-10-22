@@ -28,6 +28,30 @@ function modelPickValue(m) {
 const SELECT_BTN_CLASS =
   "shrink-0 cursor-pointer whitespace-nowrap rounded border border-border bg-surface px-2.5 py-2 text-xs text-text-main transition-colors hover:border-primary";
 
+// Classify an injection's model name so the operator can see at a glance
+// where the prompt lives: on a combo (product) name, on a real routed
+// model, or on a free-form custom name nothing routes yet.
+function classifyModelName(name, comboSet, modelSet) {
+  if (comboSet && comboSet.has(name)) return { label: "Combo name", cls: "bg-blue-500/15 text-blue-400" };
+  if (modelSet && modelSet.has(name)) return { label: "Real model", cls: "bg-emerald-500/15 text-emerald-400" };
+  return { label: "Custom name", cls: "bg-surface-3 text-text-muted" };
+}
+
+function NameKindChip({ name, comboSet, modelSet }) {
+  const kind = classifyModelName(name, comboSet, modelSet);
+  return (
+    <span className={`shrink-0 rounded-[3px] px-1.5 py-0.5 text-[10px] font-semibold ${kind.cls}`}>
+      {kind.label}
+    </span>
+  );
+}
+
+const NAME_KIND_HINTS = {
+  "Combo name": "Combo name — applies to requests that ask for this combo (the name your clients send).",
+  "Real model": "Real model name — applies wherever this model runs, including through combos that resolve to it.",
+  "Custom name": "Custom name — applies only to requests that send exactly this name.",
+};
+
 function entryText(entry) {
   if (!entry) return "";
   if (entry.mode === "chat") return (entry.turns || []).map((t) => t.content).join("\n");
@@ -392,6 +416,8 @@ function InjectionForm({
   keys,
   keyName,
   templates,
+  comboNames,
+  routedModelNames,
   allowTemplateSource,
   saving,
   onSave,
@@ -477,6 +503,12 @@ function InjectionForm({
           </select>
         </label>
       </div>
+
+      {scope === "model" && model.trim() && (
+        <p className="-mt-1 text-[11px] leading-snug text-text-muted">
+          {NAME_KIND_HINTS[classifyModelName(model.trim(), comboNames, routedModelNames).label]}
+        </p>
+      )}
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -617,6 +649,8 @@ export default function PromptInjectionClient() {
   const [templates, setTemplates] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
+  const [comboNames, setComboNames] = useState(() => new Set());
+  const [routedModelNames, setRoutedModelNames] = useState(() => new Set());
   const [saving, setSaving] = useState("");
   const [editingTemplate, setEditingTemplate] = useState(undefined); // undefined=closed, null=new
   const [editingCoordId, setEditingCoordId] = useState(null);
@@ -642,18 +676,28 @@ export default function PromptInjectionClient() {
       // Callable model names, auto-loaded: combos + routed provider models,
       // plus anything already targeted so nothing ever looks lost.
       const names = new Set();
+      const comboSet = new Set();
+      const modelSet = new Set();
       try {
         const modelsData = await modelsRes.json();
         for (const m of modelsData?.models || []) {
-          if (m.routedModel) names.add(m.routedModel);
-          if (m.fullModel) names.add(m.fullModel);
+          if (m.routedModel) { names.add(m.routedModel); modelSet.add(m.routedModel); }
+          if (m.fullModel) {
+            names.add(m.fullModel);
+            modelSet.add(m.fullModel);
+            // The resolver also matches the bare model id (full name minus provider).
+            const slash = m.fullModel.indexOf("/");
+            if (slash > 0) modelSet.add(m.fullModel.slice(slash + 1));
+          }
         }
       } catch { /* models list is a convenience, not a requirement */ }
       try {
         const combosData = await combosRes.json();
         const combos = (combosData?.combos || []).filter((c) => c && c.name);
-        for (const c of combos) names.add(c.name);
+        for (const c of combos) { names.add(c.name); comboSet.add(c.name); }
       } catch { /* same */ }
+      setComboNames(comboSet);
+      setRoutedModelNames(modelSet);
       for (const name of Object.keys(inj.prompts || {})) names.add(name);
       for (const models of Object.values(inj.keyModelPrompts || {})) {
         for (const name of Object.keys(models || {})) names.add(name);
@@ -1020,12 +1064,13 @@ export default function PromptInjectionClient() {
                 paras: [
                   "An injection attaches one prompt to one target. The target is a model name — or Global, meaning every model — optionally narrowed to a single API key.",
                   "When a request arrives, every matching injection is added to it, stacked from least to most specific: Global → Key → Model → Model + Key.",
-                  "The model name is the name your client sends: the model in your chat app or Hermes config, a combo name, or a provider model name. If the name does not match, the injection does not fire — check with Stack Preview.",
+                  "One request is matched against three name forms, in order: the requested name (often a combo name like glm_un), the real model behind it (provider/model), and the bare model id. The first hit wins. End users only ever see the name they asked for — which name carries the prompt is your private bookkeeping.",
                 ],
                 bullets: [
                   "Single prompt — one system prompt, appended or prepended to the request's system text.",
                   "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
                   "One target holds exactly one injection; saving again replaces it.",
+                  "Convention: a combo's product prompt belongs on the combo name; a model's own prompt belongs on the real model name — it still fires when a combo resolves to that model. The name chip on each row shows which kind a name is.",
                 ],
               }}
             >
@@ -1040,6 +1085,8 @@ export default function PromptInjectionClient() {
                 keys={keys}
                 keyName={keyName}
                 templates={templates}
+                comboNames={comboNames}
+                routedModelNames={routedModelNames}
                 allowTemplateSource
                 saving={createSaving}
                 onSave={async (coord, fields) => {
@@ -1067,6 +1114,9 @@ export default function PromptInjectionClient() {
                           </p>
                         ) : (
                           <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{coord.model}</p>
+                        )}
+                        {coord.scope === "model" && (
+                          <NameKindChip name={coord.model} comboSet={comboNames} modelSet={routedModelNames} />
                         )}
                         <EntryBadge entry={entry} />
                       </div>
@@ -1122,6 +1172,8 @@ export default function PromptInjectionClient() {
                           keys={keys}
                           keyName={keyName}
                           modelOptions={modelOptions}
+                          comboNames={comboNames}
+                          routedModelNames={routedModelNames}
                           templates={templates}
                           allowTemplateSource={false}
                           saving={saving === id}
