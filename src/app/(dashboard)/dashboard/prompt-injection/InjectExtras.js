@@ -202,9 +202,9 @@ export function InjectionTester() {
         <button
           type="button"
           onClick={() => setPickerFor(which)}
-          className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface-2 hover:text-text-main"
+          className="flex shrink-0 items-center gap-2 rounded-[8px] border border-border px-3 py-2 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]"
         >
-          <span className="material-symbols-outlined text-[16px]">travel_explore</span>
+          <span className="material-symbols-outlined text-[18px]">travel_explore</span>
           Browse
         </button>
       </span>

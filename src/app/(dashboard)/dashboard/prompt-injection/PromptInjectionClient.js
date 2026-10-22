@@ -221,18 +221,12 @@ function SectionTitle({ icon, title, children, action, info }) {
         <h2 className="flex flex-1 items-center gap-2 text-base font-semibold uppercase tracking-wide">
           <span className="material-symbols-outlined text-primary">{icon}</span>
           {title}
-          {info && (
-            <button
-              type="button"
-              onClick={() => setInfoOpen(true)}
-              title={`About ${title}`}
-              aria-label={`About ${title}`}
-              className="shrink-0 text-text-muted transition-colors hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-[18px]">info</span>
-            </button>
-          )}
         </h2>
+        {info && (
+          <Button variant="outline" size="sm" icon="info" onClick={() => setInfoOpen(true)} className="shrink-0">
+            Info
+          </Button>
+        )}
         {action}
       </div>
       {children && <p className="mt-1 text-sm text-text-muted">{children}</p>}
@@ -453,7 +447,7 @@ function InjectionForm({
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
-            <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
+            <Button variant="outline" size="sm" icon="travel_explore" onClick={() => setPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
               Browse
             </Button>
           </div>
@@ -1163,7 +1157,7 @@ export default function PromptInjectionClient() {
                     list="pi-model-names"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
-                  <Button variant="outline" size="sm" onClick={() => setPvPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
+                  <Button variant="outline" size="sm" icon="travel_explore" onClick={() => setPvPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
                     Browse
                   </Button>
                   <select
