@@ -266,68 +266,111 @@ export default function ProxyPoolsPage() {
     });
   };
 
-  const handleHealthCheck = async () => {
-    const targets = selectedIds.length > 0
-      ? proxyPools.filter((p) => selectedIds.includes(p.id))
-      : proxyPools;
-    if (targets.length === 0) return;
-    setHealthChecking(true);
-    setHealthProgress({ current: 0, total: targets.length });
-    let alive = 0; const deadIds = [];
-    let done = 0;
-    const CONCURRENCY = 10;
-    const queue = [...targets];
+  const healthPollRef = useRef(null);
+  const healthSummaryForRef = useRef(null);
 
-    const worker = async () => {
-      while (queue.length > 0) {
-        const pool = queue.shift();
-        if (!pool) break;
-        try {
-          const res = await fetch(`/api/proxy-pools/${pool.id}/test`, { method: "POST" });
-          const data = await res.json();
-          if (res.ok && data.ok) alive += 1; else deadIds.push(pool.id);
-        } catch {
-          deadIds.push(pool.id);
-        } finally {
-          done += 1;
-          setHealthProgress({ current: done, total: targets.length });
-        }
-      }
-    };
-
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker));
-    await fetchProxyPools();
-    setHealthChecking(false);
-    setHealthProgress({ current: 0, total: 0 });
-
-    if (deadIds.length > 0) {
-      setConfirmState({
-        title: "Disable Dead Proxies",
-        message: `Alive: ${alive}, Dead: ${deadIds.length}.\n\nDisable ${deadIds.length} dead proxies?`,
-        onConfirm: async () => {
-          setConfirmState(null);
-          setBulkBusy(true);
-          try {
-            for (const id of deadIds) {
-              try {
-                await fetch(`/api/proxy-pools/${id}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ isActive: false }),
-                });
-              } catch {}
-            }
-            await fetchProxyPools();
-            notify.success(`Disabled ${deadIds.length} dead proxies`);
-          } finally {
-            setBulkBusy(false);
-          }
-        }
-      });
-    } else {
-      notify.success(`Health check done. Alive: ${alive}, Dead: ${deadIds.length}`);
+  const stopHealthPolling = () => {
+    if (healthPollRef.current) {
+      clearInterval(healthPollRef.current);
+      healthPollRef.current = null;
     }
   };
+
+  const watchHealthJob = useCallback(() => {
+    stopHealthPolling();
+    healthPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/proxy-pools/test-all", { cache: "no-store" });
+        const state = await res.json();
+        setHealthProgress({ current: state.done || 0, total: state.total || 0 });
+        if (!state.running) {
+          stopHealthPolling();
+          setHealthChecking(false);
+          await fetchProxyPools();
+          if (state.finishedAt && healthSummaryForRef.current !== state.finishedAt) {
+            healthSummaryForRef.current = state.finishedAt;
+            notify.success(`Health check done. Alive: ${state.passed}, Dead: ${state.failed}`);
+          }
+        }
+      } catch {
+        stopHealthPolling();
+        setHealthChecking(false);
+      }
+    }, 2000);
+  }, [fetchProxyPools, notify]);
+
+  // Server-side health check: one POST starts a background job on the server
+  // (selected pools when a selection exists, otherwise every pool) and the
+  // page polls its progress. Tested pools update in place: alive stay/become
+  // active, dead are deactivated and marked failed.
+  const handleHealthCheck = async () => {
+    if (proxyPools.length === 0) return;
+    try {
+      const res = await fetch("/api/proxy-pools/test-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selectedIds.length > 0 ? { ids: selectedIds } : {}),
+      });
+      const state = await res.json();
+      if (!res.ok) {
+        notify.error(state.error || "Failed to start health check");
+        return;
+      }
+      setHealthChecking(true);
+      setHealthProgress({ current: state.done || 0, total: state.total || 0 });
+      watchHealthJob();
+    } catch {
+      notify.error("Failed to start health check");
+    }
+  };
+
+  const handleDeleteFailed = () => {
+    const failedCount = proxyPools.filter((p) => p.testStatus === "error").length;
+    if (failedCount === 0) return;
+    setConfirmState({
+      title: "Delete Failed Proxies",
+      message: `Delete ${failedCount} proxies that failed their last test? Pools still bound to a connection are kept.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setBulkBusy(true);
+        try {
+          const res = await fetch("/api/proxy-pools/delete-failed", { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            notify.error(data.error || "Failed to delete failed proxies");
+            return;
+          }
+          await fetchProxyPools();
+          notify.success(`Deleted ${data.deleted} failed proxies${data.skippedBound ? `, ${data.skippedBound} kept (still bound)` : ""}`);
+        } catch {
+          notify.error("Failed to delete failed proxies");
+        } finally {
+          setBulkBusy(false);
+        }
+      }
+    });
+  };
+
+  // Resume watching if a health-check job is already running (e.g. it was
+  // started before a page refresh).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/proxy-pools/test-all", { cache: "no-store" });
+        const state = await res.json();
+        if (!cancelled && state.running) {
+          setHealthChecking(true);
+          setHealthProgress({ current: state.done || 0, total: state.total || 0 });
+          watchHealthJob();
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+      stopHealthPolling();
+    };
+  }, [watchHealthJob]);
 
   // Cleanup selectedIds when pools change
   useEffect(() => {
@@ -600,6 +643,11 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
+  const failedCount = useMemo(
+    () => proxyPools.filter((pool) => pool.testStatus === "error").length,
+    [proxyPools]
+  );
+
   if (loading) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
@@ -698,6 +746,27 @@ export default function ProxyPoolsPage() {
           )}
           <Badge variant="default">Total: {proxyPools.length}</Badge>
           <Badge variant="success">Active: {activeCount}</Badge>
+          {failedCount > 0 && <Badge variant="error">Failed: {failedCount}</Badge>}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={healthChecking ? "progress_activity" : "health_and_safety"}
+              onClick={handleHealthCheck}
+              disabled={healthChecking || bulkBusy || proxyPools.length === 0}
+            >
+              {healthChecking
+                ? `Checking ${healthProgress.current}/${healthProgress.total}`
+                : selectedIds.length > 0
+                  ? `Health Check (${selectedIds.length})`
+                  : "Health Check (all)"}
+            </Button>
+            {failedCount > 0 && (
+              <Button size="sm" variant="danger" icon="delete" onClick={handleDeleteFailed} disabled={bulkBusy || healthChecking}>
+                Delete failed ({failedCount})
+              </Button>
+            )}
+          </div>
         </div>
 
         {(selectedIds.length > 0 || healthChecking) && (
@@ -707,14 +776,6 @@ export default function ProxyPoolsPage() {
               {selectedIds.length > 0 ? `${selectedIds.length} selected` : "All pools"}
             </span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                icon={healthChecking ? "progress_activity" : "health_and_safety"}
-                onClick={handleHealthCheck}
-                disabled={healthChecking || bulkBusy || proxyPools.length === 0}
-              >
-                {healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health Check"}
-              </Button>
               {selectedIds.length > 0 && (
                 <>
                   <Button size="sm" variant="secondary" icon="toggle_on" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking}>

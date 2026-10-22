@@ -101,3 +101,16 @@ export async function deleteProxyPool(id) {
   });
   return removed;
 }
+
+export async function deleteProxyPoolsByIds(ids) {
+  if (!Array.isArray(ids) || !ids.length) return 0;
+  const db = await getAdapter();
+  let changes = 0;
+  db.transaction(() => {
+    for (const id of ids) {
+      const info = db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
+      changes += info?.changes ?? 0;
+    }
+  });
+  return changes;
+}

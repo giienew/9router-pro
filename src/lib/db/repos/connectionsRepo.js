@@ -208,6 +208,15 @@ export async function bulkAssignProxyPool(provider, poolIds) {
   return rows.length;
 }
 
+// Distinct proxy pool ids currently bound to any connection.
+export async function getBoundProxyPoolIds() {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT DISTINCT json_extract(data, '$.providerSpecificData.proxyPoolId') AS pid FROM providerConnections WHERE json_extract(data, '$.providerSpecificData.proxyPoolId') IS NOT NULL`,
+  );
+  return rows.map((r) => r.pid).filter(Boolean);
+}
+
 // Internal sync reorder — must be called INSIDE a transaction.
 //
 // Normalizes priorities to a contiguous 1..N after a DELETE or an explicit

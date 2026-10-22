@@ -89,3 +89,35 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
     }
   }
 }
+
+// Relay pools (vercel/cloudflare/deno/netlify) are tested by asking the relay
+// to fetch httpbin instead of routing through a ProxyAgent.
+export async function testRelayUrl(relayUrl, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await undiciFetch(relayUrl, {
+      method: "GET",
+      headers: {
+        "x-relay-target": "https://httpbin.org",
+        "x-relay-path": "/get",
+      },
+      signal: controller.signal,
+    });
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      elapsedMs: Date.now() - startedAt,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 500,
+      error: err?.name === "AbortError" ? "Relay test timed out" : (err?.message || String(err)),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
