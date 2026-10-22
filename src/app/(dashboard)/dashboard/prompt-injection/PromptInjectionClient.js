@@ -439,7 +439,7 @@ function InjectionForm({
           </div>
         </div>
         {scope === "model" && (
-          <div className="flex min-w-0 flex-1 gap-2">
+          <div className="order-3 flex min-w-0 basis-full gap-2 sm:order-2 sm:basis-auto sm:flex-1">
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -447,12 +447,12 @@ function InjectionForm({
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
-            <Button variant="outline" size="sm" icon="travel_explore" onClick={() => setPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
-              Browse
-            </Button>
+            <button type="button" onClick={() => setPickerOpen(true)} className={SELECT_BTN_CLASS}>
+              Select
+            </button>
           </div>
         )}
-        <label className="flex min-w-[180px] flex-1 flex-col gap-1 sm:max-w-[240px]">
+        <label className="order-2 flex min-w-[180px] flex-1 flex-col gap-1 sm:order-3 sm:max-w-[240px]">
           <span className="text-xs font-medium text-text-muted">API key (optional)</span>
           <select
             value={keyId}
@@ -579,7 +579,7 @@ function InjectionForm({
         isOpen={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={(m) => {
-          setModel(m.value || m.id || "");
+          setModel(modelPickValue(m));
           setPickerOpen(false);
         }}
         title="Select model"
@@ -954,7 +954,7 @@ export default function PromptInjectionClient() {
         <>
           <section className="flex flex-col gap-3">
             <SectionTitle
-              icon="bookmarks"
+              icon="edit_note"
               title="Templates"
               info={{
                 title: "How Templates work",
@@ -1002,7 +1002,7 @@ export default function PromptInjectionClient() {
 
           <section className="flex flex-col gap-3">
             <SectionTitle
-              icon="vaccines"
+              icon="input"
               title="Injections"
               info={{
                 title: "How Injections work",
@@ -1136,7 +1136,7 @@ export default function PromptInjectionClient() {
                 title: "How Stack Preview works",
                 paras: [
                   "Stack Preview shows exactly which injections one request would receive, in stacking order — without sending anything. No model is called and nothing is billed.",
-                  "Type a model name or pick one with Browse, optionally choose an API key, and the list updates automatically.",
+                  "Type a model name or pick one with Select, optionally choose an API key, and the list updates automatically.",
                 ],
                 bullets: [
                   "Verify a new injection lands on the right model and key.",
@@ -1157,9 +1157,9 @@ export default function PromptInjectionClient() {
                     list="pi-model-names"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
-                  <Button variant="outline" size="sm" icon="travel_explore" onClick={() => setPvPickerOpen(true)} className="shrink-0 self-center whitespace-nowrap">
-                    Browse
-                  </Button>
+                  <button type="button" onClick={() => setPvPickerOpen(true)} className={SELECT_BTN_CLASS}>
+                    Select
+                  </button>
                   <select
                     value={pvKeyId}
                     onChange={(e) => setPvKeyId(e.target.value)}
@@ -1175,7 +1175,7 @@ export default function PromptInjectionClient() {
                   isOpen={pvPickerOpen}
                   onClose={() => setPvPickerOpen(false)}
                   onSelect={(m) => {
-                    setPvModel(m.value || m.id || "");
+                    setPvModel(modelPickValue(m));
                     setPvPickerOpen(false);
                   }}
                   title="Select model"
