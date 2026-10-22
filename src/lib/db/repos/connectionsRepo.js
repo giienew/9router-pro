@@ -180,6 +180,34 @@ export async function bulkSetConnectionsActive(provider, authTypes, isActive) {
   return info?.changes ?? 0;
 }
 
+// Assign a proxy pool to EVERY connection of a provider in one transaction,
+// in the same order the detail page lists them (priority, createdAt).
+// poolIds null/empty unbinds all; one id binds all to that pool; several ids
+// rotate one-to-one across the connections. Returns the connection count.
+export async function bulkAssignProxyPool(provider, poolIds) {
+  if (!provider) return 0;
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT id, data FROM providerConnections WHERE provider = ? ORDER BY priority ASC, createdAt ASC`,
+    [provider],
+  );
+  if (!rows.length) return 0;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    rows.forEach((row, i) => {
+      const data = parseJson(row.data, {});
+      const spec = { ...(data.providerSpecificData || {}) };
+      spec.proxyPoolId = poolIds && poolIds.length ? poolIds[i % poolIds.length] : null;
+      data.providerSpecificData = spec;
+      db.run(
+        `UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?`,
+        [stringifyJson(data), now, row.id],
+      );
+    });
+  });
+  return rows.length;
+}
+
 // Internal sync reorder — must be called INSIDE a transaction.
 //
 // Normalizes priorities to a contiguous 1..N after a DELETE or an explicit

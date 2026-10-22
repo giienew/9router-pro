@@ -74,6 +74,8 @@ export default function ProviderDetailPage() {
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
+  const [bulkScope, setBulkScope] = useState("loaded");
+  const [bulkPoolSearch, setBulkPoolSearch] = useState("");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
@@ -1015,6 +1017,8 @@ export default function ProviderDetailPage() {
   const closeBulkProxyModal = () => {
     if (bulkUpdatingProxy) return;
     setShowBulkProxyModal(false);
+    setBulkScope("loaded");
+    setBulkPoolSearch("");
   };
 
   const applyProxyAssignments = async (assignments) => {
@@ -1042,12 +1046,38 @@ export default function ProviderDetailPage() {
     }
   };
 
+  const applyProxyAll = async (mode, proxyPoolId) => {
+    setBulkUpdatingProxy(true);
+    try {
+      const res = await fetch("/api/providers/bulk-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: providerId, mode, proxyPoolId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to apply proxy.");
+        return;
+      }
+      await fetchConnections();
+      setShowBulkProxyModal(false);
+    } finally {
+      setBulkUpdatingProxy(false);
+    }
+  };
+
   const handleApplySinglePool = (proxyPoolId) => {
+    if (bulkScope === "all" && connTotal > connections.length) {
+      return applyProxyAll(proxyPoolId === null ? "none" : "single", proxyPoolId);
+    }
     const targets = connections.map((c) => ({ connectionId: c.id, proxyPoolId }));
     return applyProxyAssignments(targets);
   };
 
   const handleApplyOneToOne = () => {
+    if (bulkScope === "all" && connTotal > connections.length) {
+      return applyProxyAll("rotate");
+    }
     const activePools = proxyPools.filter((p) => p.isActive === true);
     if (activePools.length === 0) {
       alert("No active proxy pools available.");
@@ -1153,13 +1183,55 @@ export default function ProviderDetailPage() {
 
   const activePools = proxyPools.filter((p) => p.isActive === true);
 
+  const bulkPoolQuery = bulkPoolSearch.trim().toLowerCase();
+  const bulkPoolMatches = bulkPoolQuery
+    ? proxyPools.filter((p) => (p.name || "").toLowerCase().includes(bulkPoolQuery))
+    : proxyPools;
+  const visibleBulkPools = bulkPoolMatches.slice(0, 50);
+  const bulkTargetCount = bulkScope === "all" && connTotal > connections.length ? connTotal : connections.length;
+
   const bulkActionModal = (
     <Modal
       isOpen={showBulkProxyModal}
       onClose={closeBulkProxyModal}
-      title={`Apply Proxy (${connections.length} connections)`}
+      title={`Apply Proxy (${bulkTargetCount} connections)`}
     >
       <div className="flex flex-col gap-3">
+        {connTotal > connections.length && (
+          <div>
+            <div className="flex overflow-hidden rounded-lg border border-border">
+              <button
+                type="button"
+                onClick={() => setBulkScope("loaded")}
+                disabled={bulkUpdatingProxy}
+                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+              >
+                Loaded ({connections.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkScope("all")}
+                disabled={bulkUpdatingProxy}
+                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+              >
+                All ({connTotal})
+              </button>
+            </div>
+            {bulkScope === "all" && (
+              <p className="mt-1.5 text-xs text-text-muted">
+                Applies to every connection of this provider, including connections that are not loaded below.
+              </p>
+            )}
+          </div>
+        )}
+        {proxyPools.length > 20 && (
+          <input
+            value={bulkPoolSearch}
+            onChange={(e) => setBulkPoolSearch(e.target.value)}
+            placeholder="Search proxy pools…"
+            className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text-main outline-none focus:border-brand-500"
+          />
+        )}
         <div className="flex flex-col">
           <button
             onClick={handleApplyOneToOne}
@@ -1177,7 +1249,7 @@ export default function ProviderDetailPage() {
             <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
             <span className="text-sm text-text-main">None (unbind all)</span>
           </button>
-          {proxyPools.map((pool) => (
+          {visibleBulkPools.map((pool) => (
             <button
               key={pool.id}
               onClick={() => handleApplySinglePool(pool.id)}
@@ -1191,6 +1263,14 @@ export default function ProviderDetailPage() {
               )}
             </button>
           ))}
+          {bulkPoolMatches.length > visibleBulkPools.length && (
+            <p className="px-3 py-1.5 text-xs text-text-muted">
+              Showing {visibleBulkPools.length} of {bulkPoolMatches.length} pools — type to search for a specific pool.
+            </p>
+          )}
+          {bulkPoolQuery && visibleBulkPools.length === 0 && (
+            <p className="px-3 py-1.5 text-xs text-text-muted">No pools match “{bulkPoolSearch}”.</p>
+          )}
         </div>
 
         {bulkUpdatingProxy && <p className="text-xs text-text-muted">Applying...</p>}
