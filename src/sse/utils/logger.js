@@ -160,8 +160,11 @@ export function describeStatus(status) {
 export function plainErrorDetail(errText) {
   let text = String(errText || "").trim();
   if (!text) return "";
-  const msgMatch = text.match(/"message"\s*:\s*"([^"]+)"/);
-  if (msgMatch) {
+  // The value may be cut mid-sentence (callers truncate error bodies for
+  // storage), so a closing quote is not required — capture to the quote
+  // or to the end of the string, whichever comes first.
+  const msgMatch = text.match(/"message"\s*:\s*"([^"]*)/);
+  if (msgMatch && msgMatch[1]) {
     text = msgMatch[1];
   } else {
     const jsonStart = text.indexOf("{");

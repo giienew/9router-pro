@@ -49,6 +49,11 @@ describe("plainErrorDetail", () => {
     expect(plainErrorDetail(raw)).toBe("available tokens exhausted");
   });
 
+  it("extracts the message even when the body was truncated mid-sentence", () => {
+    const raw = '[429]: {"error":{"code":"model_concurrency","message":"This model is at concurrency capacity. Paid accounts are admit…';
+    expect(plainErrorDetail(raw)).toBe("This model is at concurrency capacity. Paid accounts are admit…");
+  });
+
   it("strips the [NNN]: prefix from plain-text errors", () => {
     expect(plainErrorDetail("[400]: context length exceeded")).toBe("context length exceeded");
   });
