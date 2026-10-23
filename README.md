@@ -26,8 +26,17 @@
 - **Stacking** — a request receives at most three injections, ordered global → user → model. Injection happens after format translation through the router's own wire-aware injector (OpenAI, Claude, Gemini, Responses); idempotent on retries; fails open (a broken injection never breaks a chat).
 - **Per-key token quotas** — a token budget per API key (24h / 7d / 30d) with live usage on the Endpoint page. (Upstream removed this feature; Pro brings it back.)
 - **Key Limits for reselling** — per-API-key rate limits, all configurable per key on the Endpoint page: requests/minute, tokens/minute, requests/hour, requests/day and max concurrent requests, enforced with HTTP 429 + `Retry-After`. Shape every key to the plan you sold.
-- **Accent themes** — violet, azure, emerald, rose, amber, cyan (plus the original coral), switchable in one click from the header.
-- **Update notifications** that follow *this* repo's releases.
+- **Providers, organized** — custom (OpenAI/Anthropic-compatible) providers get their own **Provider Custom** section, an **All Connection Providers** shelf, and a **Test All** button in *every* section — custom providers included. Server-side search & pagination keeps tens of thousands of connections snappy, bulk add shows live progress, and each custom provider's icon is auto-detected from its endpoint's favicon.
+- **Proxy Pools that maintain themselves** — a server-side **health check across every pool** with one-click cleanup of the dead ones. Per-provider proxy rotation (random / round-robin) can be pinned to a **hand-picked subset of pools**, chosen from a compact collapsible picker that folds away when you're done.
+- **Balanced fallback** — health-tiered account selection (clean → suspect → cooldown, suspects heal after an hour) with least-recently-used spreading across the fleet, so a temporarily-limited key stops poisoning a whole combo.
+- **Anti-Flaky Guard** — flaky upstream responses (empty bodies, truncated JSON, wrong content types) are detected and retried against the next account instead of failing your chat.
+- **OpenCode Free, aligned** — the request wire format mirrors the official OpenCode CLI, plus in-place tool-call fingerprint normalization for clients whose tool schemas would otherwise be rejected.
+- **Console Log in plain words** — a live request log that reads like sentences (MatLog-style rows), not stack traces.
+- **Backup & restore** — full backups or selective per-section ones (providers, combos, keys, settings) straight from the dashboard.
+- **Fully localized dashboard** — 34 languages, and the Indonesian translation is **100% complete** (1,827 strings — every label, description and help popover).
+- **Themes** — a flat **Dark Pro** theme by default, 7 accent presets plus a free **custom color picker**, switchable in one click from the header.
+- **Lightweight by design** — no extra services, no database server: one Next.js app and a single SQLite file, the same footprint class as upstream.
+- **Update notifications** that follow *this* repo's releases, and a **Donate** button wired to this project's own channels.
 
 ## 🔑 Key quotas & limits — how they work
 
@@ -76,7 +85,12 @@ A key that crosses a limit gets **HTTP 429 with a `Retry-After` header** and a m
 
 <p align="center">
   <img src="./images/pro-providers.png" alt="Providers dashboard" width="800"/>
-  <br/><em>Providers — every upstream in one dashboard, server-side search & pagination.</em>
+  <br/><em>Providers — custom providers, an all-connections shelf, and a Test All in every section. Dark Pro theme, orange accent.</em>
+</p>
+
+<p align="center">
+  <img src="./images/pro-opencode-picker.png" alt="Per-provider proxy rotation picker" width="800"/>
+  <br/><em>Per-provider proxy rotation — pin a provider to a hand-picked subset of your pools; the picker folds away when you're done.</em>
 </p>
 
 ## 💎 Why Pro?
@@ -85,7 +99,8 @@ The original 9Router is a great router — Pro is what it becomes when you actua
 
 - **Prompt Injection** — the original has *no* custom system prompts at all. Pro gives every target one injection — **global**, **per API key**, and **per model** — each either a system prompt (prepend or append) or a scripted chat primed as fake history, injected wire-aware for OpenAI / Claude / Gemini / Responses bodies.
 - **Per-key token quotas** — upstream *removed* this feature. Pro brings it back: a token budget per API key (24h / 7d / 30d) with live usage and 429 enforcement.
-- **An identity** — 7 switchable accent themes with violet as the Pro signature (the original is coral-only), plus Pro branding throughout.
+- **An identity** — a flat Dark Pro theme, 7 accent presets plus a free custom-color picker, and Pro branding throughout.
+- **Fleet care built in** — Balanced health-tiered fallback, the Anti-Flaky Guard, server-side proxy-pool health checks and per-provider rotation subsets keep a big key fleet healthy without babysitting.
 - **An optimized hot path** — injection resolution is snapshot-cached and system prompts run as a single grouped pass per position: identical output, less work per request.
 - **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
 - **Tested** — the Pro features ship with unit tests (injector + resolver), all passing.
@@ -112,6 +127,11 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 | Dashboard accents | coral only | varies | ✅ 7 accents |
 | Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d budgets |
 | Per-key rate limits (RPM/TPM/RPD/concurrency) | ❌ | ❌ | ✅ per key, 429 + Retry-After |
+| Test All per provider section (incl. custom) | ❌ | ❌ | ✅ |
+| Proxy pool health check + dead-pool cleanup | ❌ | ❌ | ✅ server-side, all pools |
+| Per-provider proxy rotation subsets | ❌ | ❌ | ✅ random / round-robin over picked pools |
+| Health-tiered (Balanced) fallback | ❌ | ❌ | ✅ |
+| Indonesian dashboard translation | ⚠️ has gaps | varies | ✅ 100% (1,827 strings) |
 | `/v1/models` | ✅ healthy | ⚠️ had a 500 bug | ✅ healthy (upstream base) |
 | Extra services (Prisma/Redis) | none | sometimes required | none |
 
