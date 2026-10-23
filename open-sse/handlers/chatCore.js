@@ -247,19 +247,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const clientModel = clientRawRequest?.body?.model || `${provider}/${model}`;
     const msgN = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || body.messages?.length || body.input?.length || 0;
     const toolN = translatedBody.tools?.length || body.tools?.length || 0;
-    const fmtStr = passthrough ? `FMT: ${sourceFormat} (passthrough)` : `FMT: ${sourceFormat}→${targetFormat}`;
     const showThinking = provider !== "grok-cli" || supportsGrokCliReasoningEffort(model);
     const think = showThinking ? log.fmtThink?.(extractThinking(translatedBody)) : null;
     const acc = credentials?.connectionName || credentials?.connectionId?.slice(0, 8) || "-";
-    const parts = [
-      `POST ${clientModel} → ${provider}/${model}`,
-      fmtStr,
-      stream ? "STREAM" : "JSON",
-      `${msgN} MSG`,
-    ];
-    if (toolN) parts.push(`${toolN} TOOL`);
-    if (think) parts.push(`THINK:${think}`);
-    parts.push(`ACC:${acc}`);
+    // Plain-words request line (9Router Pro): only the facts an operator
+    // needs — what was asked, which key serves it, how big the ask is.
+    // Format conversion is noise unless the format actually changes.
+    const parts = [`POST ${clientModel} → ${provider}/${model}`];
+    if (passthrough) parts.push("passthrough");
+    else if (sourceFormat !== targetFormat) parts.push(`${sourceFormat}→${targetFormat}`);
+    parts.push(stream ? "stream" : "non-stream", `${msgN} messages`);
+    if (toolN) parts.push(`${toolN} tools`);
+    if (think) parts.push(`think ${think}`);
+    parts.push(`key ${acc}`);
     log.line(reqTag, "▶", parts.join(" · "));
   }
 
@@ -395,7 +395,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (proxyOptions.vercelRelayUrl) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
     const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
+    log?.info?.("PROXY", `${provider}/${model} · ${connectionName} · vercel relay`);
   } else if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionProxyUrl) {
     let maskedProxyUrl = proxyOptions.connectionProxyUrl;
     try {
@@ -408,9 +408,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       // Keep raw if URL parsing fails
     }
 
-    const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`);
+    log?.info?.("PROXY", `${provider}/${model} · ${connectionName} · proxy ${maskedProxyUrl.replace(/^https?:\/\//, "")}`);
   }
 
   if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionNoProxy) {
@@ -466,7 +465,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+      // One line, plain words (9Router Pro): status + what it means + how
+      // long it took. The raw detail stays available on the debug level;
+      // a stack trace never belongs in the operator's face.
+      const detail = String(errMsg || "").split("\n")[0].slice(0, 140);
+      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${log.describeStatus?.(502) || "upstream error"} · ${log.fmtDuration?.(Date.now() - requestStartTime) || ""}${detail ? ` — ${detail}` : ""}`);
+      if (error.stack) log?.debug?.("CHATCORE", error.stack);
     }
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
@@ -537,8 +541,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     if (log?.errorLine) {
-      const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
-      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+      // One line, plain words (9Router Pro): status + what it means + how
+      // long it took + the first line of detail. The upstream URL is a
+      // per-provider constant — repeating it on every failure is noise.
+      const reason = log.describeStatus?.(statusCode) || "";
+      const detail = String(errMsg || "").split("\n")[0].slice(0, 140);
+      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model}${reason ? ` · ${reason}` : ""} · ${log.fmtDuration?.(Date.now() - requestStartTime) || ""}${detail ? ` — ${detail}` : ""}`);
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return createErrorResult(statusCode, errMsg, resetsAtMs, upstreamResponseHeaders(providerResponse.headers));

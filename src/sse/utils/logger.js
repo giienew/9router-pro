@@ -115,3 +115,40 @@ export function maskKey(key) {
   if (!key || key.length < 8) return "***";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
+
+// Human duration for log lines: 731ms / 1.3s / 2m 05s (9Router Pro — logs
+// are read by operators, not parsed by machines).
+export function fmtDuration(ms) {
+  const n = Number(ms) || 0;
+  if (n < 1000) return `${Math.round(n)}ms`;
+  if (n < 60000) return `${(n / 1000).toFixed(1)}s`;
+  const m = Math.floor(n / 60000);
+  const s = Math.round((n % 60000) / 1000);
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+// Thousands-separated count for log lines (45,231 instead of 45231).
+export function fmtCount(n) {
+  return (Number(n) || 0).toLocaleString("en-US");
+}
+
+// Plain words for an HTTP status, for log lines a human has to understand
+// at a glance: "402 quota exhausted" beats a bare number plus a raw body.
+export function describeStatus(status) {
+  switch (Number(status)) {
+    case 400: return "bad request";
+    case 401: return "key rejected";
+    case 402: return "quota exhausted";
+    case 403: return "access denied";
+    case 404: return "not found";
+    case 408: return "timeout";
+    case 409: return "conflict";
+    case 429: return "rate limited";
+    case 499: return "request aborted";
+    case 500:
+    case 502:
+    case 503:
+    case 504: return "upstream error";
+    default: return "";
+  }
+}

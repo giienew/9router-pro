@@ -325,9 +325,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   await updateProviderConnection(connectionId, update);
 
-  const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+  const reason = log.describeStatus?.(status) || "";
+  log.warn("AUTH", `${connName} · ${status}${reason ? ` ${reason}` : ""} · ${model || "all models"} locked ${log.fmtDuration?.(cooldownMs) || `${Math.round(cooldownMs / 1000)}s`}`);
 
   if (provider && status && reason) {
     console.error(`❌ ${provider} [${status}]: ${reason}`);

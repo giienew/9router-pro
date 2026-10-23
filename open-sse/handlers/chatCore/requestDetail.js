@@ -97,22 +97,27 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-// Build the "done" summary: duration, ttft, in/out tokens with cache breakdown
+// Build the "done" summary in plain words (9Router Pro): total time,
+// time to first token, token counts with thousands separators, cache hits.
 export function formatDoneLine({ usage, latency }) {
   const u = usage || {};
   const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
   const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
   const cacheRead = u.cache_read_input_tokens ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
   const cacheCreate = u.cache_creation_input_tokens ?? 0;
-  let inStr = `IN ${inTok}`;
-  if (cacheRead || cacheCreate) {
-    const parts = [];
-    if (cacheRead) parts.push(`↻${cacheRead}`);
-    if (cacheCreate) parts.push(`+${cacheCreate}`);
-    inStr += ` (CACHE ${parts.join(" ")})`;
-  }
-  const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  const fmtMs = (n) => {
+    const v = Number(n) || 0;
+    if (v < 1000) return `${Math.round(v)}ms`;
+    if (v < 60000) return `${(v / 1000).toFixed(1)}s`;
+    return `${Math.floor(v / 60000)}m ${String(Math.round((v % 60000) / 1000)).padStart(2, "0")}s`;
+  };
+  const fmtN = (n) => (Number(n) || 0).toLocaleString("en-US");
+  const parts = [`done · ${fmtMs(latency?.total ?? 0)}`];
+  if (latency?.ttft) parts.push(`first token ${fmtMs(latency.ttft)}`);
+  parts.push(`in ${fmtN(inTok)}`, `out ${fmtN(outTok)}`);
+  if (cacheRead) parts.push(`cache read ${fmtN(cacheRead)}`);
+  if (cacheCreate) parts.push(`cache new ${fmtN(cacheCreate)}`);
+  return parts.join(" · ");
 }
 
 export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
@@ -125,8 +130,8 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
 
   if (!silent) {
     const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-    console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
+    const accountSuffix = connectionId ? ` · conn ${connectionId.slice(0, 8)}` : "";
+    console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider} · in ${(inTokens || 0).toLocaleString("en-US")} · out ${(outTokens || 0).toLocaleString("en-US")}${accountSuffix}${COLORS.reset}`);
   }
 
   // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
