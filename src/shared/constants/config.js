@@ -12,7 +12,7 @@ export const GITHUB_CONFIG = {
   // 9Router Pro — changelog + releases live in the Pro repo
   changelogUrl: "https://raw.githubusercontent.com/giienew/9router-pro/refs/heads/master/CHANGELOG-PRO.md",
   repoUrl: "https://github.com/giienew/9router-pro",
-  donateUrl: "https://9router.com/api/donate",
+  donateUrl: "https://raw.githubusercontent.com/giienew/9router-pro/refs/heads/master/donate.json",
 };
 
 // Updater configuration
