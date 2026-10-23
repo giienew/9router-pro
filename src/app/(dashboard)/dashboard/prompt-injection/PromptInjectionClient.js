@@ -819,6 +819,7 @@ export default function PromptInjectionClient() {
   const [editingTemplate, setEditingTemplate] = useState(undefined); // undefined=closed, null=new
   const [editingCoordId, setEditingCoordId] = useState(null);
   const [createSaving, setCreateSaving] = useState(false);
+  const [createFormKey, setCreateFormKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -966,20 +967,20 @@ export default function PromptInjectionClient() {
   const saveInjection = async (fromCoord, toCoord, fields) => {
     if (toCoord.scope === "model" && !toCoord.model) {
       showToast("Model name is required — or switch the target to Global", "error");
-      return;
+      return false;
     }
     const fromId = fromCoord ? coordId(fromCoord) : null;
     const toId = coordId(toCoord);
     const moving = fromCoord && fromId !== toId;
     if (moving && entryAt(toCoord)) {
       showToast("That target already has an injection — edit it instead", "error");
-      return;
+      return false;
     }
     if (!moving) {
       const { payload } = putCoord(toCoord, fields);
       const ok = await put(payload, toId, "Injection saved");
       if (ok && fromCoord) setEditingCoordId(null);
-      return;
+      return ok;
     }
     setSaving(fromId);
     try {
@@ -1009,8 +1010,10 @@ export default function PromptInjectionClient() {
       showToast("Injection saved", "success");
       setEditingCoordId(null);
       await load();
+      return true;
     } catch {
       showToast("Failed to save", "error");
+      return false;
     } finally {
       setSaving("");
     }
@@ -1104,11 +1107,12 @@ export default function PromptInjectionClient() {
 
   const saveWithPair = async (fromCoord, toCoord, fields) => {
     const { pair, ...cleanFields } = fields || {};
+    showToast("Saving…", "info");
     if (pair) {
       const ok = await applyPair(pair, toCoord);
-      if (!ok) return;
+      if (!ok) return false;
     }
-    await saveInjection(fromCoord, toCoord, cleanFields);
+    return saveInjection(fromCoord, toCoord, cleanFields);
   };
 
   // Unified rows in stack order: global → key → model → model+key.
@@ -1246,9 +1250,11 @@ export default function PromptInjectionClient() {
         </div>
       </div>
       {msg && (
-        <p className={`rounded-lg px-3 py-2 text-sm ${msg.type === "error" ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"}`}>
-          {msg.text}
-        </p>
+        <div className="fixed bottom-5 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2">
+          <p className={`rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-sm shadow-[var(--shadow-elev)] ${msg.type === "error" ? "text-red-400" : msg.type === "info" ? "text-text-muted" : "text-emerald-400"}`}>
+            {msg.text}
+          </p>
+        </div>
       )}
 
       <datalist id="pi-model-names">
@@ -1334,6 +1340,7 @@ export default function PromptInjectionClient() {
             <Card>
               <p className="mb-3 text-sm font-semibold">New injection</p>
               <InjectionForm
+                key={createFormKey}
                 initialCoord={{ scope: "model", model: "", keyId: "" }}
                 entryAt={entryAt}
                 keys={keys}
@@ -1347,7 +1354,8 @@ export default function PromptInjectionClient() {
                 onSave={async (coord, fields) => {
                   setCreateSaving(true);
                   try {
-                    await saveWithPair(null, coord, fields);
+                    const ok = await saveWithPair(null, coord, fields);
+                    if (ok) setCreateFormKey((k) => k + 1);
                   } finally {
                     setCreateSaving(false);
                   }
