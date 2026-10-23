@@ -47,7 +47,7 @@ export default {
     baseUrl: "https://opencode.ai/inference/v1/systemone",
     headers: {
       "x-opencode-client": "desktop",
-      "User-Agent": "opencode/latest/2.0.29/cli",
+      "User-Agent": "opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4",
     },
   },
   modelsFetcher: { url: "https://opencode.ai/inference/v1/models", type: "opencode-free" },

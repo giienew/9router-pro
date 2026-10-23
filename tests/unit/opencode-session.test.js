@@ -180,40 +180,38 @@ describe("OpenCode Free Executor Session Resolution", () => {
 });
 
 describe("OpenCode Free User-Agent Validation", () => {
-  it("defaults User-Agent to the v2 CLI form for non-opencode downstream clients", () => {
+  it("defaults User-Agent to the current CLI form for non-opencode downstream clients", () => {
     const executor = getExecutor("opencode");
     const headersNoUa = executor.buildHeaders({});
-    expect(headersNoUa["User-Agent"]).toBe("opencode/latest/2.0.26/cli");
+    expect(headersNoUa["User-Agent"]).toBe("opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4");
 
     const headersClaude = executor.buildHeaders({ rawHeaders: { "user-agent": "Claude-Code/1.0" } });
-    expect(headersClaude["User-Agent"]).toBe("opencode/latest/2.0.26/cli");
+    expect(headersClaude["User-Agent"]).toBe("opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4");
   });
 
-  it("replaces v1-style opencode User-Agents, which upstream now rejects with 403", () => {
+  it("replaces stale opencode User-Agents, which upstream now rejects with 403", () => {
     const executor = getExecutor("opencode");
-    for (const ua of ["opencode", "opencode/1.15.0", "opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14"]) {
-      expect(executor.buildHeaders({ rawHeaders: { "user-agent": ua } })["User-Agent"]).toBe("opencode/latest/2.0.26/cli");
+    for (const ua of ["opencode", "opencode/1.15.0", "opencode/latest/2.0.26/cli", "opencode/latest/2.0.29/desktop"]) {
+      expect(executor.buildHeaders({ rawHeaders: { "user-agent": ua } })["User-Agent"]).toBe("opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4");
     }
   });
 
-  it("preserves a v2 opencode downstream User-Agent", () => {
+  it("preserves a current opencode downstream User-Agent", () => {
     const executor = getExecutor("opencode");
-    const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode/latest/2.0.29/desktop" } });
-    expect(headers["User-Agent"]).toBe("opencode/latest/2.0.29/desktop");
+    const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4" } });
+    expect(headers["User-Agent"]).toBe("opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4");
   });
 
-  it("sends the v2 session headers and never x-opencode-request", () => {
+  it("sends the current CLI headers including x-opencode-request and session id", () => {
     const executor = getExecutor("opencode");
-    const headers = executor.buildHeaders({
-      rawHeaders: { "x-opencode-request": "msg_0ae8d9cd3001swxaFbM248jcIF" },
-    });
+    const headers = executor.buildHeaders({});
     const session = headers["x-opencode-session"];
     expect(session).toMatch(OPENCODE_SESSION_RE);
     expect(headers["x-opencode-session-id"]).toBe(session);
-    expect(headers["x-session-affinity"]).toBe(session);
-    expect(headers["x-session-id"]).toBe(session);
     expect(headers["x-opencode-client"]).toBe("cli");
-    expect("x-opencode-request" in headers).toBe(false);
+    expect(headers["x-opencode-request"]).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+    expect("x-session-affinity" in headers).toBe(false);
+    expect("x-session-id" in headers).toBe(false);
   });
 });
 
@@ -325,5 +323,24 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
   it("declares forceStream on the opencode transport so chatCore serves SSE upstream", async () => {
     const { PROVIDERS } = await import("../../open-sse/config/providers.js");
     expect(PROVIDERS.opencode?.forceStream).toBe(true);
+  });
+
+  it("registers OpenCode Free V2 executor with official 1.19.4 wire protocol", async () => {
+    const v2 = getExecutor("opencode-v2");
+    expect(v2).toBeDefined();
+
+    const headers = v2.buildHeaders({}, true, "https://opencode.ai/inference/openai/v1/chat/completions");
+    expect(headers["User-Agent"]).toContain("opencode/1.19.4");
+    expect(headers["x-opencode-client"]).toBe("cli");
+    expect(headers["x-opencode-request"]).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+    expect(headers["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+    expect(headers["x-session-affinity"]).toBeUndefined();
+    expect(headers["x-session-id"]).toBeUndefined();
+
+    const url = v2.buildUrl("deepseek-v4.1-flash-free");
+    expect(url).toBe("https://opencode.ai/inference/openai/v1/chat/completions");
+
+    const msgUrl = v2.buildUrl("union-alpha");
+    expect(msgUrl).toBe("https://opencode.ai/inference/anthropic/v1/messages");
   });
 });

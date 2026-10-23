@@ -1,0 +1,47 @@
+export default {
+  id: "opencode-v2",
+  priority: 39,
+  hasFree: true,
+  alias: "oc2",
+  uiAlias: "oc2",
+  display: {
+    name: "OpenCode Free V2",
+    icon: "terminal",
+    color: "#2563EB",
+    textIcon: "OC2",
+  },
+  category: "free",
+  noAuth: true,
+  transport: {
+    baseUrl: "https://opencode.ai",
+    timeoutMs: 12000,
+    headers: {
+      "x-opencode-client": "cli",
+    },
+    forceStream: true,
+    noAuth: true,
+    reasoningInject: {
+      scope: "all",
+    },
+    quirks: {
+      forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+    },
+  },
+  models: [
+    { id: "beam-free", name: "Beam Free", isFree: true },
+    { id: "big-pickle", name: "Big Pickle", isFree: true },
+    { id: "deepseek-v4.1-flash-free", name: "DeepSeek V4.1 Flash Free", supportedFormats: ["openai", "claude", "openai-responses"], isFree: true },
+    { id: "flint-40b-free", name: "Flint 40B Free", isFree: true },
+    { id: "glm-5.3-flash-free", name: "GLM-5.3-Flash Free", isFree: true },
+    { id: "mimo-v2.6-flash-free", name: "MiMo-V2.6-Flash Free", isFree: true },
+    { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", isFree: true },
+    { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free", isFree: true },
+    { id: "nemotron-3.5-super-vl-free", name: "Nemotron 3.5 Super VL Free", isFree: true },
+    { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Contributor Free", targetFormat: "openai-responses", isFree: true },
+    { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor Free", targetFormat: "openai-responses", isFree: true },
+    { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude", isFree: true },
+  ],
+  serviceKinds: ["llm"],
+  modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
+  passthroughModels: true,
+};
