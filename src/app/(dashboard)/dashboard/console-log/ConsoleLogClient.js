@@ -7,14 +7,16 @@ import { parseConsoleLine } from "@/lib/logLineParse";
 
 // MatLog-style rows (9Router Pro): every line renders as time + level
 // badge + short tag + one plain message, so the panel scans like a
-// logcat viewer instead of a wall of green terminal text.
+// logcat viewer instead of a wall of green terminal text. The badges
+// copy MatLog's own colors and shape: a solid bright square with a
+// bold black letter (I green, W yellow, E red, D blue, neutral gray).
 const LEVEL_BADGES = {
-  E: "bg-red-500/15 text-red-400 border-red-500/25",
-  W: "bg-amber-500/15 text-amber-400 border-amber-500/25",
-  I: "bg-blue-500/15 text-blue-400 border-blue-500/25",
-  D: "bg-purple-500/15 text-purple-400 border-purple-500/25",
-  "✓": "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  "·": "bg-zinc-500/15 text-zinc-400 border-zinc-500/25",
+  E: "bg-[#f44336] text-black",
+  W: "bg-[#ffeb3b] text-black",
+  I: "bg-[#4caf50] text-black",
+  D: "bg-[#2196f3] text-black",
+  "✓": "bg-[#4caf50] text-black",
+  "·": "bg-[#9e9e9e] text-black",
 };
 
 function LogRow({ line }) {
@@ -23,7 +25,7 @@ function LogRow({ line }) {
   return (
     <div className="flex items-start gap-2 border-b border-white/5 py-[3px] last:border-0">
       <span className="w-[52px] shrink-0 pt-[2px] text-zinc-500">{p.time || "—"}</span>
-      <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border text-[10px] font-bold ${badge}`}>
+      <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[3px] text-[10px] font-extrabold ${badge}`}>
         {p.level}
       </span>
       <span className="flex w-[68px] shrink-0 items-center gap-1 pt-[2px]">
