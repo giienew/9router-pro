@@ -7,7 +7,7 @@ import { FORMATS } from "../translator/formats.js";
 export { PROVIDER_MODELS };
 
 // OpenCode providers sharing the endpoint-family fallback for unknown model ids
-const isOpenCodeAlias = (aliasOrId) => !aliasOrId || ["oc", "opencode", "oc2", "opencode-v2", "ocg", "opencode-go", "ocz", "opencode-zen"].includes(aliasOrId);
+const isOpenCodeAlias = (aliasOrId) => !aliasOrId || ["oc", "opencode", "ocg", "opencode-go", "ocz", "opencode-zen"].includes(aliasOrId);
 
 
 // Helper functions

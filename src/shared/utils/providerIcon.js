@@ -11,7 +11,6 @@ const ICON_ALIASES = {
   "minimax-code-global": "minimax",
   // Zen is the same opencode.ai brand
   "opencode-zen": "opencode",
-  "opencode-v2": "opencode",
   // Web-cookie variants ride their brand's existing mark
   "deepseek-web": "deepseek",
   "muse-web": "muse",
