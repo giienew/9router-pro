@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Badge, Button, Input, Modal, Select } from "@/shared/components";
+import ProviderIcon from "@/shared/components/ProviderIcon";
 
 const VARIANT_CONFIG = {
   openai: {
@@ -136,6 +137,17 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   return (
     <Modal isOpen={isOpen} title={config.title} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <ProviderIcon
+            key={formData.baseUrl}
+            detectBaseUrl={formData.baseUrl}
+            alt={formData.name || "Provider"}
+            size={40}
+            className="rounded-lg shrink-0"
+            fallbackText={(formData.name || formData.prefix || "?").slice(0, 2).toUpperCase()}
+          />
+          <p className="text-xs text-text-muted">Icon preview — detected automatically from the Base URL.</p>
+        </div>
         <Input
           label="Name"
           value={formData.name}
