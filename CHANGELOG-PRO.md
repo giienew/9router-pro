@@ -4,6 +4,16 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.7
+
+- **Base updated to upstream 9Router v0.5.109**: all 39 upstream commits since v0.5.104 are merged in, and every Pro feature is preserved — Prompt Injection (Templates / Injections / Tester), per–API-key limits and token quotas, Anti-Flaky Guard, provider bulk tools, the proxy pool health check, and the backup system are unchanged.
+- **Smart Router (System One)**: combos gain an adaptive routing strategy — a decision model picks the best model for each request, with Smart Switch, Strict Lock and Per-Turn modes, its own policy dialog, and session stickiness.
+- **Combo list search**: the combos page filters locally with its own search box.
+- **Upstream custom system prompt**: Settings gains a user-authored custom prompt that stacks after Prompt Injections.
+- **Tougher combos**: a combo now advances to the next model when credits run out, on request-scoped 4xx responses, and on empty streaming responses, instead of ending the request.
+- **Streaming fixes**: missing tool-call ids are filled in and renamed tool names restored, keeping agentic clients intact.
+- Plus the rest of the upstream wave: SenseNova and web-cookie providers, Codex OAuth transcription, Gemini reference-image inputs, reasoning-effort support for OpenCode free models, and security bumps (Node 22.23.4 in Docker, undici 7.30.1).
+
 ## v0.5.104-pro.6
 
 - **Apply Proxy to every connection**: the provider page's Apply Proxy dialog gains a scope switch — **Loaded** (the connections currently on screen, as before) or **All** (every connection of the provider, including pages never loaded). The All scope runs as one server-side pass in a single transaction, for all three modes: one pool for everyone, one-to-one rotation across the active pools, or unbind all. The dialog's pool list is now searchable and capped, so it stays usable with thousands of pools.
