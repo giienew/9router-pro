@@ -4,6 +4,17 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.9
+
+- **Providers page, final layout**: the page now reads top to bottom as Custom Providers (the OpenAI/Anthropic-compatible creation section), the All Connection Providers shelf, a dedicated **Provider Custom** section holding the custom providers you added, then OAuth, Free Tier and API Key providers. Every section carries its own **Test All** — the Provider Custom section included — so batch-testing parity holds across the whole page.
+- **Custom provider icons, auto-detected**: a custom provider's icon resolves itself — bundled artwork first, then the favicon of its base URL (walking up to the parent domain when needed), then initials. The Add Compatible modal shows a live icon preview as you type the Base URL.
+- **OpenCode Free, aligned with the official CLI**: the request wire format now mirrors OpenCode CLI 1.19.4 — user agent, the `/inference` endpoints and the per-request message id header — and the old placeholder note injected into free-model prompts is gone. Tool calls gain in-place fingerprint normalization (upstream PR #4972), so clients whose tool schemas would otherwise be rejected pass through unchanged in place.
+- **Proxy rotation over a picked subset**: a provider's random / round-robin proxy rotation can be pinned to a hand-picked subset of your pools instead of every active pool. The pool picker on the provider card is collapsible — it folds away with a selected-count summary once you're done choosing.
+- **No-auth providers, honestly labelled**: the ready-to-use card now states plainly that routing through a proxy pool uses **your own IP credentials only — no proxies are included**.
+- **Indonesian dashboard translation, complete**: all 1,827 dashboard strings are translated — every label, description, toast and help popover — in a trimmed, professional phrasing. No English leftovers anywhere in the dashboard.
+- **Donate points home**: the Donate modal now reads this project's own `donate.json` instead of upstream's endpoint — the Saweria channel is live.
+- **README, refreshed and slimmed**: new screenshots in the Dark Pro theme (orange accent) captured from a clean demo install, palette-compressed to a fraction of their former size; oversized bundled assets trimmed (a 2,700px provider icon shipped at 256px, the hero image cut from 758KB to 59KB).
+
 ## v0.5.109-pro.8
 
 - **Balanced account selection — a new default routing strategy**: account selection is now health-aware and scale-proof, from a couple of accounts to tens of thousands. Clean accounts serve first; an account that just failed steps back as a suspect, serves only when no clean account is free, and heals automatically after an hour without proof of failure. Picks are windowed-LRU — a random choice among the 32 least-recently-used accounts — so no account is burned first and every account rests as long as possible. The "unavailable" dashboard label is honest now: it is only stamped for cooldowns of a minute or more, so a brief quota window or a proxy hiccup no longer brands a healthy key as dead. Fleets of 8 or fewer accounts get a rescue path — when everything is locked but the earliest lock lifts within 45 seconds, the request retries that account instead of failing outright. Round Robin and Fill First remain available under Profile → Routing Strategy.
