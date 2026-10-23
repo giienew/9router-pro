@@ -1174,7 +1174,6 @@
   "Thinking Process": "Proses Berpikir",
   "Store this key securely. You can view or copy it later from the API Keys list.": "Simpan kunci ini dengan aman. Anda dapat melihat atau menyalinnya nanti dari daftar Kunci API.",
   "This provider is ready to use.": "Penyedia ini siap digunakan.",
-  "This provider is ready to use. Optionally route requests through a proxy pool to bypass IP-based limits.": "Penyedia ini siap digunakan. Secara opsional rutekan permintaan melalui proxy pool untuk melewati batasan berbasis IP.",
   "This value is write-only after saving.": "Nilai ini hanya dapat ditulis setelah disimpan.",
   "Timestamp": "Cap Waktu",
   "Timestamp:": "Cap Waktu:",
@@ -1491,5 +1490,6 @@
   "Write the system prompt…": "Tulis system prompt…",
   "model name": "nama model",
   "model or combo name — e.g. my-assistant": "nama model atau combo — mis. my-assistant",
-  "provider/model — type, then Enter to add": "provider/model — ketik, lalu Enter untuk menambah"
+  "provider/model — type, then Enter to add": "provider/model — ketik, lalu Enter untuk menambah",
+  "This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included.": "Penyedia ini siap digunakan. Untuk melewati batasan berbasis IP, rutekan permintaan melalui proxy pool milikmu sendiri — hanya kredensial IP kamu sendiri, tidak ada proxy yang disertakan."
 }
