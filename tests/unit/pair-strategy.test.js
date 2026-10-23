@@ -37,6 +37,17 @@ describe("resolveComboStrategy", () => {
     expect(await resolveComboStrategy("dpsk_un", TWO, { comboStrategy: "fusion" }, null)).toBe("fusion");
   });
 
+  it("rotates a pair despite the ambient global 'fallback' default", async () => {
+    state.modelPrompts = { dpsk_un: { enabled: true } };
+    expect(await resolveComboStrategy("dpsk_un", TWO, { comboStrategy: "fallback" }, null)).toBe("round-robin");
+  });
+
+  it("honors a per-combo 'fallback' pin over the pair default", async () => {
+    state.modelPrompts = { dpsk_un: { enabled: true } };
+    const settings = { comboStrategies: { dpsk_un: { fallbackStrategy: "fallback" } }, comboStrategy: "fallback" };
+    expect(await resolveComboStrategy("dpsk_un", TWO, settings, null)).toBe("fallback");
+  });
+
   it("rotates a multi-model pair with an all-keys injection", async () => {
     state.modelPrompts = { dpsk_un: { enabled: true } };
     expect(await resolveComboStrategy("dpsk_un", TWO, {}, null)).toBe("round-robin");

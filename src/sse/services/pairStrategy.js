@@ -12,12 +12,18 @@ import { getApiKeyByKey, getInjectKeyModelPrompts, getInjectModelPrompts } from 
  * the backing providers instead of the first model serving until it
  * fails; a failure still falls through the remaining models in
  * order. Storage errors fail open to "fallback".
+ *
+ * The global value only counts as a choice when it is not "fallback":
+ * the settings defaults materialize comboStrategy: "fallback" even
+ * when the user never picked anything, so an ambient "fallback"
+ * cannot be told apart from the default — and a per-combo
+ * "fallback" remains the way to pin one pair to sequential order.
  */
 export async function resolveComboStrategy(modelStr, comboModels, settings, apiKey) {
   const comboStrategies = settings?.comboStrategies || {};
   const specific = comboStrategies[modelStr]?.fallbackStrategy;
   if (specific) return specific;
-  if (settings?.comboStrategy) return settings.comboStrategy;
+  if (settings?.comboStrategy && settings.comboStrategy !== "fallback") return settings.comboStrategy;
 
   if (Array.isArray(comboModels) && comboModels.length > 1) {
     try {
