@@ -300,7 +300,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Token-saver flags accumulator for the single "⚙" log line below.
   const xf = [];
 
-  if (rtkStats?.hits?.length) xf.push(`RTK:${rtkStats.hits.length}`);
+  if (rtkStats?.hits?.length) xf.push(`rtk compressed ${rtkStats.hits.length} tool results`);
 
   // Caveman: inject terse-style system prompt. Brief Mode (Pro): a
   // per-model / per-key / global brief level overrides the global
@@ -308,13 +308,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const effectiveCavemanLevel = briefLevel || (cavemanEnabled ? cavemanLevel : null);
   if (tokenSaverEnabled && effectiveCavemanLevel) {
     injectCaveman(translatedBody, finalFormat, effectiveCavemanLevel);
-    xf.push(briefLevel ? `BRIEF:${briefLevel}` : `CAVEMAN:${effectiveCavemanLevel}`);
+    xf.push(briefLevel ? `brief ${briefLevel}` : `caveman ${effectiveCavemanLevel}`);
   }
 
   // Ponytail: inject lazy-senior-dev system prompt
   if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
-    xf.push(`PONYTAIL:${ponytailLevel}`);
+    xf.push(`ponytail ${ponytailLevel}`);
   }
 
   // Prompt Injection (9Router Pro): injections resolved by the caller —
@@ -333,17 +333,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       const appends = singles.filter(p => p.position !== "prepend" && p.text);
       if (prepends.length) injectSystemPrompt(translatedBody, finalFormat, prepends.map(p => p.text).join("\n\n"), "prepend");
       if (appends.length) injectSystemPrompt(translatedBody, finalFormat, appends.map(p => p.text).join("\n\n"), "append");
-      if (prepends.length || appends.length) xf.push(`INJECT:${singles.map(p => p.name || "?").join("+")}`);
+      if (prepends.length || appends.length) xf.push(`prompt injected: ${singles.map(p => p.name || "?").join(" + ")}`);
       if (chats.length) {
         injectChatTurns(translatedBody, finalFormat, chats.flatMap(p => p.turns));
-        xf.push(`INJECT-CHAT:${chats.map(p => p.name || "?").join("+")}`);
+        xf.push(`chat turns injected: ${chats.map(p => p.name || "?").join(" + ")}`);
       }
     } catch { /* fail-open: injection must never break chat */ }
   }
 
   // Custom prompt: user-authored instruction, independent of the savers above
   if (customPromptEnabled && injectCustomPrompt(translatedBody, finalFormat, customPrompt)) {
-    xf.push(`CUSTOMPROMPT:${customPrompt.trim().length}c`);
+    xf.push(`custom prompt (${customPrompt.trim().length} chars)`);
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
@@ -355,7 +355,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     });
     pxpipeSummary = pxpipeResult.summary;
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
-    if (pxpipeSummary?.applied) xf.push(`PXPIPE:${pxpipeSummary.imageCount}img`);
+    if (pxpipeSummary?.applied) xf.push(`images compressed: ${pxpipeSummary.imageCount}`);
     try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
   }
 

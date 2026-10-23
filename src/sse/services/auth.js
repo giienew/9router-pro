@@ -326,8 +326,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   await updateProviderConnection(connectionId, update);
 
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  const reason = log.describeStatus?.(status) || "";
-  log.warn("AUTH", `${connName} · ${status}${reason ? ` ${reason}` : ""} · ${model || "all models"} locked ${log.fmtDuration?.(cooldownMs) || `${Math.round(cooldownMs / 1000)}s`}`);
+  const statusWords = log.describeStatus?.(status) || "";
+  log.warn("AUTH", `${connName} · ${status}${statusWords ? ` ${statusWords}` : ""} · ${model || "all models"} locked ${log.fmtDuration?.(cooldownMs) || `${Math.round(cooldownMs / 1000)}s`}`);
 
   if (provider && status && reason) {
     console.error(`❌ ${provider} [${status}]: ${reason}`);
