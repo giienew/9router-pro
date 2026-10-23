@@ -280,7 +280,8 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     // tool_choice "none" is answered with 403 FreeTierError upstream.
     expect(chatNoTools.tool_choice).toBeUndefined();
     expect(chatNoTools.tools.map((t) => t.function?.name)).toEqual(["read", "shell"]);
-    expect(chatNoTools.messages[0].role).toBe("system");
+    // No placeholder note is injected: the prompt stays pristine.
+    expect(chatNoTools.messages).toEqual([{ role: "user", content: "hi" }]);
 
     const chatWithTools = executor.transformRequest("nemotron-3-ultra-free", {
       messages: [{ role: "user", content: "hi" }],
@@ -318,7 +319,7 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(transformed.stream).toBe(true);
     expect(transformed.reasoning?.effort).toBe("xhigh");
     expect(transformed.tools.map((tool) => tool.name)).toEqual(["zcode_search", "read", "shell"]);
-    expect(transformed.instructions).toMatch(/Do not call the `read` or `shell` tools/);
+    expect(String(transformed.instructions ?? "")).not.toMatch(/Do not call/);
   });
 
   it("declares forceStream on the opencode transport so chatCore serves SSE upstream", async () => {

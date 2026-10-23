@@ -73,19 +73,23 @@ describe("opencodeFingerprint — request side", () => {
     expect(chatBody.tool_choice).toBeUndefined();
   });
 
-  it("tells the model the appended tools are placeholders", () => {
+  it("never injects a placeholder note into the prompt", () => {
+    // The old "Do not call the ... tools" note is flagged by upstream OpenCode
+    // content filtering as a third-party relay (429 FreeUsageLimitError), so
+    // the prompt must stay exactly as the caller sent it.
     const responses = { instructions: "Be brief.", tools: [] };
     applyFingerprintTools(responses, true);
-    expect(responses.instructions).toMatch(/^Be brief\.\n\nDo not call the `read` or `shell` tools;/);
+    expect(responses.instructions).toBe("Be brief.");
+    expect(namesOf(responses.tools)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
 
     const chatBody = { messages: [{ role: "system", content: "Be brief." }, { role: "user", content: "hi" }] };
     applyFingerprintTools(chatBody, false);
     expect(chatBody.messages).toHaveLength(2);
-    expect(chatBody.messages[0].content).toMatch(/^Be brief\.\n\nDo not call the `read` or `shell` tools;/);
+    expect(chatBody.messages[0].content).toBe("Be brief.");
 
     const noSystem = { messages: [{ role: "user", content: "hi" }] };
     applyFingerprintTools(noSystem, false);
-    expect(noSystem.messages[0]).toEqual({ role: "system", content: expect.stringMatching(/^Do not call/) });
+    expect(noSystem.messages).toEqual([{ role: "user", content: "hi" }]);
 
     const claudeShape = { system: "Be brief.", messages: [{ role: "user", content: "hi" }] };
     applyFingerprintTools(claudeShape, false);
