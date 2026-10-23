@@ -19,6 +19,7 @@ export default function NoAuthProxyCard({ providerId }) {
   const [rotateStrategy, setRotateStrategy] = useState("none");
   const [selectedPoolIds, setSelectedPoolIds] = useState([]);
   const [poolSearch, setPoolSearch] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -75,6 +76,7 @@ export default function NoAuthProxyCard({ providerId }) {
 
   const handleStrategyChange = (newStrategy) => {
     setRotateStrategy(newStrategy);
+    if (newStrategy !== "none") setPickerOpen(true);
     save(proxyPoolId, newStrategy, selectedPoolIds);
   };
 
@@ -117,7 +119,7 @@ export default function NoAuthProxyCard({ providerId }) {
           { value: NONE_PROXY_POOL_VALUE, label: "None (direct)" },
           ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
         ]}
-        hint={isRotation ? (selectedPoolIds.length > 0 ? "Rotating through the selected pools below." : "Pool selector is ignored when rotation is active — all active pools are used.") : undefined}
+        hint={isRotation ? (selectedPoolIds.length > 0 ? "Rotating through the selected pools." : "Pool selector is ignored when rotation is active — all active pools are used.") : undefined}
       />
 
       <div className="flex flex-col gap-2 mt-4">
@@ -136,48 +138,67 @@ export default function NoAuthProxyCard({ providerId }) {
         </select>
         <p className="text-xs text-text-muted">
           {!canRotate
-            ? `Need at least 2 active proxy pools for rotation.`
+            ? "Need at least 2 active proxy pools for rotation."
             : isRotation && selectedPoolIds.length > 0
-              ? `Rotating through the ${selectedPoolIds.length} pools you selected below.`
+              ? <>{"Rotating through the "}{selectedPoolIds.length}{" selected pools."}</>
               : isRotation
                 ? rotateStrategy === "round-robin"
-                  ? `Rotating through all ${proxyPools.length} active pools in order. State is in-memory (resets on restart).`
-                  : `Picking a random pool from ${proxyPools.length} active pools each request.`
-                : `Uses the selected pool above. Set to Round-robin or Random to rotate across all active pools.`}
+                  ? <>{"Rotating through all "}{proxyPools.length}{" active pools in order. State is in-memory (resets on restart)."}</>
+                  : <>{"Picking a random pool from "}{proxyPools.length}{" active pools each request."}</>
+                : "Uses the selected pool above. Set to Round-robin or Random to rotate across all active pools."}
         </p>
       </div>
 
       {isRotation && (
         <div className="flex flex-col gap-2 mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-text-main">Rotation pools</label>
-            <span className="text-xs text-text-muted">
-              {selectedPoolIds.length > 0 ? `${selectedPoolIds.length} pools selected` : "All active pools"}
+          <button
+            type="button"
+            onClick={() => setPickerOpen((v) => !v)}
+            aria-expanded={pickerOpen}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <span className="text-sm font-medium text-text-main">Rotation pools</span>
+            <span className="flex items-center gap-1 text-xs text-text-muted">
+              {selectedPoolIds.length > 0 ? <>{selectedPoolIds.length}{" pools selected"}</> : "All active pools"}
+              <span className="material-symbols-outlined text-[18px]">{pickerOpen ? "expand_less" : "expand_more"}</span>
             </span>
-          </div>
-          <input
-            value={poolSearch}
-            onChange={(e) => setPoolSearch(e.target.value)}
-            placeholder="Search pools…"
-            className="py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
-          />
-          <div className="flex gap-3">
-            <button type="button" onClick={() => applySelection([...new Set([...selectedPoolIds, ...filteredPools.map((p) => p.id)])])} className="text-xs font-medium text-primary hover:underline">Select all shown</button>
-            <button type="button" onClick={() => applySelection([])} className="text-xs font-medium text-text-muted hover:underline">Clear selection</button>
-          </div>
-          <div className="max-h-44 overflow-y-auto border border-black/10 dark:border-white/10 rounded-md divide-y divide-black/5 dark:divide-white/5">
-            {filteredPools.slice(0, 100).map((pool) => (
-              <label key={pool.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
-                <input type="checkbox" checked={selectedPoolIds.includes(pool.id)} onChange={() => togglePool(pool.id)} className="h-4 w-4 shrink-0 accent-primary" />
-                <span className="text-sm text-text-main truncate">{pool.name}</span>
-              </label>
-            ))}
-            {filteredPools.length === 0 && (
-              <p className="px-3 py-2 text-xs text-text-muted">No pools match your search</p>
-            )}
-          </div>
-          {filteredPools.length > 100 && (
-            <p className="text-xs text-text-muted">Showing first 100 matches — refine your search</p>
+          </button>
+          {pickerOpen && (
+            <>
+              <input
+                value={poolSearch}
+                onChange={(e) => setPoolSearch(e.target.value)}
+                placeholder="Search pools…"
+                className="py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
+              />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => applySelection([...new Set([...selectedPoolIds, ...filteredPools.map((p) => p.id)])])} className="text-xs font-medium text-primary hover:underline">Select all shown</button>
+                <button type="button" onClick={() => applySelection([])} className="text-xs font-medium text-text-muted hover:underline">Clear selection</button>
+              </div>
+              <div className="max-h-44 overflow-y-auto border border-black/10 dark:border-white/10 rounded-md divide-y divide-black/5 dark:divide-white/5">
+                {filteredPools.slice(0, 100).map((pool) => (
+                  <label key={pool.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
+                    <input type="checkbox" checked={selectedPoolIds.includes(pool.id)} onChange={() => togglePool(pool.id)} className="h-4 w-4 shrink-0 accent-primary" />
+                    <span className="text-sm text-text-main truncate">{pool.name}</span>
+                  </label>
+                ))}
+                {filteredPools.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-text-muted">No pools match your search</p>
+                )}
+              </div>
+              {filteredPools.length > 100 && (
+                <p className="text-xs text-text-muted">Showing first 100 matches — refine your search</p>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-primary rounded-md hover:opacity-90 transition"
+                >
+                  Done
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
