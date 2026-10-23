@@ -269,9 +269,6 @@ export function InjectionTester() {
           >
             {running ? "Running…" : "Run test"}
           </button>
-          <span className="text-xs text-text-muted">
-            The badge reads the reply&apos;s opening (REFUSED vs ANSWERED) — the raw reply below is what counts.
-          </span>
         </div>
       </div>
       <div className={`flex flex-col gap-4 ${mode === "vs" ? "sm:grid sm:grid-cols-2 sm:items-start" : ""} ${verdictColor}`}>
