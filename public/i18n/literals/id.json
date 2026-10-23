@@ -1488,6 +1488,7 @@
  "Test all Free connections": "Uji semua koneksi Gratis",
  "Test all Free provider connections": "Uji semua koneksi penyedia Gratis",
  "Test all OAuth connections": "Uji semua koneksi OAuth",
+ "Test all custom provider connections": "Uji semua koneksi provider kustom",
  "Test connection": "Uji koneksi",
  "Test model": "Uji model",
  "Test proxy": "Uji proxy",

@@ -685,9 +685,34 @@ export default function ProvidersPage() {
 
       {/* Provider Custom — the custom providers added by the operator */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-          Provider Custom
-        </h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+            Provider Custom
+          </h2>
+          {(compatibleProviders.length > 0 ||
+            anthropicCompatibleProviders.length > 0) && (
+            <button
+              onClick={() =>
+                testingMode === "compatible" ? handleStopBatchTest() : handleBatchTest("compatible")
+              }
+              disabled={!!testingMode && testingMode !== "compatible"}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+                testingMode === "compatible"
+                  ? "border-red-400/50 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                  : "bg-surface-2 border-border text-text-main hover:border-primary/40 hover:text-primary"
+              }`}
+              title={testingMode === "compatible" ? "Stop the running test" : "Test all custom provider connections"}
+              aria-label={testingMode === "compatible" ? "Stop the running test" : "Test all custom provider connections"}
+            >
+              <span
+                className={`material-symbols-outlined text-[14px]${testingMode === "compatible" ? "" : " text-primary"}`}
+              >
+                {testingMode === "compatible" ? "stop_circle" : "play_arrow"}
+              </span>
+              {testingMode === "compatible" ? "Stop" : "Test All"}
+            </button>
+          )}
+        </div>
         {compatibleProviders.length === 0 &&
         anthropicCompatibleProviders.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
