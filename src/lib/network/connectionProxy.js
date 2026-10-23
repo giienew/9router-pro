@@ -34,6 +34,19 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
 }
 
 /**
+ * Resolve which pool IDs a rotation runs over. A saved selection
+ * (providerStrategies proxyPoolIds) restricts rotation to those pools;
+ * an empty or absent selection keeps the legacy behavior of rotating
+ * across every usable active pool.
+ */
+export function resolveRotationPoolIds(allPools, selectedIds) {
+  const usable = (allPools || []).filter((p) => p && p.id && p.proxyUrl).map((p) => p.id);
+  if (!Array.isArray(selectedIds) || selectedIds.length === 0) return usable;
+  const wanted = new Set(selectedIds);
+  return usable.filter((id) => wanted.has(id));
+}
+
+/**
  * Normalize legacy proxy configuration.
  */
 function normalizeLegacyProxy(providerSpecificData = {}) {

@@ -1491,5 +1491,14 @@
   "model name": "nama model",
   "model or combo name — e.g. my-assistant": "nama model atau combo — mis. my-assistant",
   "provider/model — type, then Enter to add": "provider/model — ketik, lalu Enter untuk menambah",
-  "This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included.": "Penyedia ini siap digunakan. Untuk melewati batasan berbasis IP, rutekan permintaan melalui proxy pool milikmu sendiri — hanya kredensial IP kamu sendiri, tidak ada proxy yang disertakan."
+  "This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included.": "Penyedia ini siap digunakan. Untuk melewati batasan berbasis IP, rutekan permintaan melalui proxy pool milikmu sendiri — hanya kredensial IP kamu sendiri, tidak ada proxy yang disertakan.",
+  "Rotation pools": "Pool rotasi",
+  "All active pools": "Semua pool aktif",
+  "Search pools…": "Cari pool…",
+  "Select all shown": "Pilih semua yang tampil",
+  "Clear selection": "Hapus pilihan",
+  "No pools match your search": "Tidak ada pool yang cocok dengan pencarianmu",
+  "Showing first 100 matches — refine your search": "Menampilkan 100 hasil pertama — persempit pencarianmu",
+  "Rotating through the selected pools below.": "Berotasi melalui pool terpilih di bawah ini.",
+  "Icon preview — detected automatically from the Base URL.": "Pratinjau ikon — terdeteksi otomatis dari Base URL."
 }
