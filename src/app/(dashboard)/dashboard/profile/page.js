@@ -75,7 +75,7 @@ export default function ProfilePage() {
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
-  const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
+  const [settings, setSettings] = useState({ fallbackStrategy: "balanced" });
   const [loading, setLoading] = useState(true);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
   const [passStatus, setPassStatus] = useState({ type: "", message: "" });
@@ -1821,6 +1821,20 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Balanced (Pro)</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Healthiest accounts first, rested longest — optimal from a few accounts to tens of thousands
+                </p>
+              </div>
+              <Toggle
+                checked={settings.fallbackStrategy === "balanced"}
+                onChange={() => updateFallbackStrategy("balanced")}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
+              <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Round Robin</p>
                 <p className="text-xs sm:text-sm text-text-muted">
                   Cycle through accounts to distribute load
@@ -1828,7 +1842,21 @@ export default function ProfilePage() {
               </div>
               <Toggle
                 checked={settings.fallbackStrategy === "round-robin"}
-                onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
+                onChange={() => updateFallbackStrategy("round-robin")}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Fill First</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Use accounts in priority order until one fails
+                </p>
+              </div>
+              <Toggle
+                checked={settings.fallbackStrategy === "fill-first"}
+                onChange={() => updateFallbackStrategy("fill-first")}
                 disabled={loading}
               />
             </div>
@@ -1891,9 +1919,11 @@ export default function ProfilePage() {
             )}
 
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
-              {settings.fallbackStrategy === "round-robin"
-                ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : "Currently using accounts in priority order (Fill First)."}
+              {settings.fallbackStrategy === "balanced"
+                ? "Currently spreading requests across the healthiest accounts first (Balanced) — accounts rest between uses, from a few accounts to tens of thousands."
+                : settings.fallbackStrategy === "round-robin"
+                  ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
+                  : "Currently using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
                 : " Combos always start with their first model."}

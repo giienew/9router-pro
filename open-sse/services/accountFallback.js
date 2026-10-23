@@ -197,6 +197,66 @@ export function filterAvailableAccounts(accounts, excludeId = null) {
 }
 
 /**
+ * Health tier of a connection for balanced selection (9Router Pro).
+ * 0 = clean (no recent failure), 1 = suspect (failed recently and has not
+ * proven itself since). A suspect returns to clean once its last failure
+ * ages past the probation window, even without traffic, so fleets heal
+ * instead of shrinking forever.
+ * @param {object} connection - Flattened connection record
+ * @param {number} now - Current time in ms
+ * @param {number} probationMs - Suspect probation window
+ * @returns {0|1}
+ */
+export function connectionHealthTier(connection, now = Date.now(), probationMs = 0) {
+  if (!connection) return 1;
+  const failed = (connection.backoffLevel || 0) > 0 || !!connection.lastError;
+  if (!failed) return 0;
+  if (probationMs > 0 && connection.lastErrorAt) {
+    const failedAt = new Date(connection.lastErrorAt).getTime();
+    if (Number.isFinite(failedAt) && now - failedAt >= probationMs) return 0;
+  }
+  return 1;
+}
+
+/**
+ * Pick one connection from the least-recently-used window (9Router Pro).
+ * Sorting is LRU (never-used first, then oldest use), but the pick is a
+ * uniform random choice among the first `windowSize` candidates instead
+ * of always the single oldest: bursts spread across the window, no key
+ * becomes the deterministic hot spot, and every key still rests while
+ * the window in front of it drains.
+ * @param {Array} connections - Eligible connections
+ * @param {number} windowSize
+ * @param {function} rng - Random source returning [0, 1)
+ * @returns {object|null}
+ */
+export function pickWindowedLru(connections, windowSize = 32, rng = Math.random) {
+  if (!connections?.length) return null;
+  const sorted = [...connections].sort((a, b) => {
+    if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+    if (!a.lastUsedAt) return -1;
+    if (!b.lastUsedAt) return 1;
+    return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
+  });
+  const window = Math.max(1, Math.min(windowSize, sorted.length));
+  return sorted[Math.floor(rng() * window)];
+}
+
+/**
+ * Whether a cooldown is long enough to brand the connection "unavailable"
+ * on the dashboard (9Router Pro). The lock itself always applies; only
+ * the label is gated, because the label outlives short locks and a key
+ * stamped dead over a 30-second blip misleads operators into thinking
+ * the fleet is dying.
+ * @param {number} cooldownMs
+ * @param {number} minCooldownMs
+ * @returns {boolean}
+ */
+export function shouldStampUnavailable(cooldownMs, minCooldownMs) {
+  return cooldownMs >= minCooldownMs;
+}
+
+/**
  * Reset account state when request succeeds
  * Clears cooldown and resets backoff level to 0
  * @param {object} account - Account object

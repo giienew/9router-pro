@@ -1,7 +1,7 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable } from "open-sse/services/accountFallback.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
 import * as log from "../utils/logger.js";
@@ -84,7 +84,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
-    const availableConnections = connections.filter(c => {
+    let availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
@@ -125,7 +125,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       }
       const earliest = expiries.sort()[0] || null;
-      if (earliest) {
+      // Small-fleet rescue (9Router Pro): every connection is locked, but
+      // the fleet is tiny and the earliest lock lifts soon — retry that
+      // account instead of failing the request. A lock is a heuristic (a
+      // quota window, a transient error); for a 1–8 account provider one
+      // window must not read as a total outage. Never rescues an account
+      // this request already tried, and never Antigravity, whose quota
+      // cache is authoritative rather than a heuristic.
+      if (!isAntigravity && earliest && connections.length <= SMALL_FLEET_RESCUE_MAX_CONNECTIONS) {
+        const waitMs = new Date(earliest).getTime() - Date.now();
+        const rescued = lockedConns
+          .filter(c => !excludeSet.has(c.id))
+          .sort((a, b) => new Date(getEarliestModelLockUntil(a)) - new Date(getEarliestModelLockUntil(b)))[0];
+        if (rescued && waitMs <= SMALL_FLEET_RESCUE_MAX_WAIT_MS) {
+          log.warn("AUTH", `${provider} | small-fleet rescue: retrying ${rescued.id?.slice(0, 8)} despite lock (${formatRetryAfter(earliest)})`);
+          availableConnections = [rescued];
+        }
+      }
+      if (availableConnections.length === 0 && earliest) {
         const earliestConn = lockedConns[0];
         log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
         return {
@@ -136,14 +153,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           lastErrorCode: earliestConn?.errorCode || null
         };
       }
-      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
-      return null;
+      if (availableConnections.length === 0) {
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
+        return null;
+      }
     }
 
     const settings = await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
-    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
+    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "balanced";
 
     let connection;
     // Pin to preferred connection if specified and available
@@ -194,8 +213,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           consecutiveUseCount: 1
         });
       }
+    } else if (strategy === "balanced") {
+      // Balanced (9Router Pro): clean accounts first — an account that
+      // failed recently and has not proven itself since only serves when
+      // no clean account is available. Within the tier, the pick is a
+      // random choice among the least-recently-used window, so load
+      // spreads evenly from a handful of accounts to tens of thousands,
+      // no account is the deterministic hot spot, and every account
+      // rests while the window ahead of it drains.
+      const now = Date.now();
+      const clean = availableConnections.filter(c => connectionHealthTier(c, now, SUSPECT_PROBATION_MS) === 0);
+      const tier = clean.length > 0 ? clean : availableConnections;
+      connection = pickWindowedLru(tier, BALANCED_WINDOW_SIZE);
+      await updateProviderConnection(connection.id, {
+        lastUsedAt: new Date().toISOString(),
+        consecutiveUseCount: 1
+      });
     } else {
-      // Default: fill-first (already sorted by priority in getProviderConnections)
+      // fill-first (already sorted by priority in getProviderConnections)
       connection = availableConnections[0];
     }
 
@@ -274,14 +309,21 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
 
-  await updateProviderConnection(connectionId, {
+  const update = {
     ...lockUpdate,
-    testStatus: "unavailable",
     lastError: reason,
     errorCode: status,
     lastErrorAt: new Date().toISOString(),
     backoffLevel: newBackoffLevel ?? backoffLevel
-  });
+  };
+  // The "unavailable" label outlives the lock itself, so only a substantial
+  // cooldown earns it (9Router Pro). A seconds-long transient lock must not
+  // brand a healthy account as dead on the dashboard.
+  if (shouldStampUnavailable(cooldownMs, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS)) {
+    update.testStatus = "unavailable";
+  }
+
+  await updateProviderConnection(connectionId, update);
 
   const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);

@@ -41,6 +41,29 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
+// Balanced selection (9Router Pro): how many least-recently-used candidates
+// the picker randomizes over. Big enough to smooth bursts, small enough to
+// keep the fleet's rest gradient steep.
+export const BALANCED_WINDOW_SIZE = 32;
+
+// A failure only earns the dashboard "unavailable" label when its cooldown
+// is at least this long. Short transient locks (seconds) must not brand a
+// healthy key as dead — the label outlives the lock and misleads operators.
+export const UNAVAILABLE_LABEL_MIN_COOLDOWN_MS = 60 * 1000;
+
+// A suspect (recently failed) connection returns to the clean tier when its
+// last failure is older than this, even without new traffic — fleets heal
+// on their own instead of shrinking forever.
+export const SUSPECT_PROBATION_MS = 60 * 60 * 1000;
+
+// Small-fleet rescue: when every connection of a small provider is locked
+// but the earliest lock lifts within this wait, selection retries that
+// connection instead of failing the request outright. Large fleets never
+// need it (something is always unlocked), small ones must not hard-down
+// over one transient quota window.
+export const SMALL_FLEET_RESCUE_MAX_CONNECTIONS = 8;
+export const SMALL_FLEET_RESCUE_MAX_WAIT_MS = 45 * 1000;
+
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,
