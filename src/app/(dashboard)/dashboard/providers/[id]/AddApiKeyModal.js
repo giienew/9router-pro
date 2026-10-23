@@ -64,6 +64,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+  const [bulkProgress, setBulkProgress] = useState(null); // { done, total, current } while adding
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -177,9 +178,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!plan.length) return;
     setSaving(true);
     setBulkResult(null);
+    setBulkProgress({ done: 0, total: plan.length, current: plan[0].name });
     let success = 0;
     let failed = 0;
     for (const entry of plan) {
+      setBulkProgress({ done: success + failed, total: plan.length, current: entry.name });
       try {
         // Validate each key before saving so bulk-added connections get a
         // real status (active/unknown) like single adds, instead of a
@@ -215,6 +218,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       }
     }
     setSaving(false);
+    setBulkProgress(null);
     setBulkResult({ success, failed });
     if (success > 0 && onBulkDone) onBulkDone();
   };
@@ -228,8 +232,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             Bedrock entry would be saved with no access key id or profile and never work. */}
         {!usesAwsCredentialForm && (
           <div className="flex gap-2">
-            <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} onClick={() => { setMode("single"); setBulkResult(null); }}>Single</Button>
-            <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} onClick={() => { setMode("bulk"); setBulkResult(null); }}>Bulk Add</Button>
+            <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} disabled={saving} onClick={() => { setMode("single"); setBulkResult(null); }}>Single</Button>
+            <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} disabled={saving} onClick={() => { setMode("bulk"); setBulkResult(null); }}>Bulk Add</Button>
           </div>
         )}
 
@@ -244,11 +248,26 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               }
             </p>
             <textarea
-              className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
               placeholder={bulkPlaceholder}
               value={bulkText}
+              disabled={saving}
               onChange={(e) => setBulkText(e.target.value)}
             />
+            {saving && bulkProgress && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-xs text-text-muted">
+                  <span>Adding {bulkProgress.done} of {bulkProgress.total} — {bulkProgress.current}</span>
+                  <span>{Math.round((bulkProgress.done / bulkProgress.total) * 100)}%</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded bg-white/10">
+                  <div
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
             {bulkResult && (
               <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-yellow-400" : "text-green-400"}`}>
                 ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
@@ -256,9 +275,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             )}
             <div className="flex gap-2">
               <Button onClick={handleBulkSubmit} fullWidth disabled={saving || !bulkText.trim()}>
-                {saving ? "Adding..." : "Add All Keys"}
+                {saving ? (bulkProgress ? `Adding ${bulkProgress.done}/${bulkProgress.total}...` : "Adding...") : "Add All Keys"}
               </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
+              <Button onClick={onClose} variant="ghost" fullWidth disabled={saving}>Cancel</Button>
             </div>
           </div>
         )}
@@ -474,7 +493,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
         <div className="flex gap-2">
           <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !apiKeySatisfied())) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? (validating ? "Checking..." : "Saving...") : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>
             Cancel
