@@ -14,7 +14,15 @@ vi.mock("@/shared/constants/providers.js", () => ({
   FREE_PROVIDERS: {},
   resolveProviderId: (provider) => provider,
 }));
-vi.mock("@/sse/utils/logger.js", () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
+vi.mock("@/sse/utils/logger.js", () => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  // Plain-words log helpers (Pro) — auth.js reads these when it logs a lock.
+  describeStatus: () => "",
+  fmtDuration: (ms) => `${Math.round((Number(ms) || 0) / 1000)}s`,
+  plainErrorDetail: (t) => String(t || ""),
+}));
 
 const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
 
