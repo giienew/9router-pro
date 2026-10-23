@@ -4,6 +4,13 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.8
+
+- **Balanced account selection — a new default routing strategy**: account selection is now health-aware and scale-proof, from a couple of accounts to tens of thousands. Clean accounts serve first; an account that just failed steps back as a suspect, serves only when no clean account is free, and heals automatically after an hour without proof of failure. Picks are windowed-LRU — a random choice among the 32 least-recently-used accounts — so no account is burned first and every account rests as long as possible. The "unavailable" dashboard label is honest now: it is only stamped for cooldowns of a minute or more, so a brief quota window or a proxy hiccup no longer brands a healthy key as dead. Fleets of 8 or fewer accounts get a rescue path — when everything is locked but the earliest lock lifts within 45 seconds, the request retries that account instead of failing outright. Round Robin and Fill First remain available under Profile → Routing Strategy.
+- **Operator logs in plain words**: one request now reads as one short story. The request line drops the FMT/MSG/THINK codes, the proxy line is a single line without pool UUIDs, errors are one line carrying the reason in plain words (402 quota exhausted, 429 rate limited) plus the upstream's own message instead of a raw JSON dump, and the completion line reads "done · 8.1s · first token 0.9s · in 45,231 · out 87".
+- **Console Log panel, rebuilt logcat-style**: log lines render as tidy rows — time, level badge (E/W/I/✓), short tag, session dot, message — with a Live indicator next to Clear, so the stream scans like a logcat viewer instead of a wall of green text.
+- **Bulk Add progress**: adding API keys in bulk now shows live progress (n of N, the current key, a progress bar) and locks the form until the run finishes, instead of a bare "Adding..." with no sense of scale. Single Save names its phase (Checking… / Saving…).
+
 ## v0.5.109-pro.7
 
 - **Base updated to upstream 9Router v0.5.109**: all 39 upstream commits since v0.5.104 are merged in, and every Pro feature is preserved — Prompt Injection (Templates / Injections / Tester), per–API-key limits and token quotas, Anti-Flaky Guard, provider bulk tools, the proxy pool health check, and the backup system are unchanged.
