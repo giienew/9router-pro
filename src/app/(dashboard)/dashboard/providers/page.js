@@ -25,6 +25,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
+import { COMPATIBLE_PRESETS } from "./components/compatiblePresets";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
 
 function getStatusDisplay(connected, error, errorCode) {
@@ -165,6 +166,7 @@ export default function ProvidersPage() {
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
+  const [compatiblePreset, setCompatiblePreset] = useState(null);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
@@ -375,6 +377,7 @@ export default function ProvidersPage() {
       color: "#10A37F",
       textIcon: "OC",
       apiType: node.apiType,
+      baseUrl: node.baseUrl || "",
     }))
     .filter(
       (p) => matchSearch(p.name) && matchStatus(getProviderStats(p.id, "apikey")),
@@ -387,6 +390,7 @@ export default function ProvidersPage() {
       name: node.name || "Anthropic Compatible",
       color: "#D97757",
       textIcon: "AC",
+      baseUrl: node.baseUrl || "",
     }))
     .filter(
       (p) => matchSearch(p.name) && matchStatus(getProviderStats(p.id, "apikey")),
@@ -596,60 +600,6 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            Custom Providers (OpenAI/Anthropic Compatible){" "}
-          </h2>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
-            <Button
-              size="sm"
-              icon="add"
-              onClick={() => setShowAddAnthropicCompatibleModal(true)}
-              className="w-full sm:w-auto"
-            >
-              <span className="sm:hidden">Add Anthropic</span>
-              <span className="hidden sm:inline">Add Anthropic Compatible</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="add"
-              onClick={() => setShowAddCompatibleModal(true)}
-              className="w-full sm:w-auto"
-            >
-              <span className="sm:hidden">Add OpenAI</span>
-              <span className="hidden sm:inline">Add OpenAI Compatible</span>
-            </Button>
-          </div>
-        </div>
-        {compatibleProviders.length === 0 &&
-        anthropicCompatibleProviders.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
-            <span className="material-symbols-outlined text-[18px]">extension</span>
-            <span>No custom providers — use buttons above to add OpenAI/Anthropic compatible endpoints</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {[...compatibleProviders, ...anthropicCompatibleProviders].map(
-              (info) => (
-                <ApiKeyProviderCard
-                  key={info.id}
-                  providerId={info.id}
-                  provider={info}
-                  stats={getProviderStats(info.id, "apikey")}
-                  authType="compatible"
-                  onToggle={(active) =>
-                    handleToggleProvider(info.id, "apikey", active)
-                  }
-                />
-              ),
-            )}
-          </div>
-        )}
-      </div>
-
       {/* All Connection Providers — everything currently ON */}
       {allOnProviders.length > 0 && (
       <div className="flex flex-col gap-4">
@@ -704,6 +654,78 @@ export default function ProvidersPage() {
         </div>
       </div>
       )}
+
+      {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+            Custom Providers (OpenAI/Anthropic Compatible){" "}
+          </h2>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <Button
+              size="sm"
+              icon="add"
+              onClick={() => setShowAddAnthropicCompatibleModal(true)}
+              className="w-full sm:w-auto"
+            >
+              <span className="sm:hidden">Add Anthropic</span>
+              <span className="hidden sm:inline">Add Anthropic Compatible</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="add"
+              onClick={() => {
+                setCompatiblePreset(null);
+                setShowAddCompatibleModal(true);
+              }}
+              className="w-full sm:w-auto"
+            >
+              <span className="sm:hidden">Add OpenAI</span>
+              <span className="hidden sm:inline">Add OpenAI Compatible</span>
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-text-muted mr-0.5">Quick add:</span>
+          {COMPATIBLE_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => {
+                setCompatiblePreset(p);
+                setShowAddCompatibleModal(true);
+              }}
+              className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-text-main transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              + {p.name}
+            </button>
+          ))}
+        </div>
+        {compatibleProviders.length === 0 &&
+        anthropicCompatibleProviders.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
+            <span className="material-symbols-outlined text-[18px]">extension</span>
+            <span>No custom providers — use buttons above to add OpenAI/Anthropic compatible endpoints</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            {[...compatibleProviders, ...anthropicCompatibleProviders].map(
+              (info) => (
+                <ApiKeyProviderCard
+                  key={info.id}
+                  providerId={info.id}
+                  provider={info}
+                  stats={getProviderStats(info.id, "apikey")}
+                  authType="compatible"
+                  onToggle={(active) =>
+                    handleToggleProvider(info.id, "apikey", active)
+                  }
+                />
+              ),
+            )}
+          </div>
+        )}
+      </div>
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
@@ -883,12 +905,18 @@ export default function ProvidersPage() {
       )}
 
       <AddCompatibleModal
+        key={compatiblePreset?.key || "custom"}
         variant="openai"
+        preset={compatiblePreset}
         isOpen={showAddCompatibleModal}
-        onClose={() => setShowAddCompatibleModal(false)}
+        onClose={() => {
+          setShowAddCompatibleModal(false);
+          setCompatiblePreset(null);
+        }}
         onCreated={(node) => {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddCompatibleModal(false);
+          setCompatiblePreset(null);
         }}
       />
       <AddCompatibleModal
@@ -972,6 +1000,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                   provider.textIcon || provider.id.slice(0, 2).toUpperCase()
                 }
                 fallbackColor={provider.color}
+                detectBaseUrl={provider.baseUrl}
               />
             </div>
             <div className="min-w-0">

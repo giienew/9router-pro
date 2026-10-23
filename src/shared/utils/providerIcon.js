@@ -42,6 +42,40 @@ export function getProviderIconSrc(providerId) {
   return id ? `/providers/${id}.png` : null;
 }
 
+// Favicon auto-detection for custom providers (9Router Pro): candidate
+// icon URLs derived from a provider's API base URL — the origin first,
+// then the parent domain (e.g. api.gonka-api.org serves no icon while
+// gonka-api.org does). Local and IP hosts get no candidates. Misses are
+// session-cached so a dead candidate is never requested twice.
+const failedFavicons = new Set();
+
+export function getFaviconCandidates(baseUrl) {
+  if (!baseUrl || typeof baseUrl !== "string") return [];
+  let url;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return [];
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return [];
+  const host = url.hostname;
+  if (!host || host === "localhost" || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return [];
+  const out = [];
+  const originIcon = `${url.protocol}//${host}/favicon.ico`;
+  if (!failedFavicons.has(originIcon)) out.push(originIcon);
+  const labels = host.split(".");
+  if (labels.length > 2) {
+    const parentIcon = `${url.protocol}//${labels.slice(1).join(".")}/favicon.ico`;
+    if (parentIcon !== originIcon && !failedFavicons.has(parentIcon)) out.push(parentIcon);
+  }
+  return out;
+}
+
+/** Call from img onError so later mounts skip the candidate. */
+export function markFaviconMissing(iconUrl) {
+  if (iconUrl) failedFavicons.add(iconUrl);
+}
+
 /** Call from img onError so later mounts skip the request. */
 export function markProviderIconMissing(providerId) {
   const id = normalizeId(providerId);

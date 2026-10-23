@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
+import { getFaviconCandidates, getProviderIconSrc, markFaviconMissing, markProviderIconMissing } from "@/shared/utils/providerIcon";
 
 function resolveSrc(src, providerId) {
   if (providerId) return getProviderIconSrc(providerId);
@@ -20,11 +20,22 @@ export default function ProviderIcon({
   className = "",
   fallbackText = "?",
   fallbackColor,
+  detectBaseUrl,
 }) {
-  const effectiveSrc = resolveSrc(src, providerId);
-  const [errored, setErrored] = useState(false);
+  // Icon chain: the bundled /providers/{id}.png first, then — for
+  // custom providers that pass their API base URL — the site's own
+  // favicon (origin, then parent domain), then the initials fallback.
+  // Purely presentational: plain <img> loads, browser-cached, and a
+  // failed candidate is never retried this session.
+  const localSrc = resolveSrc(src, providerId);
+  const candidates = [
+    ...(localSrc ? [localSrc] : []),
+    ...getFaviconCandidates(detectBaseUrl),
+  ];
+  const [attempt, setAttempt] = useState(0);
+  const current = candidates[attempt];
 
-  if (!effectiveSrc || errored) {
+  if (!current) {
     return (
       <span
         className={`inline-flex items-center justify-center font-bold rounded-lg ${className}`.trim()}
@@ -42,7 +53,7 @@ export default function ProviderIcon({
 
   return (
     <img
-      src={effectiveSrc}
+      src={current}
       alt={alt}
       width={size}
       height={size}
@@ -50,10 +61,14 @@ export default function ProviderIcon({
       loading="lazy"
       decoding="async"
       onError={() => {
-        const m = effectiveSrc.match(/^\/providers\/([^/]+)\.png$/i);
-        if (m) markProviderIconMissing(m[1]);
-        if (providerId) markProviderIconMissing(providerId);
-        setErrored(true);
+        const m = current.match(/^\/providers\/([^/]+)\.png$/i);
+        if (m) {
+          markProviderIconMissing(m[1]);
+          if (providerId) markProviderIconMissing(providerId);
+        } else {
+          markFaviconMissing(current);
+        }
+        setAttempt((a) => a + 1);
       }}
     />
   );
@@ -67,4 +82,5 @@ ProviderIcon.propTypes = {
   className: PropTypes.string,
   fallbackText: PropTypes.string,
   fallbackColor: PropTypes.string,
+  detectBaseUrl: PropTypes.string,
 };

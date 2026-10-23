@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Badge, Button, Input, Modal, Select } from "@/shared/components";
 
@@ -34,7 +34,7 @@ const API_TYPE_OPTIONS = [
   { value: "responses", label: "Responses API" },
 ];
 
-function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
+function AddCompatibleModal({ variant, isOpen, onClose, onCreated, preset = null }) {
   const config = VARIANT_CONFIG[variant];
   const initialFormData = () => ({
     name: "",
@@ -43,17 +43,30 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     baseUrl: config.defaultBaseUrl,
   });
 
-  const [formData, setFormData] = useState(initialFormData);
+  // A quick-add preset (9Router Pro) seeds the form; the page remounts
+  // the modal per preset (key), so this initializer is the only seed.
+  const [formData, setFormData] = useState(() => {
+    const base = initialFormData();
+    if (preset && config.hasApiType) {
+      return { ...base, name: preset.name, prefix: preset.prefix, baseUrl: preset.baseUrl };
+    }
+    return base;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [checkKey, setCheckKey] = useState("");
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
 
-  // openai: reset baseUrl when apiType changes; anthropic: reset checks when opened
+  // openai: reset baseUrl when apiType actually changes (not on mount,
+  // so a preset's baseUrl survives); anthropic: reset checks when opened
+  const prevApiTypeRef = useRef(formData.apiType);
   useEffect(() => {
     if (config.hasApiType) {
-      setFormData((prev) => ({ ...prev, baseUrl: config.defaultBaseUrl }));
+      if (prevApiTypeRef.current !== formData.apiType) {
+        prevApiTypeRef.current = formData.apiType;
+        setFormData((prev) => ({ ...prev, baseUrl: config.defaultBaseUrl }));
+      }
     } else if (isOpen) {
       setValidationResult(null);
       setCheckKey("");
@@ -134,7 +147,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   };
 
   return (
-    <Modal isOpen={isOpen} title={config.title} onClose={onClose}>
+    <Modal isOpen={isOpen} title={preset && config.hasApiType ? `Add ${preset.name}` : config.title} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
@@ -216,6 +229,11 @@ AddCompatibleModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   onCreated: PropTypes.func.isRequired,
+  preset: PropTypes.shape({
+    name: PropTypes.string,
+    prefix: PropTypes.string,
+    baseUrl: PropTypes.string,
+  }),
 };
 
 export default AddCompatibleModal;
