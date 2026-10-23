@@ -330,7 +330,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   log.warn("AUTH", `${connName} · ${status}${statusWords ? ` ${statusWords}` : ""} · ${model || "all models"} locked ${log.fmtDuration?.(cooldownMs) || `${Math.round(cooldownMs / 1000)}s`}`);
 
   if (provider && status && reason) {
-    console.error(`❌ ${provider} [${status}]: ${reason}`);
+    // Plain words only (9Router Pro): the raw reason is an upstream JSON
+    // body — the operator needs its one human sentence, not the dump.
+    console.error(`❌ ${provider} [${status}]: ${log.plainErrorDetail?.(reason) || statusWords || "error"}`);
   }
 
   return { shouldFallback: true, cooldownMs };

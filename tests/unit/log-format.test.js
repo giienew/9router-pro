@@ -2,7 +2,7 @@
 // so durations must be human ("1.3s", not "1300ms") and statuses must say
 // what they mean ("402 quota exhausted", not a bare number plus raw body).
 import { describe, expect, it } from "vitest";
-import { fmtDuration, fmtCount, describeStatus } from "../../src/sse/utils/logger.js";
+import { fmtDuration, fmtCount, describeStatus, plainErrorDetail } from "../../src/sse/utils/logger.js";
 
 describe("fmtDuration", () => {
   it("keeps sub-second durations in ms", () => {
@@ -40,5 +40,26 @@ describe("describeStatus", () => {
     expect(describeStatus(200)).toBe("");
     expect(describeStatus(418)).toBe("");
     expect(describeStatus(undefined)).toBe("");
+  });
+});
+
+describe("plainErrorDetail", () => {
+  it("extracts the human message from an upstream JSON body", () => {
+    const raw = '[402]: {"error":{"code":"insufficient_quota","message":"available tokens exhausted","type":"invalid_request_error"}}';
+    expect(plainErrorDetail(raw)).toBe("available tokens exhausted");
+  });
+
+  it("strips the [NNN]: prefix from plain-text errors", () => {
+    expect(plainErrorDetail("[400]: context length exceeded")).toBe("context length exceeded");
+  });
+
+  it("leaves ordinary sentences untouched", () => {
+    expect(plainErrorDetail("Request aborted")).toBe("Request aborted");
+  });
+
+  it("returns empty for empty input and caps long text", () => {
+    expect(plainErrorDetail("")).toBe("");
+    expect(plainErrorDetail(null)).toBe("");
+    expect(plainErrorDetail("x".repeat(150)).length).toBe(101);
   });
 });

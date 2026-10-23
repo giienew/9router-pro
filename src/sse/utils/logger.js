@@ -152,3 +152,27 @@ export function describeStatus(status) {
     default: return "";
   }
 }
+
+// Extract the one human sentence from an upstream error body. Upstreams
+// answer with JSON ('[402]: {"error":{"message":"available tokens
+// exhausted"}}') — a log line should carry just that message in plain
+// words, never the raw JSON dump.
+export function plainErrorDetail(errText) {
+  let text = String(errText || "").trim();
+  if (!text) return "";
+  const msgMatch = text.match(/"message"\s*:\s*"([^"]+)"/);
+  if (msgMatch) {
+    text = msgMatch[1];
+  } else {
+    const jsonStart = text.indexOf("{");
+    if (jsonStart >= 0) {
+      try {
+        const parsed = JSON.parse(text.slice(jsonStart));
+        const msg = parsed?.error?.message || parsed?.message || parsed?.error?.code || "";
+        if (msg) text = String(msg);
+      } catch { /* not clean JSON — fall through to prefix stripping */ }
+    }
+  }
+  text = text.replace(/^\[\d{3}\]:?\s*/, "").replace(/\s+/g, " ").trim();
+  return text.length > 100 ? `${text.slice(0, 100)}…` : text;
+}

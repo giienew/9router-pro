@@ -468,7 +468,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       // One line, plain words (9Router Pro): status + what it means + how
       // long it took. The raw detail stays available on the debug level;
       // a stack trace never belongs in the operator's face.
-      const detail = String(errMsg || "").split("\n")[0].slice(0, 140);
+      const detail = log.plainErrorDetail?.(errMsg) || "";
       log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${log.describeStatus?.(502) || "upstream error"} · ${log.fmtDuration?.(Date.now() - requestStartTime) || ""}${detail ? ` — ${detail}` : ""}`);
       if (error.stack) log?.debug?.("CHATCORE", error.stack);
     }
@@ -542,10 +542,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     if (log?.errorLine) {
       // One line, plain words (9Router Pro): status + what it means + how
-      // long it took + the first line of detail. The upstream URL is a
-      // per-provider constant — repeating it on every failure is noise.
+      // long it took + the upstream's reason in plain words (never raw
+      // JSON). The upstream URL is a per-provider constant — repeating
+      // it on every failure is noise.
       const reason = log.describeStatus?.(statusCode) || "";
-      const detail = String(errMsg || "").split("\n")[0].slice(0, 140);
+      const detail = log.plainErrorDetail?.(errMsg) || "";
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model}${reason ? ` · ${reason}` : ""} · ${log.fmtDuration?.(Date.now() - requestStartTime) || ""}${detail ? ` — ${detail}` : ""}`);
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
