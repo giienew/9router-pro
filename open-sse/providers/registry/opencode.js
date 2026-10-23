@@ -41,6 +41,8 @@ export default {
     { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor Free", targetFormat: "openai-responses" },
     { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude" },
     { id: "jev-1.13-free", name: "Jev 1.13 Free", kind: "systemone" },
+    // Served by the free lane but absent from the inference models list.
+    { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free" },
   ],
   serviceKinds: ["llm", "systemone"],
   systemoneConfig: {
