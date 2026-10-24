@@ -4,6 +4,12 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.10
+
+- **Rotation, optimized for huge fleets**: the windowed-LRU pick is now a single pass (about 200ms down to 5.6ms per pick at 18,719 accounts), with a duplicate-free overlay so bursts spread across distinct accounts, the mutex kept only for round-robin, and lastUsedAt writes deferred and batched instead of one write per pick.
+- **Prompt Injection, new concept — one prompt, one provider/model**: injection matching now keys on the resolved provider/model only. Combo names and bare model ids never match, custom labels are display-only, and the injection page no longer creates or edits combos — combos live on the combos page. The API rejects targets without a slash, and **Copy to other providers** copies an entry to every other provider serving the same bare model. Old combo-named and bare-id keys are converted automatically on import and once per process at runtime, with existing entries never overwritten.
+- **Injection picker, filtered**: the add-injection model picker lists provider models only — the Combos and Custom Injections categories are gone, since injected models are edited from the entry list instead.
+
 ## v0.5.109-pro.9
 
 - **Providers page, final layout**: the page now reads top to bottom as Custom Providers (the OpenAI/Anthropic-compatible creation section), the All Connection Providers shelf, a dedicated **Provider Custom** section holding the custom providers you added, then OAuth, Free Tier and API Key providers. Every section carries its own **Test All** — the Provider Custom section included — so batch-testing parity holds across the whole page.
