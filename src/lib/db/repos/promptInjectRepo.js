@@ -16,7 +16,7 @@
 //                as fake history right after the system message(s), so the
 //                model treats it as something that already happened
 //   entry = { mode, content, turns: [{ role, content }], position,
-//             enabled, updatedAt, templateName? }
+//             enabled, updatedAt, templateName?, label? }
 //
 // TEMPLATES (scope "promptPresets", key "list") are a pure prompt
 // library: name + entry, no targets, never fired on their own. Using a
@@ -27,12 +27,17 @@
 // by the earlier preset-with-targets build lose their targets on read —
 // the prompt itself is preserved.)
 //
-// Model lookup: the name the client called → resolved "provider/model" →
-// bare model name. First enabled, non-empty hit wins per scope.
+// Model lookup: exactly one key — the resolved "provider/model" of the
+// model that serves the request. No combo-name or bare-name fallback:
+// one prompt, one model, one provider. Combo names never match, so a
+// prompt always follows the model that serves, through any combo.
 // Data written by the earlier "Soul Prompts" build (scope "soulPrompts",
 // content-only entries) is migrated on first read and treated as "single".
 
 import { makeKv } from "../helpers/kvStore.js";
+import { getCombos } from "./combosRepo.js";
+import { getProviderNodes } from "./nodesRepo.js";
+import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
 const kv = makeKv("promptInjections");
 const legacyKv = makeKv("soulPrompts");
@@ -68,6 +73,11 @@ function cleanEntry(raw) {
       typeof raw.templateName === "string" && raw.templateName.trim()
         ? raw.templateName.trim().slice(0, 80)
         : null,
+    // Optional display label: never a match key, only shown in the UI.
+    label:
+      typeof raw.label === "string" && raw.label.trim()
+        ? raw.label.trim().slice(0, 80)
+        : null,
   };
   if (raw.mode === "chat") {
     const turns = cleanTurns(raw.turns);
@@ -97,6 +107,7 @@ function stamp(input = {}) {
     position: input.position,
     enabled: input.enabled,
     templateName: input.templateName,
+    label: input.label,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -122,6 +133,49 @@ async function ensureMigrated() {
   } catch { /* fail-open: migration must never break reads */ }
 }
 
+// ------------------------------------------------------------ concept migration
+// One-time expansion of legacy injection keys — combo names from the old
+// concept and bare model ids from the bare-id concept — to resolved
+// "provider/model" keys, so an existing install keeps its prompts after
+// upgrading without re-importing a backup. Runs lazily on first read of
+// either model map; a no-op once every key is already a provider/model.
+// Fail-open: any error leaves the maps untouched (legacy keys then
+// simply never match, which is the new concept's rule anyway).
+let conceptMigrated = false;
+async function ensureConceptMigrated() {
+  if (conceptMigrated) return;
+  conceptMigrated = true;
+  try {
+    const [promptsRaw, keyModelRaw] = await Promise.all([
+      kv.get(MODELS_KEY, null),
+      kv.get(BYKEYMODEL_KEY, null),
+    ]);
+    const hasKeys = (m) => m && typeof m === "object" && Object.keys(m).length > 0;
+    if (!hasKeys(promptsRaw) && !(keyModelRaw && typeof keyModelRaw === "object" && Object.values(keyModelRaw).some(hasKeys))) return;
+    const [combos, nodes] = await Promise.all([getCombos(), getProviderNodes()]);
+    // Registry alias map is heavy (144 provider modules); load it lazily
+    // and only here, never at module import time.
+    const { resolveProviderAlias } = await import("open-sse/services/model.js");
+    const resolveProvider = buildProviderResolver(nodes, resolveProviderAlias);
+    let changed = false;
+    if (hasKeys(promptsRaw)) {
+      const normalized = await normalizePromptMap(promptsRaw, combos, resolveProvider);
+      if (JSON.stringify(normalized) !== JSON.stringify(promptsRaw)) {
+        await kv.set(MODELS_KEY, normalized);
+        changed = true;
+      }
+    }
+    if (keyModelRaw && typeof keyModelRaw === "object") {
+      const normalized = await normalizeKeyModelMap(keyModelRaw, combos, resolveProvider);
+      if (JSON.stringify(normalized) !== JSON.stringify(keyModelRaw)) {
+        await kv.set(BYKEYMODEL_KEY, normalized);
+        changed = true;
+      }
+    }
+    if (changed) invalidateInjectSnapshot();
+  } catch { /* fail-open: migration must never break reads */ }
+}
+
 // --------------------------------------------------------------- global
 
 export async function getInjectGlobal() {
@@ -142,6 +196,7 @@ export async function setInjectGlobal(input = {}) {
 
 export async function getInjectModelPrompts() {
   await ensureMigrated();
+  await ensureConceptMigrated();
   return cleanMap(await kv.get(MODELS_KEY, null));
 }
 
@@ -208,6 +263,7 @@ function cleanKeyModelMap(raw) {
 
 export async function getInjectKeyModelPrompts() {
   await ensureMigrated();
+  await ensureConceptMigrated();
   return cleanKeyModelMap(await kv.get(BYKEYMODEL_KEY, null));
 }
 
@@ -299,8 +355,9 @@ export async function deletePromptTemplate(id) {
 // --------------------------------------------------------------- resolver
 
 // Pure selection — exported for tests. Stacked least → most specific:
-// global → key → model → model+key. Per scope, the first enabled,
-// non-empty hit across the model-name fallbacks wins.
+// global → key → model → model+key. Per model scope, exactly one key
+// matches: the resolved "provider/model". Combo names and bare names
+// never match.
 export function selectPromptInjections({ global, byKey, byModel, byKeyModel } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
@@ -315,7 +372,7 @@ export function selectPromptInjections({ global, byKey, byModel, byKeyModel } = 
     push("user", cleanMap(byKey)[ctx.apiKeyId]);
   }
 
-  const names = [ctx.requestedModel, ctx.resolvedModel, ctx.bareModel]
+  const names = [ctx.resolvedModel]
     .filter((x) => typeof x === "string" && x);
   const firstHit = (map) => {
     for (const name of names) {

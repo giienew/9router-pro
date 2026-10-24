@@ -73,6 +73,15 @@ export async function PUT(request) {
     }
     const hasKey = typeof body.keyId === "string" && !!body.keyId;
     const hasModel = typeof body.model === "string" && !!body.model;
+    // Provider/model concept: a model target must be a concrete routed
+    // model ("provider/model"). Combo names and bare ids never match, so
+    // saving one would create an entry that silently never fires.
+    if (hasModel && !body.model.includes("/")) {
+      return NextResponse.json(
+        { error: "Model target must be a provider/model (e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731); combo names cannot be injection targets" },
+        { status: 400 }
+      );
+    }
     if (hasKey && hasModel) {
       const saved = await setInjectKeyModelPrompt(body.keyId, body.model, body);
       return NextResponse.json({ keyId: body.keyId, model: body.model, entry: saved });

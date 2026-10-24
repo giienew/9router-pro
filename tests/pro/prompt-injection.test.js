@@ -109,9 +109,9 @@ describe("selectPromptInjections", () => {
       {
         global: single("G"),
         byKey: { k1: single("U") },
-        byModel: { mycombo: single("M") },
+        byModel: { "prov/mycombo": single("M") },
       },
-      { apiKeyId: "k1", requestedModel: "mycombo" }
+      { apiKeyId: "k1", resolvedModel: "prov/mycombo" }
     );
     assert.deepEqual(out.map(p => p.text), ["G", "U", "M"]);
     assert.ok(out.every(p => p.mode === "single"));
@@ -122,10 +122,10 @@ describe("selectPromptInjections", () => {
       {
         global: single("G"),
         byKey: { k1: single("U") },
-        byModel: { mycombo: single("M") },
-        byKeyModel: { k1: { mycombo: single("KM") } },
+        byModel: { "prov/mycombo": single("M") },
+        byKeyModel: { k1: { "prov/mycombo": single("KM") } },
       },
-      { apiKeyId: "k1", requestedModel: "mycombo" }
+      { apiKeyId: "k1", resolvedModel: "prov/mycombo" }
     );
     assert.deepEqual(out.map(p => p.text), ["G", "U", "M", "KM"]);
   });
@@ -149,9 +149,9 @@ describe("selectPromptInjections", () => {
       selectPromptInjections(data, { requestedModel: "mycombo" }),
       []
     );
-    // Name fallbacks apply inside the scope too (bare name hit).
+    // Resolved provider/model hit inside the scope too.
     const out = selectPromptInjections(
-      { ...data, byKeyModel: { k1: { mod: single("KM") } } },
+      { ...data, byKeyModel: { k1: { "prov/mod": single("KM") } } },
       { apiKeyId: "k1", requestedModel: "alias", resolvedModel: "prov/mod", bareModel: "mod" }
     );
     assert.deepEqual(out.map(p => p.text), ["KM"]);
@@ -182,23 +182,35 @@ describe("selectPromptInjections", () => {
       {
         global: single("G", { enabled: false }),
         byKey: { k1: chat([{ role: "user", content: "  " }]) },
-        byModel: { m: single("M") },
+        byModel: { "prov/m": single("M") },
       },
-      { apiKeyId: "k1", requestedModel: "m" }
+      { apiKeyId: "k1", resolvedModel: "prov/m" }
     );
-    assert.deepEqual(out.map(p => p.name), ["m"]);
+    assert.deepEqual(out.map(p => p.name), ["prov/m"]);
   });
 
-  it("model match order: requested → resolved → bare, first hit wins", () => {
+  it("only the resolved provider/model matches; combo and bare names never match", () => {
     const out = selectPromptInjections(
       {
         global: null,
         byKey: {},
-        byModel: { "prov/mod": single("RESOLVED"), mod: single("BARE") },
+        byModel: { alias: single("ALIAS"), "prov/mod": single("RESOLVED"), mod: single("BARE") },
       },
       { requestedModel: "alias", resolvedModel: "prov/mod", bareModel: "mod" }
     );
     assert.equal(out[0].text, "RESOLVED");
+    // No resolved hit → nothing, even though combo and bare entries exist.
+    assert.deepEqual(
+      selectPromptInjections(
+        {
+          global: null,
+          byKey: {},
+          byModel: { alias: single("ALIAS"), mod: single("BARE") },
+        },
+        { requestedModel: "alias", resolvedModel: "prov/other", bareModel: "mod" }
+      ),
+      []
+    );
   });
 
   it("templates are library-only: legacy targets are dropped, prompt survives", () => {

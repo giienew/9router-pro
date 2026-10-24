@@ -2,6 +2,7 @@
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { makeBackupDir, backupDbLite, pruneOldBackups } from "./backup.js";
+import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "./normalizeInjections.js";
 import { getAppVersion } from "./version.js";
 
 // KV scopes that travel with a Settings backup: the four legacy ones plus
@@ -324,7 +325,37 @@ export async function importDb(payload, options = {}) {
       if (!applies("settings")) continue;
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('pricing', ?, ?)`, [provider, stringifyJson(models || {})]);
     }
+
   });
+
+  // Sync imported prompt entries to the current concept: entries keyed by
+  // combo names or bare model ids expand to the resolved provider/model
+  // of the serving leaves, so a backup written before the provider/model
+  // concept behaves like current data. Runs after the transaction, on the
+  // final DB state, so a selective import resolves against the combos
+  // that survive it (the transaction callback itself is sync and cannot
+  // await the async normalization). Fail-open: any error leaves the
+  // imported entries exactly as the file carried them.
+  if (payload.promptInjections && typeof payload.promptInjections === "object" && applies("prompts")) {
+    try {
+      const combos = db.all(`SELECT name, models FROM combos`).map((r) => ({ name: r.name, models: parseJson(r.models, []) }));
+      const nodeRows = db.all(`SELECT id, data FROM providerNodes`).map((r) => ({ id: r.id, ...(parseJson(r.data, {})) }));
+      const { resolveProviderAlias } = await import("open-sse/services/model.js");
+      const resolveProvider = buildProviderResolver(nodeRows, resolveProviderAlias);
+      const promptsRow = db.all(`SELECT value FROM kv WHERE scope = 'promptInjections' AND key = 'prompts'`);
+      if (promptsRow.length) {
+        const normalized = await normalizePromptMap(parseJson(promptsRow[0].value, {}), combos, resolveProvider);
+        db.run(`UPDATE kv SET value = ? WHERE scope = 'promptInjections' AND key = 'prompts'`, [stringifyJson(normalized)]);
+      }
+      const byKeyModelRow = db.all(`SELECT value FROM kv WHERE scope = 'promptInjections' AND key = 'byKeyModel'`);
+      if (byKeyModelRow.length) {
+        const normalized = await normalizeKeyModelMap(parseJson(byKeyModelRow[0].value, {}), combos, resolveProvider);
+        db.run(`UPDATE kv SET value = ? WHERE scope = 'promptInjections' AND key = 'byKeyModel'`, [stringifyJson(normalized)]);
+      }
+    } catch (e) {
+      console.warn("[DB] Prompt import normalization skipped:", e?.message || e);
+    }
+  }
 
   return await exportDb();
 }

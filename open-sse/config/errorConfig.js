@@ -46,6 +46,24 @@ export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 // keep the fleet's rest gradient steep.
 export const BALANCED_WINDOW_SIZE = 32;
 
+// LRU sort keys for the windowed pick: a never-used connection sorts
+// before every real timestamp (all real timestamps are positive ms since
+// epoch, far above this base), ordered by priority number ascending.
+// Priority is clamped so the sum can never reach a real timestamp.
+export const LRU_NEVER_USED_BASE = -1e15;
+export const LRU_PRIORITY_CAP = 1e12;
+
+// In-memory last-used overlay: hard cap on entries, and entries older
+// than this are pruned once the cap is hit (their DB stamp is the source
+// of truth by then, so dropping them only loses a stale hint).
+export const LAST_USED_OVERLAY_MAX_ENTRIES = 100000;
+export const LAST_USED_OVERLAY_PRUNE_AGE_MS = 3600 * 1000;
+
+// Deferred lastUsedAt flush: coalesce picked keys this long before
+// writing them, or flush immediately once this many are dirty.
+export const LAST_USED_FLUSH_DELAY_MS = 5000;
+export const LAST_USED_FLUSH_MAX_BATCH = 1000;
+
 // A failure only earns the dashboard "unavailable" label when its cooldown
 // is at least this long. Short transient locks (seconds) must not brand a
 // healthy key as dead — the label outlives the lock and misleads operators.

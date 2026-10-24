@@ -89,6 +89,12 @@ export default function ModelSelectModal({
   addedModelValues = [],
   closeOnSelect = true,
   allowProviderWildcard = false,
+  // Injection targets are provider models only: the injection form hides
+  // both the Combos section (combos are never injection targets) and the
+  // Custom Injections section (already-injected models are edited from
+  // the entries list, never re-injected from the picker).
+  hideCombos = false,
+  hideInjections = false,
 }) {
   // Live-fetched connections on modal open, fallback to activeProviders prop
   const [fetchedConnections, setFetchedConnections] = useState(null);
@@ -171,11 +177,13 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
-    if (isOpen) fetchCombos();
-  }, [isOpen]);
+    if (isOpen && !hideCombos) fetchCombos();
+  }, [isOpen, hideCombos]);
 
-  // Names that carry a Prompt Injection (custom model names). They are
-  // callable exactly like combo names, so they belong in this picker too.
+  // Names that carry a Prompt Injection. They are callable exactly like
+  // combo names, so they belong in pickers where the user picks something
+  // to call — but never in the injection form's picker, where they would
+  // invite re-injecting an already-injected model.
   const fetchInjectedNames = async () => {
     try {
       const res = await fetch("/api/prompt-injection");
@@ -189,8 +197,8 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
-    if (isOpen) fetchInjectedNames();
-  }, [isOpen]);
+    if (isOpen && !hideInjections) fetchInjectedNames();
+  }, [isOpen, hideInjections]);
 
   const fetchProviderNodes = async () => {
     try {
@@ -526,17 +534,17 @@ export default function ModelSelectModal({
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
-    if (kindFilter || capFilter) return [];
+    if (hideCombos || kindFilter || capFilter) return [];
     if (parsedQuery.isEmpty) return combos;
     return combos.filter(c => matchesSearch(c.name, parsedQuery));
-  }, [combos, parsedQuery, kindFilter, capFilter]);
+  }, [combos, parsedQuery, kindFilter, capFilter, hideCombos]);
 
   // Every name that carries a Prompt Injection gets its own category —
   // including names that are also combos (the common case: an injected
   // combo is still picked from here by its injection). Only names already
   // listed as provider models are left out, to avoid duplicate chips.
   const filteredInjections = useMemo(() => {
-    if (kindFilter || capFilter) return [];
+    if (hideInjections || kindFilter || capFilter) return [];
     const known = new Set();
     Object.values(groupedModels).forEach((g) =>
       g.models.forEach((m) => { known.add(m.value); known.add(m.id); })
@@ -544,7 +552,7 @@ export default function ModelSelectModal({
     const names = injectedNames.filter((n) => !known.has(n));
     if (parsedQuery.isEmpty) return names;
     return names.filter((n) => matchesSearch(n, parsedQuery));
-  }, [injectedNames, groupedModels, parsedQuery, kindFilter, capFilter]);
+  }, [injectedNames, groupedModels, parsedQuery, kindFilter, capFilter, hideInjections]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {

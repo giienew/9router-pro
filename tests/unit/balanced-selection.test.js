@@ -9,6 +9,8 @@ import {
   connectionHealthTier,
   pickWindowedLru,
   shouldStampUnavailable,
+  lastUsedOverlay,
+  stampLastUsedOverlay,
 } from "../../open-sse/services/accountFallback.js";
 import {
   BALANCED_WINDOW_SIZE,
@@ -78,6 +80,69 @@ describe("pickWindowedLru", () => {
 
   it("works for a single-account fleet", () => {
     expect(pickWindowedLru([{ id: "only" }], BALANCED_WINDOW_SIZE, () => 0.5).id).toBe("only");
+  });
+});
+
+describe("pickWindowedLru single-pass equivalence", () => {
+  // Reference implementation of the old full-sort pick, for window-set
+  // comparison only: same ordering rules, different mechanism.
+  const oldWindow = (fleet, windowSize) => {
+    const sorted = [...fleet].sort((a, b) => {
+      if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+      if (!a.lastUsedAt) return -1;
+      if (!b.lastUsedAt) return 1;
+      return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
+    });
+    return new Set(sorted.slice(0, windowSize).map((c) => c.id));
+  };
+
+  it("picks from exactly the same window as the old sort", () => {
+    const fleet = [];
+    for (let i = 0; i < 200; i++) {
+      fleet.push({
+        id: `c${i}`,
+        priority: 999,
+        lastUsedAt: i % 7 === 0 ? null : iso(NOW - i * 60 * 1000),
+      });
+    }
+    for (let trial = 0; trial < 50; trial++) {
+      const pick = pickWindowedLru(fleet, 32, () => trial / 50);
+      expect(oldWindow(fleet, 32).has(pick.id)).toBe(true);
+    }
+  });
+});
+
+describe("pickWindowedLru overlay", () => {
+  it("a stamped key leaves the window for the next pick", () => {
+    lastUsedOverlay.clear();
+    const fleet = [
+      { id: "a", priority: 999, lastUsedAt: iso(NOW - 3000) },
+      { id: "b", priority: 999, lastUsedAt: iso(NOW - 2000) },
+      { id: "c", priority: 999, lastUsedAt: iso(NOW - 1000) },
+    ];
+    const first = pickWindowedLru(fleet, 2, () => 0, lastUsedOverlay);
+    expect(first.id).toBe("a");
+    stampLastUsedOverlay(first.id, NOW);
+    const second = pickWindowedLru(fleet, 2, () => 0, lastUsedOverlay);
+    expect(second.id).toBe("b");
+    lastUsedOverlay.clear();
+  });
+
+  it("a burst of picks with synchronous stamps never repeats a key", () => {
+    lastUsedOverlay.clear();
+    const fleet = [];
+    for (let i = 0; i < 10; i++) {
+      fleet.push({ id: `k${i}`, priority: 999, lastUsedAt: null });
+    }
+    const seen = new Set();
+    for (let i = 0; i < 10; i++) {
+      const pick = pickWindowedLru(fleet, 3, () => 0, lastUsedOverlay);
+      expect(seen.has(pick.id)).toBe(false);
+      seen.add(pick.id);
+      stampLastUsedOverlay(pick.id, NOW + i);
+    }
+    expect(seen.size).toBe(10);
+    lastUsedOverlay.clear();
   });
 });
 

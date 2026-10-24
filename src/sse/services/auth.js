@@ -1,13 +1,53 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId, resolveRotationPoolIds } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS } from "open-sse/config/errorConfig.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable, lastUsedOverlay, stampLastUsedOverlay } from "open-sse/services/accountFallback.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS, LAST_USED_FLUSH_DELAY_MS, LAST_USED_FLUSH_MAX_BATCH } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
 import * as log from "../utils/logger.js";
 
-// Mutex to prevent race conditions during account selection
+// Mutex to prevent race conditions during account selection. Only the
+// round-robin branch still takes it (it mutates shared sticky counters).
+// Balanced picks are lock-free (see below) and every other branch only
+// reads, so they never queue behind another request's selection.
 let selectionMutex = Promise.resolve();
+
+// Deferred lastUsedAt persistence for lock-free balanced picks. The pick
+// stamps the in-memory overlay synchronously (that is what keeps
+// concurrent picks spread across distinct keys); the DB write only feeds
+// restarts and the dashboard, so it is coalesced here and flushed in the
+// background instead of blocking the request before it calls upstream.
+// A failed flush is logged and dropped: the overlay still holds the
+// stamp in memory, so rotation stays correct until restart.
+const lastUsedDirty = new Map();
+let lastUsedFlushTimer = null;
+function scheduleLastUsedFlush(id, lastUsedAt, consecutiveUseCount) {
+  if (!id) return;
+  lastUsedDirty.set(id, { lastUsedAt, consecutiveUseCount });
+  if (lastUsedDirty.size >= LAST_USED_FLUSH_MAX_BATCH) {
+    void flushLastUsed();
+    return;
+  }
+  if (!lastUsedFlushTimer) {
+    lastUsedFlushTimer = setTimeout(() => {
+      lastUsedFlushTimer = null;
+      void flushLastUsed();
+    }, LAST_USED_FLUSH_DELAY_MS);
+    if (typeof lastUsedFlushTimer.unref === "function") lastUsedFlushTimer.unref();
+  }
+}
+async function flushLastUsed() {
+  if (lastUsedDirty.size === 0) return;
+  const batch = [...lastUsedDirty.entries()];
+  lastUsedDirty.clear();
+  for (const [id, data] of batch) {
+    try {
+      await updateProviderConnection(id, data);
+    } catch (err) {
+      log.warn("AUTH", `lastUsed flush failed for ${String(id).slice(0, 8)}: ${err?.message || err}`);
+    }
+  }
+}
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 
@@ -32,21 +72,31 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
   const requestedModel = options?.requestedModel || model;
-  // Acquire mutex to prevent race conditions
-  const currentMutex = selectionMutex;
+  // Strategy is resolved before any lock (settings is one small row).
+  // Only round-robin mutates shared sticky counters, so only it takes
+  // the mutex, exactly like before: lock first, then read. Every other
+  // branch only reads (balanced stamps the in-memory overlay
+  // synchronously), so those requests never queue behind another
+  // request's selection. The chain link is still created for every
+  // request and resolved in finally, so the chain can never stall.
+  // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
+  const providerId = resolveProviderId(provider);
+  const settings = await getSettings();
+  const providerOverride = (settings.providerStrategies || {})[providerId] || {};
+  const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "balanced";
   let resolveMutex;
-  selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+  if (strategy === "round-robin") {
+    const currentMutex = selectionMutex;
+    selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+    await currentMutex;
+  } else {
+    selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+  }
 
   try {
-    await currentMutex;
-
-    // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
-    const providerId = resolveProviderId(provider);
-
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const settings = await getSettings();
-      const override = (settings.providerStrategies || {})[providerId] || {};
+      const override = providerOverride;
       const strategy = override.rotateStrategy || "none";
       let pickedId = override.proxyPoolId || null;
       if (strategy !== "none") {
@@ -159,10 +209,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
 
-    const settings = await getSettings();
-    // Per-provider strategy overrides global setting
-    const providerOverride = (settings.providerStrategies || {})[providerId] || {};
-    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "balanced";
+    // settings / providerOverride / strategy were resolved before the lock
+    // above and are reused here (no second settings read).
 
     let connection;
     // Pin to preferred connection if specified and available
@@ -214,21 +262,26 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       }
     } else if (strategy === "balanced") {
-      // Balanced (9Router Pro): clean accounts first — an account that
-      // failed recently and has not proven itself since only serves when
-      // no clean account is available. Within the tier, the pick is a
-      // random choice among the least-recently-used window, so load
-      // spreads evenly from a handful of accounts to tens of thousands,
-      // no account is the deterministic hot spot, and every account
-      // rests while the window ahead of it drains.
+      // Balanced, lock-free (9Router Pro): clean accounts first — an
+      // account that failed recently and has not proven itself since
+      // only serves when no clean account is available. Within the tier,
+      // the pick is a random choice among the least-recently-used window,
+      // so load spreads evenly from a handful of accounts to tens of
+      // thousands, no account is the deterministic hot spot, and every
+      // account rests while the window ahead of it drains. The pick
+      // reads the in-memory overlay and stamps it synchronously, so
+      // concurrent picks spread across distinct keys instead of piling
+      // onto the same window while a DB write is still in flight; the
+      // DB stamp itself is deferred and coalesced (scheduleLastUsedFlush)
+      // so no request ever waits on a write before calling upstream.
       const now = Date.now();
       const clean = availableConnections.filter(c => connectionHealthTier(c, now, SUSPECT_PROBATION_MS) === 0);
       const tier = clean.length > 0 ? clean : availableConnections;
-      connection = pickWindowedLru(tier, BALANCED_WINDOW_SIZE);
-      await updateProviderConnection(connection.id, {
-        lastUsedAt: new Date().toISOString(),
-        consecutiveUseCount: 1
-      });
+      connection = pickWindowedLru(tier, BALANCED_WINDOW_SIZE, Math.random, lastUsedOverlay);
+      if (connection) {
+        stampLastUsedOverlay(connection.id, now);
+        scheduleLastUsedFlush(connection.id, new Date(now).toISOString(), 1);
+      }
     } else {
       // fill-first (already sorted by priority in getProviderConnections)
       connection = availableConnections[0];

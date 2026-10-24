@@ -428,7 +428,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     // Prompt Injection (9Router Pro): global → the API key's → the model's
-    // (matched by requested name → provider/model → bare).
+    // (matched by resolved provider/model only: one prompt, one model,
+    // one provider).
     // Fail-open: resolvePromptInjections already swallows storage errors.
     const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
     const promptInjects = await resolvePromptInjections({
