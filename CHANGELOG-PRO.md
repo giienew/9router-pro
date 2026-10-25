@@ -4,6 +4,12 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.11
+
+- **Prompt Injection, now variant-based**: a prompt attaches to a custom variant name, not to the raw model. A variant is a custom name plus exactly one backing provider/model plus its prompt — picking the variant serves that model with its prompt, picking the raw model serves it without any prompt, so original model names are never disturbed. Variants resolve through an auto-created single-member combo of the same name, and renaming, re-backing or deleting a variant keeps that combo in sync. Model-coordinate injection is gone; entries from the old concept migrate to variants automatically, and a variant used inside another combo does not inject (use the variant directly).
+- **Prompt Injection page crash, fixed**: a leftover block from the removed copy-to-providers UI crashed the whole page on render. It is gone, and the page is verified loading in a real browser again.
+- **Proxy Pools pagination**: the page no longer downloads and renders every pool at once. The API pages server-side (10, 20 or 50 rows, with name search), so a fleet of thousands of pools opens as one small page instead of a multi-megabyte dump. Select-all is per page while cross-page picks persist, and bulk actions, health check and batch-import dedupe still cover the full filtered set.
+
 ## v0.5.109-pro.10
 
 - **Rotation, optimized for huge fleets**: the windowed-LRU pick is now a single pass (about 200ms down to 5.6ms per pick at 18,719 accounts), with a duplicate-free overlay so bursts spread across distinct accounts, the mutex kept only for round-robin, and lastUsedAt writes deferred and batched instead of one write per pick.
