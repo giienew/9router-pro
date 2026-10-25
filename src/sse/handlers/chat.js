@@ -427,9 +427,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    // Prompt Injection (9Router Pro): global → the API key's → the model's
-    // (matched by resolved provider/model only: one prompt, one model,
-    // one provider).
+    // Prompt Injection (9Router Pro): global → the API key's → the
+    // variant's (matched by the bare custom name the user requested) →
+    // the model+key's (matched by resolved provider/model). A variant
+    // pick suppresses the model scopes, so the raw model name is never
+    // disturbed by an injection.
     // Fail-open: resolvePromptInjections already swallows storage errors.
     const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
     const promptInjects = await resolvePromptInjections({

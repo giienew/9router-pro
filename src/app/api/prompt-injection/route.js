@@ -3,33 +3,45 @@ import {
   getInjectModelPrompts, getInjectUserPrompts, getInjectGlobal, getInjectKeyModelPrompts,
   setInjectModelPrompt, setInjectUserPrompt, setInjectGlobal, setInjectKeyModelPrompt,
   deleteInjectModelPrompt, deleteInjectUserPrompt, deleteInjectKeyModelPrompt,
+  getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants,
   getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
 } from "@/lib/localDb";
+import { getComboByName } from "@/lib/db/repos/combosRepo.js";
 import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
 
 // Prompt Injection (9Router Pro) — one injection per target coordinate:
-// global, per API key, per model, or per model+key — plus a template
-// library (named prompts, copied into injections; never fired directly).
-// Each entry is either a single system prompt or a scripted chat (turns).
-// GET    /api/prompt-injection             → { global, userPrompts, prompts, keyModelPrompts, templates }
+// global, per API key, per variant (custom-named model), or per model+key
+// — plus a template library (named prompts, copied into injections; never
+// fired directly). Each entry is either a single system prompt or a
+// scripted chat (turns).
+// A variant is a custom name backed by one provider/model: picking the
+// variant serves that model WITH the prompt; picking the raw model serves
+// it WITHOUT any prompt, so the original model name is never disturbed.
+// Saving a variant creates/updates a single-member combo of the same name
+// (that is how the name resolves to its backing model); deleting it
+// removes that combo too.
+// GET    /api/prompt-injection             → { global, userPrompts, prompts, keyModelPrompts, variants, templates }
 // GET    /api/prompt-injection?preview=1&model=<name>&keyId=<id> → { stack }
 // PUT    /api/prompt-injection             → { global: entry|null }
 //                                          | { template: {...} }  (upsert; id optional)
 //                                          | { keyId, mode, content|turns, position, enabled, templateName? }
-//                                          | { model, mode, content|turns, position, enabled, templateName? }
+//                                          | { variant: { name, model, mode, content|turns, position, enabled, templateName? } }
 //                                          | { keyId, model, mode, ... }  (model+key coordinate)
-// DELETE /api/prompt-injection?model=<name>           → model coordinate
+// DELETE /api/prompt-injection?variant=<name>        → variant (+ its combo)
+//        /api/prompt-injection?model=<name>           → model coordinate (legacy cleanup)
 //        /api/prompt-injection?keyId=<id>             → key coordinate
 //        /api/prompt-injection?keyId=<id>&model=<n>   → model+key coordinate
 //        /api/prompt-injection?templateId=<id>        → template
 
 export async function GET(request) {
   try {
-    const [global, userPrompts, prompts, keyModelPrompts, templates] = await Promise.all([
+    await migrateModelPromptsToVariants().catch(() => {});
+    const [global, userPrompts, prompts, keyModelPrompts, variants, templates] = await Promise.all([
       getInjectGlobal(),
       getInjectUserPrompts(),
       getInjectModelPrompts(),
       getInjectKeyModelPrompts(),
+      getInjectVariants(),
       getPromptTemplates(),
     ]);
     // Stack preview: exactly what one request would receive, in order.
@@ -37,7 +49,7 @@ export async function GET(request) {
     if (params.get("preview")) {
       const model = params.get("model") || "";
       const stack = selectPromptInjections(
-        { global, byKey: userPrompts, byModel: prompts, byKeyModel: keyModelPrompts },
+        { global, byKey: userPrompts, byModel: prompts, byKeyModel: keyModelPrompts, byVariant: variants },
         {
           apiKeyId: params.get("keyId") || null,
           requestedModel: model,
@@ -47,7 +59,7 @@ export async function GET(request) {
       );
       return NextResponse.json({ stack });
     }
-    return NextResponse.json({ global, userPrompts, prompts, keyModelPrompts, templates });
+    return NextResponse.json({ global, userPrompts, prompts, keyModelPrompts, variants, templates });
   } catch (error) {
     console.log("Error fetching prompt injections:", error);
     return NextResponse.json({ error: "Failed to fetch prompt injections" }, { status: 500 });
@@ -73,12 +85,45 @@ export async function PUT(request) {
     }
     const hasKey = typeof body.keyId === "string" && !!body.keyId;
     const hasModel = typeof body.model === "string" && !!body.model;
-    // Provider/model concept: a model target must be a concrete routed
-    // model ("provider/model"). Combo names and bare ids never match, so
-    // saving one would create an entry that silently never fires.
-    if (hasModel && !body.model.includes("/")) {
+    // Variant: a custom name backed by one provider/model. The name is
+    // the identity — it must not collide with a combo the variant did
+    // not create (its own combo is found by the stored comboId).
+    if (body.variant && typeof body.variant === "object") {
+      const v = body.variant;
+      const name = typeof v.name === "string" ? v.name.trim() : "";
+      if (!name || name.includes("/")) {
+        return NextResponse.json(
+          { error: "Variant needs a custom name without \"/\" (e.g. dahlunce)" },
+          { status: 400 }
+        );
+      }
+      if (typeof v.model !== "string" || !v.model.includes("/")) {
+        return NextResponse.json(
+          { error: "Variant needs a backing provider/model (e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731)" },
+          { status: 400 }
+        );
+      }
+      const existing = (await getInjectVariants())[name];
+      if (!existing && (await getComboByName(name).catch(() => null))) {
+        return NextResponse.json(
+          { error: `Nama "${name}" sudah dipakai combo — pilih nama lain` },
+          { status: 400 }
+        );
+      }
+      const saved = await setInjectVariant(name, v);
+      if (!saved) {
+        return NextResponse.json(
+          { error: "Failed to save variant (name collision or invalid backing)" },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({ variant: saved });
+    }
+    // Model targets no longer exist: an injection must use a custom name
+    // (variant) so the original model name is never disturbed.
+    if (hasModel && !hasKey) {
       return NextResponse.json(
-        { error: "Model target must be a provider/model (e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731); combo names cannot be injection targets" },
+        { error: "Model targets are now variants — give the injection a custom name (variant) instead" },
         { status: 400 }
       );
     }
@@ -90,11 +135,7 @@ export async function PUT(request) {
       const saved = await setInjectUserPrompt(body.keyId, body);
       return NextResponse.json({ keyId: body.keyId, entry: saved });
     }
-    if (hasModel) {
-      const saved = await setInjectModelPrompt(body.model, body);
-      return NextResponse.json({ model: body.model, entry: saved });
-    }
-    return NextResponse.json({ error: "Provide global, template, keyId, or model" }, { status: 400 });
+    return NextResponse.json({ error: "Provide global, template, keyId, or variant" }, { status: 400 });
   } catch (error) {
     console.log("Error saving prompt injection:", error);
     return NextResponse.json({ error: "Failed to save prompt injection" }, { status: 500 });
@@ -104,14 +145,16 @@ export async function PUT(request) {
 export async function DELETE(request) {
   try {
     const params = new URL(request.url).searchParams;
+    const variant = params.get("variant");
     const model = params.get("model");
     const keyId = params.get("keyId");
     const templateId = params.get("templateId");
     if (templateId) return NextResponse.json({ deleted: await deletePromptTemplate(templateId) });
+    if (variant) return NextResponse.json({ deleted: await deleteInjectVariant(variant) });
     if (model && keyId) return NextResponse.json({ deleted: await deleteInjectKeyModelPrompt(keyId, model) });
     if (model) return NextResponse.json({ deleted: await deleteInjectModelPrompt(model) });
     if (keyId) return NextResponse.json({ deleted: await deleteInjectUserPrompt(keyId) });
-    return NextResponse.json({ error: "Provide model, keyId, or templateId" }, { status: 400 });
+    return NextResponse.json({ error: "Provide variant, model, keyId, or templateId" }, { status: 400 });
   } catch (error) {
     console.log("Error deleting prompt injection:", error);
     return NextResponse.json({ error: "Failed to delete prompt injection" }, { status: 500 });

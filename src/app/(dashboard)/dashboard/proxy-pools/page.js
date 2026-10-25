@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import Pagination from "@/shared/components/Pagination";
 import { useNotificationStore } from "@/store/notificationStore";
 
 function getStatusVariant(status) {
@@ -49,6 +50,13 @@ export default function ProxyPoolsPage() {
   const [deploying, setDeploying] = useState(false);
   const [testingId, setTestingId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -70,21 +78,43 @@ export default function ProxyPoolsPage() {
 
   const fetchProxyPools = useCallback(async () => {
     try {
-      const res = await fetch("/api/proxy-pools?includeUsage=true", { cache: "no-store" });
+      const params = new URLSearchParams({
+        includeUsage: "true",
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (appliedSearch) params.set("search", appliedSearch);
+      const res = await fetch(`/api/proxy-pools?${params}`, { cache: "no-store" });
       const data = await res.json();
       if (res.ok) {
         setProxyPools(data.proxyPools || []);
+        setTotal(data.total ?? 0);
+        setActiveCount(data.activeCount ?? 0);
+        setFailedCount(data.failedCount ?? 0);
+        // A delete may have emptied the current page: step back to the last
+        // non-empty page instead of showing a blank page.
+        const totalPages = Math.max(1, Math.ceil((data.total ?? 0) / (data.pageSize || pageSize)));
+        if (page > totalPages) setPage(totalPages);
       }
     } catch (error) {
       console.log("Error fetching proxy pools:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, appliedSearch]);
 
   useEffect(() => {
     fetchProxyPools();
   }, [fetchProxyPools]);
+
+  // Debounced search: typing only refetches once the user pauses.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAppliedSearch(searchQuery.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   const resetForm = () => {
     setEditingProxyPool(null);
@@ -151,7 +181,8 @@ export default function ProxyPoolsPage() {
         try {
           const res = await fetch(`/api/proxy-pools/${proxyPool.id}`, { method: "DELETE" });
           if (res.ok) {
-            setProxyPools((prev) => prev.filter((item) => item.id !== proxyPool.id));
+            setSelectedIds((prev) => prev.filter((id) => id !== proxyPool.id));
+            await fetchProxyPools();
             notify.success("Proxy pool deleted");
             return;
           }
@@ -210,13 +241,26 @@ export default function ProxyPoolsPage() {
     }
   };
 
-  const allSelected = proxyPools.length > 0 && selectedIds.length === proxyPools.length;
+  const allSelected = proxyPools.length > 0 && proxyPools.every((p) => selectedIds.includes(p.id));
   const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleSelectAll = () => setSelectedIds(allSelected ? [] : proxyPools.map((p) => p.id));
+  // Select-all covers the current page only; cross-page picks stay selected.
+  const toggleSelectAll = () => setSelectedIds((prev) => allSelected
+    ? prev.filter((id) => !proxyPools.some((p) => p.id === id))
+    : [...new Set([...prev, ...proxyPools.map((p) => p.id)])]);
   const clearSelection = () => setSelectedIds([]);
 
   const bulkSetActive = async (isActive) => {
-    const targets = selectedIds.length > 0 ? selectedIds : proxyPools.map((p) => p.id);
+    let targets = selectedIds;
+    if (targets.length === 0) {
+      // "All pools" must still mean all filtered pools, not just this page.
+      try {
+        const params = new URLSearchParams({ idsOnly: "true" });
+        if (appliedSearch) params.set("search", appliedSearch);
+        const res = await fetch(`/api/proxy-pools?${params}`, { cache: "no-store" });
+        const data = await res.json();
+        targets = res.ok ? (data.ids || []) : [];
+      } catch { targets = []; }
+    }
     if (targets.length === 0) return;
     setBulkBusy(true);
     try {
@@ -340,7 +384,7 @@ export default function ProxyPoolsPage() {
   // page polls its progress. Tested pools update in place: alive stay/become
   // active, dead are deactivated and marked failed.
   const handleHealthCheck = async () => {
-    if (proxyPools.length === 0) return;
+    if (total === 0) return;
     try {
       const res = await fetch("/api/proxy-pools/test-all", {
         method: "POST",
@@ -361,7 +405,7 @@ export default function ProxyPoolsPage() {
   };
 
   const handleDeleteFailed = () => {
-    const count = proxyPools.filter((p) => p.testStatus === "error").length;
+    const count = failedCount;
     if (count === 0) return;
     confirmDeleteFailed(count, `Delete ${count} proxies that failed their last test? Pools still bound to a connection are kept.`);
   };
@@ -387,10 +431,9 @@ export default function ProxyPoolsPage() {
     };
   }, [watchHealthJob]);
 
-  // Cleanup selectedIds when pools change
-  useEffect(() => {
-    setSelectedIds((prev) => prev.filter((id) => proxyPools.some((p) => p.id === id)));
-  }, [proxyPools]);
+  // No auto-prune of selectedIds against the current page: pruning here
+  // would wipe selections made on other pages. Deleted ids are pruned
+  // in their own delete handlers instead.
 
   const openBatchImportModal = () => {
     setBatchImportText("");
@@ -608,8 +651,11 @@ export default function ProxyPoolsPage() {
 
     setImporting(true);
     try {
+      // Dedupe against the full set, not just the current page.
+      const allRes = await fetch("/api/proxy-pools", { cache: "no-store" });
+      const allData = await allRes.json();
       const existingKeys = new Set(
-        proxyPools.map((pool) => `${(pool.proxyUrl || "").trim()}|||${(pool.noProxy || "").trim()}`)
+        (allData.proxyPools || []).map((pool) => `${(pool.proxyUrl || "").trim()}|||${(pool.noProxy || "").trim()}`)
       );
 
       let created = 0;
@@ -652,16 +698,6 @@ export default function ProxyPoolsPage() {
       setImporting(false);
     }
   };
-
-  const activeCount = useMemo(
-    () => proxyPools.filter((pool) => pool.isActive === true).length,
-    [proxyPools]
-  );
-
-  const failedCount = useMemo(
-    () => proxyPools.filter((pool) => pool.testStatus === "error").length,
-    [proxyPools]
-  );
 
   if (loading) {
     return (
@@ -748,7 +784,13 @@ export default function ProxyPoolsPage() {
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          {proxyPools.length > 0 && (
+          <Input
+            placeholder="Cari nama pool…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="min-w-[12rem] flex-1 sm:flex-none sm:w-64"
+          />
+          {total > 0 && (
             <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
               <input
                 type="checkbox"
@@ -759,7 +801,7 @@ export default function ProxyPoolsPage() {
               {allSelected ? "Unselect all" : "Select all"}
             </label>
           )}
-          <Badge variant="default">Total: {proxyPools.length}</Badge>
+          <Badge variant="default">Total: {total}</Badge>
           <Badge variant="success">Active: {activeCount}</Badge>
           {failedCount > 0 && <Badge variant="error">Failed: {failedCount}</Badge>}
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -768,7 +810,7 @@ export default function ProxyPoolsPage() {
               variant="secondary"
               icon={healthChecking ? "progress_activity" : "health_and_safety"}
               onClick={handleHealthCheck}
-              disabled={healthChecking || bulkBusy || proxyPools.length === 0}
+              disabled={healthChecking || bulkBusy || total === 0}
             >
               {healthChecking
                 ? `Checking ${healthProgress.current}/${healthProgress.total}`
@@ -813,9 +855,9 @@ export default function ProxyPoolsPage() {
 
         {proxyPools.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-text-main font-medium mb-1">No proxy pool entries yet</p>
+            <p className="text-text-main font-medium mb-1">{appliedSearch ? `No pools match "${appliedSearch}"` : "No proxy pool entries yet"}</p>
             <p className="text-sm text-text-muted mb-4">
-              Create a proxy pool entry, then assign it to connections.
+              {appliedSearch ? "Try a different search." : "Create a proxy pool entry, then assign it to connections."}
             </p>
             <Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
           </div>
@@ -904,6 +946,15 @@ export default function ProxyPoolsPage() {
               </div>
             ))}
           </div>
+        )}
+        {total > 0 && (
+          <Pagination
+            currentPage={page}
+            pageSize={pageSize}
+            totalItems={total}
+            onPageChange={(p) => setPage(p)}
+            onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+          />
         )}
       </Card>
 

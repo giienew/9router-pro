@@ -138,7 +138,7 @@ export default function ModelSelectModal({
   const { getCaps } = useModelCaps();
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
-  const [injectedNames, setInjectedNames] = useState([]);
+  const [injectedEntries, setInjectedEntries] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
@@ -180,19 +180,27 @@ export default function ModelSelectModal({
     if (isOpen && !hideCombos) fetchCombos();
   }, [isOpen, hideCombos]);
 
-  // Names that carry a Prompt Injection. They are callable exactly like
-  // combo names, so they belong in pickers where the user picks something
-  // to call — but never in the injection form's picker, where they would
-  // invite re-injecting an already-injected model.
+  // Variants (custom-named models) + legacy model entries that carry a
+  // Prompt Injection. Variants are callable exactly like combo names, so
+  // they belong in pickers where the user picks something to call — but
+  // never in the injection form's picker, where they would invite
+  // re-injecting an already-injected model.
   const fetchInjectedNames = async () => {
     try {
       const res = await fetch("/api/prompt-injection");
       if (!res.ok) throw new Error(`Failed to fetch prompt injections: ${res.status}`);
       const data = await res.json();
-      setInjectedNames(Object.keys(data.prompts || {}));
+      const items = [];
+      for (const [name, entry] of Object.entries(data.variants || {})) {
+        items.push({ value: name, display: name, sub: entry?.model || null });
+      }
+      for (const [value, entry] of Object.entries(data.prompts || {})) {
+        items.push({ value, display: entry?.name || entry?.label || value, sub: entry?.name || entry?.label ? value : null });
+      }
+      setInjectedEntries(items);
     } catch (error) {
       console.error("Error fetching prompt injections:", error);
-      setInjectedNames([]);
+      setInjectedEntries([]);
     }
   };
 
@@ -541,18 +549,25 @@ export default function ModelSelectModal({
 
   // Every name that carries a Prompt Injection gets its own category —
   // including names that are also combos (the common case: an injected
-  // combo is still picked from here by its injection). Only names already
-  // listed as provider models are left out, to avoid duplicate chips.
+  // combo is still picked from here by its injection). A variant always
+  // gets its own chip: its value is the variant name, never a provider
+  // model, so it can never duplicate a catalog chip. Legacy model
+  // entries keep the old rule and only appear when their model is
+  // missing from the catalog, unless they carry a custom name.
   const filteredInjections = useMemo(() => {
     if (hideInjections || kindFilter || capFilter) return [];
     const known = new Set();
     Object.values(groupedModels).forEach((g) =>
       g.models.forEach((m) => { known.add(m.value); known.add(m.id); })
     );
-    const names = injectedNames.filter((n) => !known.has(n));
-    if (parsedQuery.isEmpty) return names;
-    return names.filter((n) => matchesSearch(n, parsedQuery));
-  }, [injectedNames, groupedModels, parsedQuery, kindFilter, capFilter, hideInjections]);
+    const items = injectedEntries.filter((it) =>
+      it.sub !== null || !known.has(it.value)
+    );
+    if (parsedQuery.isEmpty) return items;
+    return items.filter((it) =>
+      matchesSearch([it.display, it.value, it.sub].filter(Boolean), parsedQuery)
+    );
+  }, [injectedEntries, groupedModels, parsedQuery, kindFilter, capFilter, hideInjections]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -801,26 +816,33 @@ export default function ModelSelectModal({
               <span className="text-[10px] text-text-muted">({filteredInjections.length})</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {filteredInjections.map((name) => {
-                const isSelected = selectedModel === name;
+              {filteredInjections.map((item) => {
+                const isSelected = selectedModel === item.value;
                 return (
                   <button
-                    key={name}
-                    onClick={() => handleSelect({ id: name, name, value: name })}
+                    key={item.value}
+                    onClick={() => handleSelect({ id: item.value, name: item.display, value: item.value })}
                     className={`
                       px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
                       ${isSelected
                         ? "bg-primary text-white border-primary"
-                        : addedModelValues.includes(name)
+                        : addedModelValues.includes(item.value)
                           ? "bg-primary border-primary text-white hover:bg-primary-hover"
                           : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
                       }
                     `}
                   >
-                    {addedModelValues.includes(name) && (
+                    {addedModelValues.includes(item.value) && (
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                     )}
-                    {name}
+                    {item.sub ? (
+                      <span className="flex flex-col items-start leading-tight">
+                        <span>{item.display}</span>
+                        <span className="text-[10px] opacity-60 font-mono">{item.sub}</span>
+                      </span>
+                    ) : (
+                      item.display
+                    )}
                   </button>
                 );
               })}

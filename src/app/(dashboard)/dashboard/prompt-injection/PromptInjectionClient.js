@@ -387,6 +387,7 @@ function TemplateModal({ template, onClose, onSave, saving }) {
 
 function coordId(c) {
   if (c.scope === "global") return c.keyId ? `key:${c.keyId}` : "global";
+  if (c.scope === "variant") return `variant:${c.name || ""}`;
   return c.keyId ? `km:${c.keyId}::${c.model}` : `model:${c.model}`;
 }
 
@@ -404,6 +405,11 @@ function InjectionForm({
   saving,
   onSave,
   onClear,
+  // Edit mode (card-inline form): the form edits ONE existing entry.
+  // Its content stays bound to that source entry while the target
+  // coordinate remains editable as the move destination — changing the
+  // name or backing model must move the entry, never wipe it.
+  lockSource = false,
 }) {
   const [scope, setScope] = useState(initialCoord.scope);
   const [model, setModel] = useState(initialCoord.model || "");
@@ -416,69 +422,66 @@ function InjectionForm({
   const template = templates.find((t) => t.id === templateId) || null;
   const fromTemplate = allowTemplateSource && source === "template" && template;
 
-  // One prompt, one model, one provider: the target is always a routed
-  // "provider/model". Combos are built on the Combos page, never here.
+  // One prompt, one custom-named model: a variant is a name (no "/")
+  // backed by exactly one routed "provider/model". Picking the variant
+  // serves that model WITH the prompt; picking the raw model serves it
+  // WITHOUT any prompt. Combos are built on the Combos page, never here
+  // — the variant's own single-member combo is created by the API.
   const mainName = model.trim();
 
-  // Optional display label for this entry. It never affects matching —
-  // the provider/model above is the only key.
-  const [label, setLabel] = useState("");
-  const [labelFor, setLabelFor] = useState(null);
+  // In edit mode the form is bound to the entry it opened with, captured
+  // once at mount. Changing the target only changes the move destination;
+  // it must never swap the editor content underneath the user.
+  const [sourceEntry] = useState(() =>
+    lockSource && entryAt ? entryAt(initialCoord) : null
+  );
+  const sourceScope = lockSource ? initialCoord.scope : null;
+  const boundToSource = lockSource && scope === sourceScope;
+
+  // The variant's custom name: it IS the coordinate (not a display field).
+  // In edit mode it starts at the source variant's name; changing it
+  // renames the variant (a move). In add mode typing an existing
+  // variant's name loads that variant for editing.
+  const [name, setName] = useState(() =>
+    lockSource ? initialCoord.name || "" : ""
+  );
 
   const submitEntry = (fields) => {
+    if (scope === "variant") {
+      onSave(
+        { scope, name: name.trim(), model: mainName },
+        fromTemplate ? { ...fields, templateName: template.name } : fields
+      );
+      return;
+    }
     onSave(
       { scope, model: mainName, keyId },
-      {
-        ...(fromTemplate ? { ...fields, templateName: template.name } : fields),
-        label: label.trim(),
-      }
+      fromTemplate ? { ...fields, templateName: template.name } : fields
     );
   };
-  // The editor always shows the entry that already lives at the chosen
-  // coordinate — picking a target is also how you edit it.
-  const currentEntry = entryAt ? entryAt({ scope, model: model.trim(), keyId }) : null;
+  // Add mode: the editor shows the entry that already lives at the chosen
+  // coordinate — picking a target is also how you edit it. Edit mode: the
+  // editor stays on the source entry; only the destination moves.
+  const currentEntry = entryAt
+    ? entryAt(
+        scope === "variant"
+          ? { scope, name: name.trim(), model: model.trim() }
+          : { scope, model: model.trim(), keyId }
+      )
+    : null;
+  const baseEntry = boundToSource ? sourceEntry : currentEntry;
   const editorInitial = fromTemplate
     ? { ...template, enabled: true }
-    : currentEntry;
+    : baseEntry;
   const editorKey = fromTemplate
     ? `tpl-${template.id}`
-    : `coord-${coordId({ scope, model: model.trim(), keyId })}-${currentEntry?.updatedAt || "new"}`;
-
-  // Keep the label input in sync with the entry at the chosen coordinate.
-  const coordKey = `${scope}:${mainName}:${keyId}`;
-  if (labelFor !== coordKey) {
-    setLabelFor(coordKey);
-    setLabel(currentEntry?.label || "");
-  }
-
-  // Copy targets: other providers serving the same bare model that have
-  // no entry yet at this coordinate.
-  const bareOf = (s) => {
-    const i = s.indexOf("/");
-    return i > 0 ? s.slice(i + 1) : s;
-  };
-  const copyTargets =
-    scope === "model" && mainName.includes("/") && currentEntry
-      ? (modelOptions || []).filter(
-          (m) =>
-            m !== mainName &&
-            bareOf(m) === bareOf(mainName) &&
-            !entryAt({ scope: "model", model: m, keyId })
-        )
-      : [];
-  const copyToProviders = async () => {
-    const fields = {
-      mode: currentEntry.mode || "single",
-      content: currentEntry.content || "",
-      turns: currentEntry.turns || [],
-      position: currentEntry.position || "append",
-      enabled: currentEntry.enabled !== false,
-      label: currentEntry.label || "",
-    };
-    for (const target of copyTargets) {
-      await onSave({ scope: "model", model: target, keyId }, fields);
-    }
-  };
+    : boundToSource
+      ? `src-${coordId(initialCoord)}`
+      : `coord-${coordId(
+          scope === "variant"
+            ? { scope, name: name.trim(), model: model.trim() }
+            : { scope, model: model.trim(), keyId }
+        )}-${currentEntry?.updatedAt || "new"}`;
 
   return (
     <div className="flex flex-col gap-3">
@@ -488,12 +491,12 @@ function InjectionForm({
           <div className="flex overflow-hidden rounded-lg border border-border text-sm">
             <button
               type="button"
-              onClick={() => setScope("model")}
+              onClick={() => setScope("variant")}
               className={`px-3 py-2 font-medium transition-colors ${
-                scope === "model" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+                scope === "variant" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
               }`}
             >
-              Model
+              Varian
             </button>
             <button
               type="button"
@@ -506,12 +509,12 @@ function InjectionForm({
             </button>
           </div>
         </div>
-        {scope === "model" && (
+        {(scope === "variant" || scope === "model") && (
           <div className="order-3 flex min-w-0 basis-full gap-2 sm:order-2 sm:basis-auto sm:flex-1">
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="provider/model — e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
+              placeholder={scope === "variant" ? "provider/model — backing model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731" : "provider/model"}
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
@@ -522,6 +525,7 @@ function InjectionForm({
             )}
           </div>
         )}
+        {scope !== "variant" && (
         <label className="order-2 flex min-w-[180px] flex-1 flex-col gap-1 sm:order-3 sm:max-w-[240px]">
           <span className="text-xs font-medium text-text-muted">API key (optional)</span>
           <select
@@ -535,38 +539,32 @@ function InjectionForm({
             ))}
           </select>
         </label>
+        )}
       </div>
 
-      {scope === "model" && model.trim() && !model.includes("/") && (
+      {scope === "variant" && model.trim() && !model.includes("/") && (
         <p className="-mt-1 text-[11px] leading-snug text-text-muted">
-          Target must be a provider/model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731 — combo names cannot be injection targets.
+          Backing model must be a provider/model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731.
         </p>
       )}
 
-      {scope === "model" && (
+      {scope === "variant" && name.trim().includes("/") && (
+        <p className="-mt-1 text-[11px] leading-snug text-text-muted">
+          Variant name must not contain "/" — it is a custom name, not a provider/model.
+        </p>
+      )}
+
+      {scope === "variant" && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text-muted">Label (optional)</span>
+          <span className="text-xs font-medium text-text-muted">Nama varian (wajib)</span>
           <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. deepseek-dahl — display only, never a match key"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. dahlunce — nama custom model ini"
             className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
           />
         </label>
       )}
-
-      {copyTargets.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] leading-snug text-text-muted">
-            Same model on other providers without an entry yet:
-          </span>
-          <button type="button" onClick={copyToProviders} className={SELECT_BTN_CLASS}>
-            Copy to {copyTargets.length} other provider{copyTargets.length === 1 ? "" : "s"}
-          </button>
-        </div>
-      )}
-
-
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -704,7 +702,7 @@ export default function PromptInjectionClient() {
   const [loading, setLoading] = useState(true);
   const [global_, setGlobal] = useState(null);
   const [userPrompts, setUserPrompts] = useState({});
-  const [prompts, setPrompts] = useState({});
+  const [variants, setVariants] = useState({});
   const [keyModelPrompts, setKeyModelPrompts] = useState({});
   const [templates, setTemplates] = useState([]);
   const [keys, setKeys] = useState([]);
@@ -725,7 +723,7 @@ export default function PromptInjectionClient() {
       const inj = await injRes.json();
       setGlobal(inj.global || null);
       setUserPrompts(inj.userPrompts || {});
-      setPrompts(inj.prompts || {});
+      setVariants(inj.variants || {});
       setKeyModelPrompts(inj.keyModelPrompts || {});
       setTemplates(Array.isArray(inj.templates) ? inj.templates : []);
       const keyData = await keyRes.json();
@@ -798,18 +796,25 @@ export default function PromptInjectionClient() {
       if (coord.scope === "global") {
         return coord.keyId ? userPrompts[coord.keyId] || null : global_;
       }
+      if (coord.scope === "variant") {
+        if (!coord.name) return null;
+        return variants[coord.name] || null;
+      }
       if (!coord.model) return null;
       return coord.keyId
         ? keyModelPrompts[coord.keyId]?.[coord.model] || null
-        : prompts[coord.model] || null;
+        : null;
     },
-    [global_, userPrompts, prompts, keyModelPrompts]
+    [global_, userPrompts, variants, keyModelPrompts]
   );
 
   const putCoord = (coord, fields) => {
     if (coord.scope === "global") {
       if (coord.keyId) return { payload: { keyId: coord.keyId, ...fields } };
       return { payload: { global: fields } };
+    }
+    if (coord.scope === "variant") {
+      return { payload: { variant: { name: coord.name, model: coord.model, ...fields } } };
     }
     if (coord.keyId) return { payload: { keyId: coord.keyId, model: coord.model, ...fields } };
     return { payload: { model: coord.model, ...fields } };
@@ -822,6 +827,10 @@ export default function PromptInjectionClient() {
     }
     if (coord.scope === "global") {
       await del(`keyId=${encodeURIComponent(coord.keyId)}`, coordId(coord), "Injection deleted");
+      return;
+    }
+    if (coord.scope === "variant") {
+      await del(`variant=${encodeURIComponent(coord.name)}`, coordId(coord), "Injection deleted");
       return;
     }
     if (coord.keyId) {
@@ -839,8 +848,18 @@ export default function PromptInjectionClient() {
   // changed, the entry moves: write the new coordinate, delete the old —
   // and refuse to land on a coordinate that already has an injection.
   const saveInjection = async (fromCoord, toCoord, fields) => {
+    if (toCoord.scope === "variant") {
+      if (!toCoord.name || toCoord.name.includes("/")) {
+        showToast("Variant name is required and must not contain \"/\"", "error");
+        return false;
+      }
+      if (!toCoord.model || !toCoord.model.includes("/")) {
+        showToast("Backing model is required — pick a provider/model", "error");
+        return false;
+      }
+    }
     if (toCoord.scope === "model" && !toCoord.model) {
-      showToast("Model name is required — or switch the target to Global", "error");
+      showToast("Model name is required", "error");
       return false;
     }
     const fromId = fromCoord ? coordId(fromCoord) : null;
@@ -876,9 +895,11 @@ export default function PromptInjectionClient() {
         const qs =
           fromCoord.scope === "global"
             ? `keyId=${encodeURIComponent(fromCoord.keyId)}`
-            : fromCoord.keyId
-              ? `keyId=${encodeURIComponent(fromCoord.keyId)}&model=${encodeURIComponent(fromCoord.model)}`
-              : `model=${encodeURIComponent(fromCoord.model)}`;
+            : fromCoord.scope === "variant"
+              ? `variant=${encodeURIComponent(fromCoord.name)}`
+              : fromCoord.keyId
+                ? `keyId=${encodeURIComponent(fromCoord.keyId)}&model=${encodeURIComponent(fromCoord.model)}`
+                : `model=${encodeURIComponent(fromCoord.model)}`;
         await fetch(`${API}?${qs}`, { method: "DELETE" });
       }
       showToast("Injection saved", "success");
@@ -894,14 +915,14 @@ export default function PromptInjectionClient() {
   };
 
 
-  // Unified rows in stack order: global → key → model → model+key.
+  // Unified rows in stack order: global → key → variant → model+key.
   const rows = [];
   if (global_) rows.push({ coord: { scope: "global" }, entry: global_ });
   for (const keyId of Object.keys(userPrompts).sort((a, b) => keyName(a).localeCompare(keyName(b)))) {
     rows.push({ coord: { scope: "global", keyId }, entry: userPrompts[keyId] });
   }
-  for (const model of Object.keys(prompts).sort()) {
-    rows.push({ coord: { scope: "model", model }, entry: prompts[model] });
+  for (const name of Object.keys(variants).sort()) {
+    rows.push({ coord: { scope: "variant", name, model: variants[name].model }, entry: variants[name] });
   }
   for (const keyId of Object.keys(keyModelPrompts).sort((a, b) => keyName(a).localeCompare(keyName(b)))) {
     for (const model of Object.keys(keyModelPrompts[keyId]).sort()) {
@@ -962,8 +983,23 @@ export default function PromptInjectionClient() {
         const { targets, ...rest } = template || {};
         await send({ template: rest });
       }
+      for (const [name, entry] of Object.entries(data.variants || {})) {
+        await send({ variant: { name, ...entry } });
+      }
+      // Legacy backups carry model-coordinate entries: they become
+      // variants (name from the old label, else derived from the model).
+      const slugVariant = (model) => {
+        const slash = model.indexOf("/");
+        const provider = slash > 0 ? model.slice(0, slash) : "custom";
+        const providerPart = provider.startsWith("openai-compatible-chat-") ? "custom" : provider;
+        const last = model.slice(model.lastIndexOf("/") + 1);
+        const slugged = last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "model";
+        return `${providerPart}-${slugged}`.slice(0, 80);
+      };
       for (const [model, entry] of Object.entries(data.prompts || {})) {
-        await send({ model, ...entry });
+        const { name: _n, label: _l, ...rest } = entry || {};
+        const name = (_n || _l || "").trim() || slugVariant(model);
+        await send({ variant: { name, model, ...rest } });
       }
       for (const [keyId, entry] of Object.entries(data.userPrompts || {})) {
         if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
@@ -1002,13 +1038,13 @@ export default function PromptInjectionClient() {
     if (loading) return;
     const t = setTimeout(runPreview, 400);
     return () => clearTimeout(t);
-  }, [runPreview, loading, global_, userPrompts, prompts, keyModelPrompts]);
+  }, [runPreview, loading, global_, userPrompts, variants, keyModelPrompts]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-3">
         <p className="text-sm text-text-muted">
-          Attach a prompt to any name your clients call — a model, a combo, or every request at once.
+          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
@@ -1101,16 +1137,17 @@ export default function PromptInjectionClient() {
               info={{
                 title: "How Injections work",
                 paras: [
-                  "An injection attaches one prompt to one target. The target is a model name — or Global, meaning every model — optionally narrowed to a single API key.",
-                  "When a request arrives, every matching injection is added to it, stacked from least to most specific: Global → Key → Model → Model + Key.",
-                  "One request is matched against three name forms, in order: the requested name (often a combo name like glm_un), the real model behind it (provider/model), and the bare model id. The first hit wins. End users only ever see the name they asked for — which name carries the prompt is your private bookkeeping.",
+                  "An injection attaches one prompt to one target: a custom variant name, or Global (every request), optionally narrowed to a single API key.",
+                  "A variant is a custom name backed by exactly one provider/model. Picking the variant serves that model WITH the prompt; picking the raw model serves it WITHOUT any prompt — the original model name is never disturbed by an injection.",
+                  "When a request arrives, matching injections stack least → most specific: Global → Key → Variant. A variant pick suppresses the model scopes: the variant is a different model identity, so the raw model's prompt must never leak into it.",
                 ],
                 bullets: [
                   "Single prompt — one system prompt, appended or prepended to the request's system text.",
                   "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
                   "One target holds exactly one injection; saving again replaces it.",
-                  "Convention: a combo's product prompt belongs on the combo name; a model's own prompt belongs on the real model name — it still fires when a combo resolves to that model. The name chip on each row shows which kind a name is.",
-                  "Custom names are pairs: a name like dpsk_un is a combo routing to one or more real models, with the prompt on the name. Editing a pair lets you rename the name or change its real models (multi-select, like the Combos page); from New injection you can also publish any real model under your own custom name.",
+                  "A variant's name resolves through a single-member combo of the same name, created automatically — its backing is visible on the Combos page.",
+                  "Renaming a variant moves its prompt and its combo; deleting it removes both.",
+                  "Model + Key targets still exist for per-key overrides on a raw model.",
                 ],
               }}
             >
@@ -1120,7 +1157,7 @@ export default function PromptInjectionClient() {
               <p className="mb-3 text-sm font-semibold">New injection</p>
               <InjectionForm
                 key={createFormKey}
-                initialCoord={{ scope: "model", model: "", keyId: "" }}
+                initialCoord={{ scope: "variant", name: "", model: "" }}
                 entryAt={entryAt}
                 keys={keys}
                 keyName={keyName}
@@ -1152,13 +1189,13 @@ export default function PromptInjectionClient() {
                             <span className="material-symbols-outlined text-[18px] text-text-muted">public</span>
                             Global
                           </p>
+                        ) : coord.scope === "variant" ? (
+                          <div className="min-w-0 flex-1">
+                            <p className="break-all text-sm font-semibold text-text-main">{coord.name}</p>
+                            <p className="break-all font-mono text-[12px] text-primary">{coord.model}</p>
+                          </div>
                         ) : (
                           <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{coord.model}</p>
-                        )}
-                        {entry.label && (
-                          <span className="shrink-0 rounded-[3px] bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold text-text-muted">
-                            {entry.label}
-                          </span>
                         )}
                         <EntryBadge entry={entry} />
                       </div>
@@ -1174,17 +1211,17 @@ export default function PromptInjectionClient() {
                           <span className="text-xs text-text-muted">from template “{entry.templateName}”</span>
                         )}
                         <span className="flex-1" />
-                        {coord.scope === "model" && (
+                        {coord.scope === "variant" && (
                           <button
                             type="button"
-                            onClick={() => copyName(coord.model)}
+                            onClick={() => copyName(coord.name)}
                             title="Copy name"
-                            className={`${actionBtnClass} ${copied === `name:${coord.model}` ? "text-emerald-500 hover:text-emerald-500" : ""}`}
+                            className={`${actionBtnClass} ${copied === `name:${coord.name}` ? "text-emerald-500 hover:text-emerald-500" : ""}`}
                           >
                             <span className="material-symbols-outlined text-[16px]">
-                              {copied === `name:${coord.model}` ? "check" : "content_copy"}
+                              {copied === `name:${coord.name}` ? "check" : "content_copy"}
                             </span>
-                            {copied === `name:${coord.model}` ? "Copied" : "Copy"}
+                            {copied === `name:${coord.name}` ? "Copied" : "Copy"}
                           </button>
                         )}
                         <button
@@ -1214,9 +1251,9 @@ export default function PromptInjectionClient() {
                           keys={keys}
                           keyName={keyName}
                           modelOptions={modelOptions}
-                          namePicker={false}
                           templates={templates}
                           allowTemplateSource={false}
+                          lockSource
                           saving={saving === id}
                           onSave={(newCoord, fields) => saveInjection(coord, newCoord, fields)}
                           onClear={() => deleteCoord(coord)}

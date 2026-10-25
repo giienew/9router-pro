@@ -1,14 +1,25 @@
 // Prompt Injection (9Router Pro) — prompts attached to a request by
-// TARGET COORDINATE: a scope (global / model name) optionally narrowed
+// TARGET COORDINATE: a scope (global / variant name) optionally narrowed
 // to one API key. Four combinations, one mental model — "who gets this
-// prompt?": everyone, one key, one model, or one model for one key.
+// prompt?": everyone, one key, one variant, or one model for one key.
 //   · GLOBAL     — scope "promptInjections" key "global"
 //   · KEY        — key "byKey":      { [apiKeyId]: entry }
-//   · MODEL      — key "prompts":    { [modelName]: entry }
+//   · VARIANT    — key "variants":   { [variantName]: variant }
 //   · MODEL+KEY  — key "byKeyModel": { [apiKeyId]: { [modelName]: entry } }
 // Every coordinate owns exactly ONE injection (saving replaces it). A
 // request stacks its matches least → most specific:
-//   global → key → model → model+key.
+//   global → key → variant → model+key.
+//
+// A VARIANT is a custom-named model: a name the user picks (e.g.
+// "dahlunce") backed by exactly one provider/model. Picking the variant
+// serves that model WITH the variant's prompt; picking the raw model
+// serves it WITHOUT any prompt — the original model name is never
+// disturbed by an injection. A variant resolves through a single-member
+// combo of the same name, created and synced with the variant (its id is
+// kept on the variant as comboId). Model-coordinate injections from the
+// earlier concept no longer exist: any still stored are migrated to
+// variants on first read (name from the old label, else derived from the
+// model), so an existing install keeps its prompts as named variants.
 //
 // Each injection is one of two modes:
 //   · "single" — one system prompt (position prepend/append into system)
@@ -16,7 +27,7 @@
 //                as fake history right after the system message(s), so the
 //                model treats it as something that already happened
 //   entry = { mode, content, turns: [{ role, content }], position,
-//             enabled, updatedAt, templateName?, label? }
+//             enabled, updatedAt, templateName?, name? }
 //
 // TEMPLATES (scope "promptPresets", key "list") are a pure prompt
 // library: name + entry, no targets, never fired on their own. Using a
@@ -28,14 +39,17 @@
 // the prompt itself is preserved.)
 //
 // Model lookup: exactly one key — the resolved "provider/model" of the
-// model that serves the request. No combo-name or bare-name fallback:
-// one prompt, one model, one provider. Combo names never match, so a
-// prompt always follows the model that serves, through any combo.
-// Data written by the earlier "Soul Prompts" build (scope "soulPrompts",
-// content-only entries) is migrated on first read and treated as "single".
+// model that serves the request. Variant lookup: exactly one key — the
+// bare custom name the user requested, when it has no "/". A variant pick
+// suppresses the model and model+key matches: the variant is a different
+// model identity, and the raw model's prompt must never leak into it.
+// Picking the raw model matches nothing but global/key — the original
+// model name is never disturbed. Data written by the earlier "Soul
+// Prompts" build (scope "soulPrompts", content-only entries) is migrated
+// on first read and treated as "single".
 
 import { makeKv } from "../helpers/kvStore.js";
-import { getCombos } from "./combosRepo.js";
+import { getCombos, getComboByName, getComboById, createCombo, updateCombo, deleteCombo } from "./combosRepo.js";
 import { getProviderNodes } from "./nodesRepo.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
@@ -46,6 +60,7 @@ const GLOBAL_KEY = "global";
 const BYKEY_KEY = "byKey";
 const MODELS_KEY = "prompts";
 const BYKEYMODEL_KEY = "byKeyModel";
+const VARIANTS_KEY = "variants";
 const TEMPLATES_KEY = "list";
 const MAX_TURNS = 50;
 
@@ -73,11 +88,16 @@ function cleanEntry(raw) {
       typeof raw.templateName === "string" && raw.templateName.trim()
         ? raw.templateName.trim().slice(0, 80)
         : null,
-    // Optional display label: never a match key, only shown in the UI.
-    label:
-      typeof raw.label === "string" && raw.label.trim()
-        ? raw.label.trim().slice(0, 80)
-        : null,
+    // Custom name for this entry: shown as the card title and in the
+    // picker's Custom Injections section. Never a match key — matching
+    // still uses the provider/model coordinate only. Older entries stored
+    // it as `label`; that spelling still reads back as the name.
+    name:
+      typeof raw.name === "string" && raw.name.trim()
+        ? raw.name.trim().slice(0, 80)
+        : typeof raw.label === "string" && raw.label.trim()
+          ? raw.label.trim().slice(0, 80)
+          : null,
   };
   if (raw.mode === "chat") {
     const turns = cleanTurns(raw.turns);
@@ -107,7 +127,7 @@ function stamp(input = {}) {
     position: input.position,
     enabled: input.enabled,
     templateName: input.templateName,
-    label: input.label,
+    name: input.name || input.label,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -219,6 +239,156 @@ export async function deleteInjectModelPrompt(model) {
   await kv.set(MODELS_KEY, map);
   invalidateInjectSnapshot();
   return true;
+}
+
+// --------------------------------------------------------------- variants
+// A variant is a custom-named model: { model (backing provider/model),
+// comboId (its single-member combo, same name), ...entry }. The name is
+// the map key, never a field: it must be non-empty, at most 80 chars,
+// and must not contain "/" (a "/" would make it a provider/model value).
+// The backing model must be a provider/model ("provider/model").
+
+export function cleanVariantName(raw) {
+  const name = typeof raw === "string" ? raw.trim().slice(0, 80) : "";
+  if (!name || name.includes("/")) return null;
+  return name;
+}
+
+function cleanVariantEntry(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const backing = typeof raw.model === "string" ? raw.model.trim() : "";
+  if (!backing.includes("/")) return null;
+  const entry = cleanEntry(raw);
+  if (!entry) return null;
+  return {
+    ...entry,
+    model: backing,
+    comboId: typeof raw.comboId === "string" && raw.comboId ? raw.comboId : null,
+  };
+}
+
+function cleanVariantMap(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [name, entry] of Object.entries(raw)) {
+    if (!cleanVariantName(name)) continue;
+    const clean = cleanVariantEntry(entry);
+    if (clean) out[name] = clean;
+  }
+  return out;
+}
+
+export async function getInjectVariants() {
+  await ensureMigrated();
+  return cleanVariantMap(await kv.get(VARIANTS_KEY, null));
+}
+
+// Sync the variant's single-member combo: create it on first save, keep
+// it on the same name and backing afterwards. Returns the combo id, or
+// null when a DIFFERENT combo already owns the name (the caller turns
+// that into a 400). A combo the user renamed by hand is left alone —
+// the variant then re-links to a fresh combo on its next save.
+async function syncVariantCombo(name, model, existingComboId) {
+  if (existingComboId) {
+    const combo = await getComboById(existingComboId).catch(() => null);
+    if (combo && combo.name === name) {
+      await updateCombo(combo.id, { models: [model] });
+      return combo.id;
+    }
+  }
+  if (await getComboByName(name).catch(() => null)) return null;
+  const combo = await createCombo({ name, models: [model] });
+  return combo.id;
+}
+
+export async function setInjectVariant(name, input = {}) {
+  const cleanName = cleanVariantName(name);
+  if (!cleanName) return null;
+  const map = await getInjectVariants();
+  const entry = cleanVariantEntry({ ...input, updatedAt: new Date().toISOString() });
+  if (!entry) {
+    if (!(cleanName in map)) return null;
+    await deleteInjectVariant(cleanName);
+    return null;
+  }
+  const comboId = await syncVariantCombo(cleanName, entry.model, map[cleanName]?.comboId || null);
+  if (!comboId) return null;
+  map[cleanName] = { ...entry, comboId };
+  await kv.set(VARIANTS_KEY, map);
+  invalidateInjectSnapshot();
+  return map[cleanName];
+}
+
+export async function deleteInjectVariant(name) {
+  const cleanName = cleanVariantName(name);
+  if (!cleanName) return false;
+  const map = await getInjectVariants();
+  const variant = map[cleanName];
+  if (!variant) return false;
+  if (variant.comboId) {
+    const combo = await getComboById(variant.comboId).catch(() => null);
+    if (combo && combo.name === cleanName) {
+      await deleteCombo(combo.id).catch(() => {});
+    }
+  }
+  delete map[cleanName];
+  await kv.set(VARIANTS_KEY, map);
+  invalidateInjectSnapshot();
+  return true;
+}
+
+// ------------------------------------------------------- variant migration
+// One-time conversion of stored model-coordinate injections (the earlier
+// concept) into variants, so an existing install keeps its prompts as
+// named models and its raw models go back to undisturbed. Name: the old
+// label when one was set, else provider + slugged bare model. Collisions
+// with existing variant or combo names get a -2/-3 suffix. Entries that
+// cannot convert (no prompt, no backing) stay in the model map, never
+// silently dropped. Fail-open and idempotent: a drained map is a no-op,
+// a partial run retries the leftovers on the next read.
+function slugVariantName(model) {
+  const slash = model.indexOf("/");
+  const provider = slash > 0 ? model.slice(0, slash) : "custom";
+  const providerPart = provider.startsWith("openai-compatible-chat-") ? "custom" : provider;
+  const last = model.slice(model.lastIndexOf("/") + 1);
+  const slugged = last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "model";
+  return `${providerPart}-${slugged}`.slice(0, 80);
+}
+
+export async function migrateModelPromptsToVariants() {
+  try {
+    await ensureConceptMigrated();
+    const raw = await kv.get(MODELS_KEY, null);
+    if (!raw || typeof raw !== "object" || !Object.keys(raw).length) return 0;
+    const variants = await getInjectVariants();
+    const combos = await getCombos().catch(() => []);
+    const taken = new Set([...Object.keys(variants), ...combos.map((c) => c.name)]);
+    const leftovers = {};
+    let migratedCount = 0;
+    for (const [model, entryRaw] of Object.entries(raw)) {
+      try {
+        const entry = cleanEntry(entryRaw);
+        if (!entry || !model.includes("/")) { leftovers[model] = entryRaw; continue; }
+        let base = entry.name || slugVariantName(model);
+        let candidate = base;
+        let n = 2;
+        while (taken.has(candidate)) candidate = `${base}-${n++}`.slice(0, 80);
+        const combo = await createCombo({ name: candidate, models: [model] });
+        variants[candidate] = { ...entry, model, comboId: combo.id };
+        taken.add(candidate);
+        migratedCount++;
+      } catch {
+        leftovers[model] = entryRaw;
+      }
+    }
+    await kv.set(VARIANTS_KEY, variants);
+    if (Object.keys(leftovers).length) await kv.set(MODELS_KEY, leftovers);
+    else await kv.remove(MODELS_KEY);
+    invalidateInjectSnapshot();
+    return migratedCount;
+  } catch {
+    return 0;
+  }
 }
 
 // --------------------------------------------------------------- per user (API key)
@@ -355,10 +525,12 @@ export async function deletePromptTemplate(id) {
 // --------------------------------------------------------------- resolver
 
 // Pure selection — exported for tests. Stacked least → most specific:
-// global → key → model → model+key. Per model scope, exactly one key
-// matches: the resolved "provider/model". Combo names and bare names
-// never match.
-export function selectPromptInjections({ global, byKey, byModel, byKeyModel } = {}, ctx = {}) {
+// global → key → variant → model+key. Per model scope, exactly one key
+// matches: the resolved "provider/model" — unless the user picked a
+// variant by its bare name, in which case the variant matches instead
+// and the model scopes stay silent (a variant pick is a different model
+// identity). Combo names never match.
+export function selectPromptInjections({ global, byKey, byModel, byKeyModel, byVariant } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
     if (!e || !e.enabled) return;
@@ -372,24 +544,35 @@ export function selectPromptInjections({ global, byKey, byModel, byKeyModel } = 
     push("user", cleanMap(byKey)[ctx.apiKeyId]);
   }
 
-  const names = [ctx.resolvedModel]
-    .filter((x) => typeof x === "string" && x);
-  const firstHit = (map) => {
-    for (const name of names) {
-      const entry = map[name];
-      if (entry && entry.enabled) return { name, entry };
-    }
-    return null;
-  };
+  // A bare requested name (no "/") is a variant pick: its prompt fires
+  // and the raw model's scopes stay silent for this request.
+  let variantHit = null;
+  if (typeof ctx.requestedModel === "string" && ctx.requestedModel && !ctx.requestedModel.includes("/")) {
+    const entry = cleanVariantMap(byVariant)[ctx.requestedModel];
+    if (entry && entry.enabled) variantHit = { name: ctx.requestedModel, entry };
+  }
+  if (variantHit) push(variantHit.name, variantHit.entry);
 
-  const modelHit = firstHit(cleanMap(byModel));
-  if (modelHit) push(modelHit.name, modelHit.entry);
+  if (!variantHit) {
+    const names = [ctx.resolvedModel]
+      .filter((x) => typeof x === "string" && x);
+    const firstHit = (map) => {
+      for (const name of names) {
+        const entry = map[name];
+        if (entry && entry.enabled) return { name, entry };
+      }
+      return null;
+    };
 
-  if (ctx.apiKeyId) {
-    const scoped = cleanKeyModelMap(byKeyModel)[ctx.apiKeyId];
-    if (scoped) {
-      const hit = firstHit(scoped);
-      if (hit) push(hit.name, hit.entry);
+    const modelHit = firstHit(cleanMap(byModel));
+    if (modelHit) push(modelHit.name, modelHit.entry);
+
+    if (ctx.apiKeyId) {
+      const scoped = cleanKeyModelMap(byKeyModel)[ctx.apiKeyId];
+      if (scoped) {
+        const hit = firstHit(scoped);
+        if (hit) push(hit.name, hit.entry);
+      }
     }
   }
   return out;
@@ -407,18 +590,20 @@ function invalidateInjectSnapshot() {
 
 async function getInjectSnapshot() {
   if (snapshot && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) return snapshot;
-  const [global, byKey, byModel, byKeyModel] = await Promise.all([
+  await migrateModelPromptsToVariants().catch(() => {});
+  const [global, byKey, byModel, byKeyModel, byVariant] = await Promise.all([
     getInjectGlobal(),
     getInjectUserPrompts(),
     getInjectModelPrompts(),
     getInjectKeyModelPrompts(),
+    getInjectVariants(),
   ]);
-  snapshot = { at: Date.now(), global, byKey, byModel, byKeyModel };
+  snapshot = { at: Date.now(), global, byKey, byModel, byKeyModel, byVariant };
   return snapshot;
 }
 
 // Resolve the injections for one request
-// (global → key → model → model+key). Fail-open.
+// (global → key → variant → model+key). Fail-open.
 export async function resolvePromptInjections(ctx = {}) {
   try {
     const snap = await getInjectSnapshot();
