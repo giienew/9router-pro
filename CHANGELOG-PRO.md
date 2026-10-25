@@ -4,6 +4,10 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.12
+
+- **Packaging fix**: this release ships the correct slim npm distribution. The pro.11 npm publish was staged from the wrong pack output and never went live — approve pro.12, not pro.11. No code changes from pro.11.
+
 ## v0.5.109-pro.11
 
 - **Prompt Injection, now variant-based**: a prompt attaches to a custom variant name, not to the raw model. A variant is a custom name plus exactly one backing provider/model plus its prompt — picking the variant serves that model with its prompt, picking the raw model serves it without any prompt, so original model names are never disturbed. Variants resolve through an auto-created single-member combo of the same name, and renaming, re-backing or deleting a variant keeps that combo in sync. Model-coordinate injection is gone; entries from the old concept migrate to variants automatically, and a variant used inside another combo does not inject (use the variant directly).
