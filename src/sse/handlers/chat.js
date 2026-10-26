@@ -9,7 +9,7 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboStrategy } from "../services/pairStrategy.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, checkKeyQuota, getKeyLimits, getKeyUsageInWindow } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, checkKeyQuota, getKeyLimits, getKeyUsageInWindow, getInjectVariants } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -204,6 +204,14 @@ async function handleChatImpl(request, clientRawRequest = null) {
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
+    // Same rule as the nested combo branch below: a member that names
+    // a variant carries its own bare name so its prompt fires; other
+    // members keep the requested combo name.
+    const topInjectVariants = await getInjectVariants().catch(() => ({}));
+    const topMemberInjectName = (m) =>
+      (typeof m === "string" && !m.includes("/") && topInjectVariants[m]
+        ? m
+        : modelStr);
     // Check for combo-specific strategy first, fallback to global;
     // a multi-model pair defaults to round-robin (see pairStrategy.js)
     const comboStrategies = settings.comboStrategies || {};
@@ -222,7 +230,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, modelStr);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m));
         },
         log,
         comboName: modelStr,
@@ -238,7 +246,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, modelStr),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m)),
         adapterAdded
       ),
       log,
@@ -306,6 +314,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (!modelInfo.provider) {
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
+      // Variant members of a combo must inject like a direct variant
+      // pick: carry the member's bare name when it names a variant,
+      // otherwise keep the outer requested name (direct variant picks
+      // rely on it through their single-member combo).
+      const comboInjectVariants = await getInjectVariants().catch(() => ({}));
+      const memberInjectName = (m) =>
+        (typeof m === "string" && !m.includes("/") && comboInjectVariants[m]
+          ? m
+          : (injectModelName || modelStr));
       const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global;
       // a multi-model pair defaults to round-robin (see pairStrategy.js)
@@ -329,7 +346,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, injectModelName || modelStr);
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, memberInjectName(m));
           },
           log,
           comboName: modelStr,
@@ -347,7 +364,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         body,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, injectModelName || modelStr),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m)),
           adapterAdded
         ),
         log,

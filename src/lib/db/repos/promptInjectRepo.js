@@ -50,7 +50,7 @@
 
 import { makeKv } from "../helpers/kvStore.js";
 import { getCombos, getComboByName, getComboById, createCombo, updateCombo, deleteCombo } from "./combosRepo.js";
-import { getProviderNodes } from "./nodesRepo.js";
+import { getProviderNodes, resolveRoutableBacking } from "./nodesRepo.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
 const kv = makeKv("promptInjections");
@@ -311,9 +311,16 @@ export async function setInjectVariant(name, input = {}) {
     await deleteInjectVariant(cleanName);
     return null;
   }
-  const comboId = await syncVariantCombo(cleanName, entry.model, map[cleanName]?.comboId || null);
+  // AUTO: an alias-prefix backing (e.g. tokenharbor/...) would 404 at
+  // runtime because chat never maps prefixes to node ids — convert it to
+  // the routable node-id form here, once, at save time.
+  const nodes = await getProviderNodes().catch(() => []);
+  const routedModel = resolveRoutableBacking(entry.model, nodes);
+  if (routedModel === null) return null;
+  const routedEntry = routedModel === entry.model ? entry : { ...entry, model: routedModel };
+  const comboId = await syncVariantCombo(cleanName, routedEntry.model, map[cleanName]?.comboId || null);
   if (!comboId) return null;
-  map[cleanName] = { ...entry, comboId };
+  map[cleanName] = { ...routedEntry, comboId };
   await kv.set(VARIANTS_KEY, map);
   invalidateInjectSnapshot();
   return map[cleanName];

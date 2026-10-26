@@ -12,6 +12,9 @@ const DEFAULT_SETTINGS = {
   tailscaleEnabled: false,
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
+  // Global key-routing strategy (profile page). Distinct from
+  // comboStrategy below, which routes *within* a combo's members.
+  fallbackStrategy: "balanced",
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",

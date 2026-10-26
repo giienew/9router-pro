@@ -9,6 +9,7 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 import { parseSearchQuery, matchesSearch } from "@/shared/utils/modelSearchFilter";
+import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
 import { getDeactivatedProviderIds } from "@/shared/utils/connectionStatus";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
@@ -223,6 +224,9 @@ export default function ModelSelectModal({
   useEffect(() => {
     if (isOpen) fetchProviderNodes();
   }, [isOpen]);
+
+  // Friendly prefix per custom-provider node id, for display only.
+  const prefixById = useMemo(() => nodePrefixById(providerNodes), [providerNodes]);
 
   const fetchCustomModels = async () => {
     try {
@@ -838,7 +842,7 @@ export default function ModelSelectModal({
                     {item.sub ? (
                       <span className="flex flex-col items-start leading-tight">
                         <span>{item.display}</span>
-                        <span className="text-[10px] opacity-60 font-mono">{item.sub}</span>
+                        <span className="text-[10px] opacity-60 font-mono">{displayBacking(item.sub, prefixById)}</span>
                       </span>
                     ) : (
                       item.display

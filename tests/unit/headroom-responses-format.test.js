@@ -48,15 +48,25 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(typeof body.input[0].content).not.toBe("string");
   });
 
-  it("skips Responses tool/reasoning history instead of collapsing it into a message (#2132)", async () => {
-    global.fetch = vi.fn(async () => ({
+  // #2132's concern — Responses tool/reasoning history must never be
+  // collapsed into a message and round-tripped through the proxy — is
+  // answered by the native tool-output path, not by skipping: only the
+  // plain-text function_call_output leaves are sent, and the protocol
+  // items (function_call arguments, reasoning summary, tool schemas)
+  // stay byte-identical in the body. The earlier skip-everything
+  // reading of #2132 contradicted that path (it broke 8
+  // headroom-tool-outputs tests), so this test asserts the leaf-only
+  // behavior instead of a blanket skip.
+  it("does not collapse Responses tool/reasoning history into a message (#2132): only plain-text output leaves reach the proxy", async () => {
+    global.fetch = vi.fn(async (_url, init) => ({
       ok: true,
       json: async () => ({
-        messages: [{ role: "user", content: "compressed tool history" }],
+        messages: JSON.parse(init.body).messages.map((m) => ({ ...m, content: "short result" })),
         tokens_saved: 10,
       }),
     }));
 
+    const longOutput = "Patch applied successfully. All 12 files updated, 3 tests passing.\n".repeat(20);
     const input = [
       {
         type: "message",
@@ -72,7 +82,7 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
       {
         type: "function_call_output",
         call_id: "call_apply_patch_123",
-        output: "ok",
+        output: longOutput,
       },
       {
         type: "reasoning",
@@ -89,19 +99,23 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
         },
       ],
     };
-    const diagnostics = {};
+    const expected = structuredClone(body);
+    expected.input[2].output = "short result";
 
     const data = await compressWithHeadroom(body, {
       enabled: true,
       url: "http://headroom.test",
       model: "gpt-5",
       format: "openai-responses",
-      diagnostics,
     });
 
-    expect(data).toBeNull();
-    expect(global.fetch).not.toHaveBeenCalled();
-    expect(body.input).toEqual(input);
-    expect(diagnostics.reason).toBe("skipped: openai-responses tool/reasoning input is not safe to compress");
+    expect(data).not.toBeNull();
+    expect(global.fetch).toHaveBeenCalledOnce();
+    expect(body).toEqual(expected);
+    const sent = JSON.parse(global.fetch.mock.calls[0][1].body).messages;
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ role: "tool", content: longOutput });
+    expect(JSON.stringify(sent)).not.toContain("Need a plan");
+    expect(JSON.stringify(sent)).not.toContain("Begin Patch");
   });
 });

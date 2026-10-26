@@ -6,7 +6,7 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
 import { ConfirmModal } from "./Modal";
 import { cn } from "@/shared/utils/cn";
-import { ACCENTS, ACCENT_STORAGE_KEY, PRO_DEFAULT_ACCENT, applyAccent, isValidAccent, applyCustomAccent, getStoredCustomAccent, hslToHex, hexToHue, CUSTOM_ACCENT_ID } from "@/shared/constants/accents";
+import { ACCENT_STORAGE_KEY, PRO_DEFAULT_ACCENT, isValidAccent, applyCustomAccent, getStoredCustomAccent, hslToHex, hexToHue, CUSTOM_ACCENT_ID } from "@/shared/constants/accents";
 import { PRESETS, getStoredPreset, applyPreset } from "@/shared/constants/presets";
 import useThemeStore from "@/store/themeStore";
 
@@ -77,14 +77,6 @@ export default function HeaderMenu({ onLogout }) {
       // Dark Pro is always dark — align the theme store so nothing fights it.
       useThemeStore.getState().setTheme("dark");
     }
-  };
-
-  const chooseAccent = (id) => {
-    setAccent(id);
-    applyAccent(id);
-    try {
-      localStorage.setItem(ACCENT_STORAGE_KEY, id);
-    } catch { /* private mode */ }
   };
 
   // Free color choice: slide the hue (or tap the dot for an exact color) and
@@ -191,34 +183,6 @@ export default function HeaderMenu({ onLogout }) {
               })}
             </div>
             <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-              Accent color
-            </p>
-            <div className="grid grid-cols-2 gap-0.5 px-2 pb-1.5">
-              {ACCENTS.map((a) => {
-                const isActive = a.id === accent;
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => chooseAccent(a.id)}
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors cursor-pointer",
-                      isActive ? "bg-black/5 dark:bg-white/5 text-text-main font-medium" : "text-text-muted hover:bg-black/5 dark:hover:bg-white/5 hover:text-text-main"
-                    )}
-                  >
-                    <span
-                      className={cn("size-4 rounded-full shrink-0", isActive && "ring-2 ring-offset-2 ring-offset-surface ring-current")}
-                      style={{ backgroundColor: a.swatch, color: a.swatch }}
-                    />
-                    {a.name}
-                    {isActive && (
-                      <span className="material-symbols-outlined text-[16px] ml-auto text-brand-500">check</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="px-4 pt-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
               Custom color
             </p>
             <div className="flex items-center gap-2.5 px-4 pb-2">

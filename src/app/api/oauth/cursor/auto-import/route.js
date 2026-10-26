@@ -109,6 +109,28 @@ function extractTokensViaBetterSqlite(dbPath) {
     if (raw) { machineId = normalize(raw); break; }
   }
 
+  // Fuzzy fallback: Cursor renames its storage keys across versions. If the
+  // exact keys are gone, a LIKE scan still finds the token instead of
+  // dropping the user to manual paste.
+  if (!accessToken || !machineId) {
+    const fuzzy = (pattern) => {
+      try {
+        const rows = db.prepare("SELECT key, value FROM itemTable WHERE key LIKE ? LIMIT 5").all(`%${pattern}%`);
+        return rows?.[0]?.value || null;
+      } catch {
+        return null;
+      }
+    };
+    if (!accessToken) {
+      const raw = fuzzy("accesstoken");
+      if (raw) accessToken = normalize(raw);
+    }
+    if (!machineId) {
+      const raw = fuzzy("machineid");
+      if (raw) machineId = normalize(raw);
+    }
+  }
+
   db.close();
   return { accessToken, machineId };
 }
@@ -177,6 +199,12 @@ async function extractTokensViaCLI(dbPath) {
 export async function GET() {
   try {
     const platform = process.platform;
+    if (platform !== "darwin" && platform !== "win32" && platform !== "linux") {
+      return NextResponse.json(
+        { found: false, error: "Unsupported platform" },
+        { status: 400 },
+      );
+    }
     const candidates = getCandidatePaths(platform);
 
     let dbPath = null;

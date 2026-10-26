@@ -12,6 +12,12 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 const MODELS_CACHE_TTL_MS = 30000;
 let modelsCache = { at: 0, payload: null };
 
+// Test hook (precedent: __resetKeyRateLimiter): drop the cached catalog so a
+// test can re-drive GET with different aliases/disabled/custom rows.
+export function __resetModelsCache() {
+  modelsCache = { at: 0, payload: null };
+}
+
 // GET /api/models - Get models with aliases
 export async function GET() {
   try {

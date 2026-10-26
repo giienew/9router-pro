@@ -30,6 +30,11 @@ function normalizeId(providerId) {
 export function resolveProviderIconId(providerId) {
   const id = normalizeId(providerId);
   if (!id) return "";
+  // Custom provider node ids (e.g. openai-compatible-chat-<uuid>) never
+  // have a bundled icon — skip the /providers/*.png request entirely
+  // instead of firing a 404 on first render each session. The favicon /
+  // initials chain still applies.
+  if (/-compatible-chat-/.test(id)) return "";
   if (failedIds.has(id)) return "";
   const aliased = ICON_ALIASES[id] || id;
   if (failedIds.has(aliased)) return "";

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
+import { getComboById, updateCombo, deleteCombo, getComboByName, normalizeRoutableMembers } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -43,7 +43,10 @@ export async function PUT(request, { params }) {
     
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
-    const combo = await updateCombo(id, body);
+    const patch = Array.isArray(body.models)
+      ? { ...body, models: await normalizeRoutableMembers(body.models) }
+      : body;
+    const combo = await updateCombo(id, patch);
     
     if (!combo) {
       return NextResponse.json({ error: "Combo not found" }, { status: 404 });

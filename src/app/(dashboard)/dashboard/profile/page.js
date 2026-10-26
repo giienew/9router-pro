@@ -1861,6 +1861,20 @@ export default function ProfilePage() {
               />
             </div>
 
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Sticky Random</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Stick to one working account until it fails, then pick another at random
+                </p>
+              </div>
+              <Toggle
+                checked={settings.fallbackStrategy === "sticky-random"}
+                onChange={() => updateFallbackStrategy("sticky-random")}
+                disabled={loading}
+              />
+            </div>
+
             {/* Sticky Round Robin Limit */}
             {settings.fallbackStrategy === "round-robin" && (
               <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
@@ -1923,7 +1937,9 @@ export default function ProfilePage() {
                 ? "Currently spreading requests across the healthiest accounts first (Balanced) — accounts rest between uses, from a few accounts to tens of thousands."
                 : settings.fallbackStrategy === "round-robin"
                   ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                  : "Currently using accounts in priority order (Fill First)."}
+                  : settings.fallbackStrategy === "sticky-random"
+                    ? "Currently sticking to one working account until it fails, then picking another at random (Sticky Random)."
+                    : "Currently using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
                 : " Combos always start with their first model."}

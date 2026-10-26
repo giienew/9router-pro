@@ -23,6 +23,18 @@ export function parseSSELine(line, format = null) {
   }
 
   // Standard SSE format: "data: {...}"
+  // Raw JSON lines (provider NDJSON streams without a "data:" prefix) are
+  // auto-detected: no valid SSE line starts with "{", so this can only add
+  // parsing, never misparse an SSE frame.
+  const trimmed = line.trim();
+  if (trimmed.charCodeAt(0) === 123) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      return null;
+    }
+  }
+
   if (line.charCodeAt(0) !== 100) return null; // 'd' = 100
 
   const data = line.slice(5).trim();

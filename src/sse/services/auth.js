@@ -7,9 +7,24 @@ import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravit
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection. Only the
-// round-robin branch still takes it (it mutates shared sticky counters).
-// Balanced picks are lock-free (see below) and every other branch only
-// reads, so they never queue behind another request's selection.
+// round-robin and sticky-random branches take it (they mutate shared
+// sticky state). Balanced picks are lock-free (see below) and every
+// other branch only reads, so they never queue behind another request's
+// selection.
+
+// Sticky-random current key per provider+model (9Router Pro): the key a
+// successful request sticks to until it locks. In-memory only — a restart
+// cold-starts to a fresh random pick. The entry is dropped the moment its
+// key locks, so the next pick re-rolls instead of re-sticking to a stale
+// key. Recency alone cannot serve as the signal: after the current key
+// dies, the most-recently-used available key is a stale one.
+const stickyCurrentByRoute = new Map();
+function stickyRouteKey(providerId, model) {
+  return `${providerId}:${model || ""}`;
+}
+export function resetStickyCurrent() {
+  stickyCurrentByRoute.clear();
+}
 let selectionMutex = Promise.resolve();
 
 // Deferred lastUsedAt persistence for lock-free balanced picks. The pick
@@ -73,8 +88,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const preferredConnectionId = options?.preferredConnectionId || null;
   const requestedModel = options?.requestedModel || model;
   // Strategy is resolved before any lock (settings is one small row).
-  // Only round-robin mutates shared sticky counters, so only it takes
-  // the mutex, exactly like before: lock first, then read. Every other
+  // Only round-robin and sticky-random mutate shared sticky state, so
+  // only they take the mutex, exactly like before: lock first, then read. Every other
   // branch only reads (balanced stamps the in-memory overlay
   // synchronously), so those requests never queue behind another
   // request's selection. The chain link is still created for every
@@ -85,7 +100,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const providerOverride = (settings.providerStrategies || {})[providerId] || {};
   const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "balanced";
   let resolveMutex;
-  if (strategy === "round-robin") {
+  if (strategy === "round-robin" || strategy === "sticky-random") {
     const currentMutex = selectionMutex;
     selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
     await currentMutex;
@@ -261,6 +276,25 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           consecutiveUseCount: 1
         });
       }
+    } else if (strategy === "sticky-random") {
+      // Sticky-random: stick to the current key while it keeps succeeding;
+      // when it locks, re-roll randomly among the available keys. The map
+      // entry is the only current signal — a stale entry never sticks,
+      // because markAccountUnavailable drops the entry of a locked key.
+      const routeKey = stickyRouteKey(providerId, model);
+      const stickyId = stickyCurrentByRoute.get(routeKey);
+      connection = stickyId ? availableConnections.find((c) => c.id === stickyId) : undefined;
+      if (!connection) {
+        connection = availableConnections[Math.floor(Math.random() * availableConnections.length)];
+      }
+      if (connection) {
+        const isFreshPick = connection.id !== stickyId;
+        stickyCurrentByRoute.set(routeKey, connection.id);
+        await updateProviderConnection(connection.id, {
+          lastUsedAt: new Date().toISOString(),
+          consecutiveUseCount: isFreshPick ? 1 : (connection.consecutiveUseCount || 0) + 1
+        });
+      }
     } else if (strategy === "balanced") {
       // Balanced, lock-free (9Router Pro): clean accounts first — an
       // account that failed recently and has not proven itself since
@@ -334,6 +368,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  // Sticky-random: a locked key stops being current for its route, so the
+  // next pick re-rolls instead of re-sticking to it. Only the entry that
+  // actually points at this key is dropped.
+  if (provider) {
+    const routeKey = stickyRouteKey(resolveProviderId(provider), model);
+    if (stickyCurrentByRoute.get(routeKey) === connectionId) stickyCurrentByRoute.delete(routeKey);
+  }
   const connections = await getProviderConnections({ provider });
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;

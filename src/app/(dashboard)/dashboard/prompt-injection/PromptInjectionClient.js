@@ -8,6 +8,7 @@ import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
 import { InjectionTester } from "./InjectExtras";
 
 const API = "/api/prompt-injection";
@@ -707,6 +708,7 @@ export default function PromptInjectionClient() {
   const [templates, setTemplates] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
+  const [nodePrefixes, setNodePrefixes] = useState({});
   const [saving, setSaving] = useState("");
   const [editingTemplate, setEditingTemplate] = useState(undefined); // undefined=closed, null=new
   const [editingCoordId, setEditingCoordId] = useState(null);
@@ -715,10 +717,11 @@ export default function PromptInjectionClient() {
 
   const load = useCallback(async () => {
     try {
-      const [injRes, keyRes, modelsRes] = await Promise.all([
+      const [injRes, keyRes, modelsRes, nodesRes] = await Promise.all([
         fetch(API),
         fetch("/api/keys"),
         fetch("/api/models"),
+        fetch("/api/provider-nodes"),
       ]);
       const inj = await injRes.json();
       setGlobal(inj.global || null);
@@ -741,6 +744,11 @@ export default function PromptInjectionClient() {
         }
       } catch { /* models list is a convenience, not a requirement */ }
       setModelOptions([...names].sort());
+      // Friendly prefixes for variant backings (display only).
+      try {
+        const nodesData = await nodesRes.json();
+        setNodePrefixes(nodePrefixById(nodesData?.nodes || []));
+      } catch { /* labels are a convenience, not a requirement */ }
     } catch {
       showToast("Failed to load prompt injections", "error");
     } finally {
@@ -1192,7 +1200,7 @@ export default function PromptInjectionClient() {
                         ) : coord.scope === "variant" ? (
                           <div className="min-w-0 flex-1">
                             <p className="break-all text-sm font-semibold text-text-main">{coord.name}</p>
-                            <p className="break-all font-mono text-[12px] text-primary">{coord.model}</p>
+                            <p className="break-all font-mono text-[12px] text-primary">{displayBacking(coord.model, nodePrefixes)}</p>
                           </div>
                         ) : (
                           <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-primary">{coord.model}</p>

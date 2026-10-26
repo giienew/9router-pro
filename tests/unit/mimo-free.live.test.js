@@ -52,7 +52,12 @@ describe("MiMo Free bootstrap (live)", () => {
 });
 
 describe("MiMo Free anti-abuse gate (live)", () => {
-  it("chat WITH Chrome User-Agent → 200", async () => {
+  // SKIPPED: Xiaomi ended the free MiMo channel — chat now returns 400
+  // "Unsupported model mimo-auto" (verified live 2026-10-26; bootstrap still
+  // issues JWTs, but no chat model is served). The provider is already
+  // hidden in the registry. Re-enable only if a replacement channel
+  // (e.g. OAuth MiMo Platform) is wired.
+  it.skip("chat WITH Chrome User-Agent → 200", async () => {
     const { jwt } = await bootstrapWith(CHROME_UA);
     const r = await chatWith(jwt, CHROME_UA);
     expect(r.status).toBe(200);

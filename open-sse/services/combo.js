@@ -201,7 +201,24 @@ export function detectRequiredCapabilities(body) {
   const contents = body.contents || body.request?.contents;                      // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
-  // search: temporarily disabled in auto-switch (feature not wired yet).
+  // search: a request carrying web-search/fetch tools needs a search-capable
+  // model first (caps carry `search` from vendor docs for Claude 4.x+,
+  // GPT-5.x/4o, Gemini, etc.). Tool shapes vary: OpenAI hosted tools
+  // (type "web_search"), Claude versioned tools ("web_search_20260222"),
+  // and plain function tools named web_search/web_fetch.
+  const tools = Array.isArray(body.tools) ? body.tools : [];
+  for (const t of tools) {
+    if (!t || typeof t !== "object") continue;
+    const type = String(t.type || "");
+    const name = String(t.function?.name || t.name || "");
+    if (
+      type.includes("web_search") || type.includes("web_fetch") ||
+      name.includes("web_search") || name.includes("web_fetch")
+    ) {
+      required.add("search");
+      break;
+    }
+  }
 
   return required;
 }

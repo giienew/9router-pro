@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -10,6 +10,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
 import { resolveProviderId, AI_PROVIDERS } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -73,11 +74,11 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  const [providerNodes, setProviderNodes] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
-  const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [showStrategyInfo, setShowStrategyInfo] = useState(false);
@@ -89,6 +90,23 @@ export default function CombosPage() {
   useEffect(() => {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Friendly prefixes for custom-provider member labels (display only).
+  useEffect(() => {
+    fetch("/api/provider-nodes")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProviderNodes(data?.nodes || []))
+      .catch(() => {});
+  }, []);
+  const prefixById = useMemo(() => nodePrefixById(providerNodes), [providerNodes]);
+
+  // O(1) connected-provider lookup for card status: the raw .some() scan
+  // over 4000+ connections ran on every card on every render (including
+  // each search keystroke). Same filter semantics, memoized on the list.
+  const activeProviderIds = useMemo(
+    () => new Set((activeProviders || []).filter((c) => c.isActive !== false).map((c) => c.provider)),
+    [activeProviders]
+  );
 
   // Drop stale selection when the combo list changes (delete / refresh).
   useEffect(() => {
@@ -124,66 +142,6 @@ export default function CombosPage() {
   };
 
   const clearSelection = () => setSelectedIds([]);
-
-  const handleGeneratePresets = async (source) => {
-    const label = source === "cursor" ? "Cursor Default" : "Claude Default";
-    setPresetLoading(source);
-    try {
-      const previewRes = await fetch(`/api/combos/presets?source=${source}`);
-      const preview = await previewRes.json();
-      if (!previewRes.ok) {
-        alert(preview.error || `Failed to preview ${label}`);
-        return;
-      }
-
-      const toCreate = preview.toCreate ?? (preview.items || []).filter((i) => !i.exists).length;
-      const toSkip = preview.toSkip ?? (preview.items || []).filter((i) => i.exists).length;
-      const total = (preview.items || []).length;
-
-      if (total === 0) {
-        alert(`No ${label} models available to generate.`);
-        return;
-      }
-
-      if (toCreate === 0) {
-        alert(`All ${total} ${label} combos already exist. Nothing to create.`);
-        return;
-      }
-
-      setConfirmState({
-        title: `Generate ${label}`,
-        message: `Create ${toCreate} combo${toCreate === 1 ? "" : "s"} named like ${source === "cursor" ? "Cursor" : "Claude"} model IDs (seeded with cu/… or cc/…). ${toSkip} already exist and will be skipped. You can edit any combo afterward to add fallbacks.`,
-        confirmText: "Generate",
-        variant: "primary",
-        onConfirm: async () => {
-          setConfirmState((prev) => prev ? { ...prev, loading: true } : null);
-          try {
-            const res = await fetch("/api/combos/presets", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ source }),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-              alert(data.error || `Failed to generate ${label}`);
-              return;
-            }
-            await fetchData();
-            setConfirmState(null);
-          } catch (error) {
-            console.log(`Error generating ${label}:`, error);
-            alert(`Failed to generate ${label}`);
-            setConfirmState((prev) => prev ? { ...prev, loading: false } : null);
-          }
-        },
-      });
-    } catch (error) {
-      console.log(`Error previewing ${label}:`, error);
-      alert(`Failed to preview ${label}`);
-    } finally {
-      setPresetLoading(null);
-    }
-  };
 
   const fetchData = async () => {
     try {
@@ -441,10 +399,6 @@ export default function CombosPage() {
                 <li><span className="font-medium text-text-main">Smart Router</span> — queries a System One decision model to pick the optimal model before generation; supports Smart Switch (adaptive hysteresis), Strict Lock (1 task = 1 session, +0ms latency), and Per-Turn modes to maximize prompt-cache retention</li>
                 <li><span className="font-medium text-text-main">Fusion</span> — queries all models in parallel, then a judge synthesizes one answer. Best quality, but costs the most: every request bills all panel models + the judge (N+1 calls)</li>
               </ul>
-              <p className="text-xs text-text-muted mt-3 max-w-2xl">
-                <span className="font-medium text-text-main">Cursor / Claude Default</span> create combos named exactly like those clients&apos; model IDs (e.g. <code className="font-mono">composer-2.5</code>, <code className="font-mono">opus</code>), seeded with the matching <code className="font-mono">cu/…</code> or <code className="font-mono">cc/…</code> route so traffic can hit 9router without the prefix.
-                {" "}Note: Cursor IDE itself often blocks built-in Composer / Grok from Override OpenAI Base URL (&quot;model does not support custom API&quot;); add them via Cursor&apos;s <span className="font-medium text-text-main">Add Custom Model</span> using the combo name, or pick a model Cursor allows through the custom endpoint.
-              </p>
             </>
           )}
         </div>
@@ -475,30 +429,6 @@ export default function CombosPage() {
           <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
             Create Combo
           </Button>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="edit_note"
-              loading={presetLoading === "cursor"}
-              disabled={!!presetLoading}
-              onClick={() => handleGeneratePresets("cursor")}
-              className="flex-1 whitespace-nowrap sm:flex-none"
-            >
-              Cursor Default
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="smart_toy"
-              loading={presetLoading === "claude"}
-              disabled={!!presetLoading}
-              onClick={() => handleGeneratePresets("claude")}
-              className="flex-1 whitespace-nowrap sm:flex-none"
-            >
-              Claude Default
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -615,6 +545,8 @@ export default function CombosPage() {
                   getCaps={getCaps}
                   comboByName={comboByName}
                   activeProviders={activeProviders}
+                  activeProviderIds={activeProviderIds}
+                  prefixById={prefixById}
                   copied={copied}
                   onCopy={copy}
                   onEdit={() => setEditingCombo(combo)}
@@ -648,6 +580,7 @@ export default function CombosPage() {
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreate}
           activeProviders={activeProviders}
+          prefixById={prefixById}
         />
       )}
 
@@ -659,6 +592,7 @@ export default function CombosPage() {
           onClose={() => setEditingCombo(null)}
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
+          prefixById={prefixById}
         />
       )}
 
@@ -686,7 +620,7 @@ const fmtK = (n) => {
   return `${Math.round(n / 1000)}k`;
 };
 
-function getRouterModelStatus(routerModel, activeProviders) {
+function getRouterModelStatus(routerModel, activeProviderIds) {
   const effectiveModel = (typeof routerModel === "string" && routerModel.trim())
     ? routerModel.trim()
     : "oc/jev-1.13-free";
@@ -700,7 +634,7 @@ function getRouterModelStatus(routerModel, activeProviders) {
     return { ready: true, label: "Ready (Free)", providerId };
   }
 
-  const isConnected = (activeProviders || []).some((c) => c.provider === providerId && c.isActive !== false);
+  const isConnected = activeProviderIds?.has(providerId);
   if (isConnected) {
     return { ready: true, label: "Connected", providerId };
   }
@@ -708,7 +642,7 @@ function getRouterModelStatus(routerModel, activeProviders) {
   return { ready: false, label: "Not configured", providerId };
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
+function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], activeProviderIds = new Set(), prefixById = {}, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const [showAllModels, setShowAllModels] = useState(false);
   const visibleModels = showAllModels ? combo.models : combo.models.slice(0, 3);
@@ -749,7 +683,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               ) : (
                 visibleModels.map((model, index) => (
                   <code key={index} className="inline-flex items-center gap-1 rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-text-muted dark:bg-white/5">
-                    <span>{model}</span>
+                    <span>{displayBacking(model, prefixById)}</span>
                     <CapacityBadges caps={
                       comboByName[model]
                         ? aggregateComboCapabilities(comboByName[model], comboByName, getCaps)
@@ -785,7 +719,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                   title="Pick the model that fuses panel answers"
                 >
                   <span className="material-symbols-outlined text-[13px]">gavel</span>
-                  <span className="truncate">{judge || `Auto — ${combo.models[0] || "first model"}`}</span>
+                  <span className="truncate">{judge ? displayBacking(judge, prefixById) : `Auto — ${displayBacking(combo.models[0], prefixById) || "first model"}`}</span>
                 </button>
                 {judge && (
                   <button
@@ -800,7 +734,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             )}
             {/* Smart: System One router picker and policy modal trigger */}
             {isSmart && (() => {
-              const routerStatus = getRouterModelStatus(routerModel, activeProviders);
+              const routerStatus = getRouterModelStatus(routerModel, activeProviderIds);
               const policyLabel = getPolicyBadgeLabel(strategy);
               return (
                 <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1152,7 +1086,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1214,7 +1148,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
           onClick={() => setEditing(true)}
           title="Click to edit"
         >
-          {model}
+          {displayBacking(model, prefixById)}
         </div>
       )}
 
@@ -1250,7 +1184,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
+function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefixById = {}, kindFilter = null }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
@@ -1391,6 +1325,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                       id={uid}
                       index={index}
                       model={model}
+                      prefixById={prefixById}
                       isFirst={index === 0}
                       isLast={index === modelItems.length - 1}
                       onEdit={(newVal) => {

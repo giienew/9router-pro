@@ -24,6 +24,7 @@ vi.mock("@/lib/disabledModelsDb", () => ({
 }));
 
 import { GET } from "@/app/api/models/route.js";
+import { __resetModelsCache } from "@/app/api/models/route.js";
 import { getCustomModels } from "@/models";
 
 function jsonRes(obj) {
@@ -40,6 +41,9 @@ async function fetchModels() {
 
 beforeEach(() => {
   vi.mocked(getCustomModels).mockClear();
+  // GET caches the catalog for 30s: without a reset the second test would
+  // read the first test's payload and its custom row would look "missing".
+  __resetModelsCache();
 });
 
 describe("/api/models — custom-model shadow dedupe", () => {

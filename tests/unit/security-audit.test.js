@@ -57,10 +57,18 @@ describe("AUDIT-002: API key masking", () => {
       path.resolve(REPO_ROOT, "src/lib/db/repos/usageRepo.js"),
       "utf-8"
     );
-    // The 24h path should use apiKeyMasked in the akKey template
-    expect(source).toContain("${apiKeyMasked}|${r.model}|${r.provider");
-    // Should NOT use raw r.apiKey in the key
-    expect(source).not.toContain("${r.apiKey}|${r.model}|${r.provider");
+    // The served buckets are keyed by apiKeyBucketKey (mask + sha256 digest
+    // of the full key) — never by the raw key. Both output paths must use it:
+    // the 24h/today live path and the daily-summary merge.
+    expect(source).toContain("apiKeyBucketKey(r.apiKey, r.model, r.provider");
+    expect(source).toContain("apiKeyBucketKey(apiKeyVal, rawModel, provider");
+    // The served byApiKey entries carry only the masked form, never a raw
+    // apiKey field.
+    const liveEntry = source.match(/stats\.byApiKey\[akKey\] = \{[^}]*\}/);
+    expect(liveEntry).not.toBeNull();
+    expect(liveEntry[0]).toContain("apiKeyMasked");
+    expect(liveEntry[0]).not.toContain("apiKey: r.apiKey");
+    expect(liveEntry[0]).not.toContain("apiKey: apiKeyVal");
   });
 });
 

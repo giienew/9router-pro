@@ -61,6 +61,8 @@ describe("ModelSelectModal source verification for deactivated providers", () =>
   });
 
   it("fetches /api/providers on modal open", () => {
-    expect(src).toContain('fetch("/api/providers")');
+    // The modal fetches the slim projection (?lite=1) — it still carries
+    // isActive, which is what the deactivated-provider filter reads.
+    expect(src).toMatch(/fetch\("\/api\/providers(\?lite=1)?"\)/);
   });
 });

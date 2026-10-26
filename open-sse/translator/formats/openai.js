@@ -53,7 +53,16 @@ export function filterToOpenAIFormat(body, opts = {}) {
       if (filteredContent.length === 0) {
         filteredContent.push({ type: OPENAI_BLOCK.TEXT, text: "" });
       }
-      
+
+      // Text-only content collapses to a plain string (same rule as
+      // collapseTextParts), unless a block carries cache_control that must
+      // survive — string content cannot carry it.
+      const allText = filteredContent.every((b) => b.type === OPENAI_BLOCK.TEXT);
+      const hasCache = filteredContent.some((b) => b.cache_control);
+      if (allText && !hasCache) {
+        return { ...msg, content: filteredContent.map((b) => b.text || "").join("\n") };
+      }
+
       return { ...msg, content: filteredContent };
     }
     

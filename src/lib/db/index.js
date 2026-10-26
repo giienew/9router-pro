@@ -1,5 +1,6 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
+import { resolveRoutableBacking } from "./repos/nodesRepo.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { makeBackupDir, backupDbLite, pruneOldBackups } from "./backup.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "./normalizeInjections.js";
@@ -46,6 +47,7 @@ export {
 export {
   getProviderNodes, getProviderNodeById,
   createProviderNode, updateProviderNode, deleteProviderNode,
+  normalizeRoutableMembers,
 } from "./repos/nodesRepo.js";
 
 // Proxy pools
@@ -302,11 +304,22 @@ export async function importDb(payload, options = {}) {
         [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString(), cols.accessRestricted, cols.accessAllow]
       );
     }
+    // Alias-prefix combo members are normalized to routable node ids
+    // (same AUTO rule as variant/combo saves). The node read happens
+    // here — after the payload's nodes were inserted — so it reflects
+    // the post-import set (or the surviving set on a selective import
+    // that skips connections). Ambiguous members are left as-is.
+    const importNodeRows = db.all(`SELECT id, data FROM providerNodes`).map((r) => ({ id: r.id, ...(parseJson(r.data, {})) }));
     for (const c of payload.combos || []) {
       if (!applies("combos")) continue;
+      const models = (c.models || []).map((m) => {
+        if (typeof m !== "string") return m;
+        const routed = resolveRoutableBacking(m, importNodeRows);
+        return routed === null ? m : routed;
+      });
       db.run(
         `INSERT OR REPLACE INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.kind || null, stringifyJson(c.models || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+        [c.id, c.name, c.kind || null, stringifyJson(models), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {

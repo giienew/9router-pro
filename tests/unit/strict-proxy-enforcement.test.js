@@ -13,11 +13,29 @@
 //    attempt. When no proxy URL resolves there is nothing to try, so it
 //    reaches the trailing `return originalFetch(url, options)` and connects
 //    directly.
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/models", () => ({
   getProxyPoolById: vi.fn(),
 }));
+
+// The "nothing configured" cases must actually run with nothing configured:
+// this repo's dev/CI machines often carry egress proxy vars (HTTPS_PROXY,
+// ALL_PROXY, ...) which getEnvProxyUrl would otherwise pick up and turn the
+// no-proxy scenario into a proxy-attempt scenario. Save and strip them.
+const PROXY_ENV_VARS = ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"];
+let savedProxyEnv = {};
+beforeEach(() => {
+  savedProxyEnv = {};
+  for (const k of PROXY_ENV_VARS) {
+    if (process.env[k] !== undefined) savedProxyEnv[k] = process.env[k];
+    delete process.env[k];
+  }
+});
+afterEach(() => {
+  for (const k of PROXY_ENV_VARS) delete process.env[k];
+  Object.assign(process.env, savedProxyEnv);
+});
 
 const { getProxyPoolById } = await import("@/models");
 const { resolveConnectionProxyConfig } = await import("../../src/lib/network/connectionProxy.js");

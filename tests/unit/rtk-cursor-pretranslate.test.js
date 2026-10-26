@@ -124,8 +124,8 @@ describe("token savers on Cursor (pre-translate RTK)", () => {
 
     const xf = log.line.mock.calls.find((c) => c[1] === "⚙");
     expect(xf, "expected ⚙ saver log").toBeTruthy();
-    expect(xf[2]).toContain("RTK:");
-    expect(xf[2]).toContain("CAVEMAN:full");
-    expect(xf[2]).toContain("PONYTAIL:full");
+    expect(xf[2]).toContain("rtk compressed");
+    expect(xf[2]).toContain("caveman full");
+    expect(xf[2]).toContain("ponytail full");
   });
 });

@@ -23,6 +23,16 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnections: async () => [],
   getProviderConnectionById: async () => null,
   getCustomModels: async () => [],
+  // Keep in sync with src/sse/handlers/chat.js imports: the mock replaces the
+  // whole barrel, so every export the handlers import must exist here.
+  getApiKeyByKey: async (k) => fx.keys[k] || null,
+  getInjectVariants: async () => ({}),
+  resolvePromptInjections: async () => ({}),
+  resolveBriefLevel: async () => null,
+  recordRtkSavings: async () => {},
+  checkKeyQuota: async () => ({ blocked: false, used: 0, quota: { limit: 0, windowHours: 24 } }),
+  getKeyLimits: async () => null,
+  getKeyUsageInWindow: async () => 0,
 }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/lib/db/repos/combosRepo.js", () => ({ getCombos: async () => fx.combos }));

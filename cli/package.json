@@ -1,6 +1,6 @@
 {
   "name": "9router-pro",
-  "version": "0.5.109-pro.12",
+  "version": "0.5.109-pro.13",
   "description": "9Router Pro CLI - Start and manage the 9Router Pro server (Pro edition of 9Router, by Gienetic)",
   "bin": {
     "9router-pro": "./cli.js"
