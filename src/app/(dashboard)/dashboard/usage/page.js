@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { RequestLogger, CardSkeleton, SegmentedControl } from "@/shared/components";
 import UsageStats from "@/shared/components/UsageStats";
 import RequestDetailsTab from "./components/RequestDetailsTab";
+import LatencyCard from "./components/LatencyCard";
 
 const PERIODS = [
   { value: "today", label: "Today" },
@@ -108,6 +109,7 @@ function UsageContent() {
             hidePeriodSelector
             range={period === "custom" ? customRange : null}
           />
+          <LatencyCard period={period} />
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger />}

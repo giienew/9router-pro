@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [samlLoginLabel, setSamlLoginLabel] = useState("Sign in with SAML SSO");
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
 
   // Countdown for rate-limit
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function LoginPage() {
           }
           setHasPassword(!!data.hasPassword);
           setAuthMode(data.authMode || "password");
+          setTotpEnabled(data.totpEnabled === true);
           setSsoType(data.ssoType || "oidc");
           setOidcConfigured(data.oidcConfigured === true);
           setOidcLoginLabel(data.oidcLoginLabel || "Sign in with OIDC");
@@ -74,7 +77,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, totpCode: totpEnabled ? totpCode : undefined }),
       });
 
       if (res.ok) {
@@ -246,6 +249,20 @@ export default function LoginPage() {
                     </p>
                   )}
                 </div>
+
+                {totpEnabled && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Authenticator code</label>
+                    <Input
+                      type="text"
+                      placeholder="6-digit code or backup code (XXXX-XXXX)"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      required
+                      autoComplete="one-time-code"
+                    />
+                  </div>
+                )}
 
                 <Button
                   type="submit"

@@ -13,5 +13,8 @@ export async function register() {
 
     const { startAutoBackupScheduler } = await import("@/lib/backup/autoBackup.js");
     startAutoBackupScheduler();
+
+    const { startMaintenanceScheduler } = await import("@/lib/db/maintenance.js");
+    startMaintenanceScheduler();
   }
 }

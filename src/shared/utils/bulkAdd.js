@@ -92,3 +92,51 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
   }
   return out;
 }
+
+/**
+ * Run a bulk batch through a per-entry worker with bounded concurrency.
+ *
+ * Background: the bulk modal used to await each entry fully (validate, then
+ * save) before starting the next one, so a batch of N keys cost N sequential
+ * upstream round trips. Browsers also cap same-origin connections (~6), so a
+ * pool larger than that buys nothing — 6 workers is the sweet spot: the same
+ * validate+save work per key, but overlapped instead of queued.
+ *
+ * Names in `entries` must already be unique (see planBulkAdd) — that is what
+ * makes parallel inserts safe against the backend's upsert-by-name.
+ *
+ * @param {object[]} entries plan entries (see planBulkAdd)
+ * @param {(entry: object) => Promise<boolean>} worker resolves true on success
+ * @param {{concurrency?: number, onProgress?: (p: {done: number, total: number, current: string, success: number, failed: number}) => void}} [opts]
+ * @returns {Promise<{success: number, failed: number}>}
+ */
+export async function runBulkPool(entries, worker, opts = {}) {
+  const { concurrency = 6, onProgress = null } = opts;
+  const total = entries.length;
+  let success = 0;
+  let failed = 0;
+  let done = 0;
+  let next = 0;
+  // Index claim happens synchronously before the first await of each
+  // iteration, so no two workers ever grab the same entry.
+  const runners = Array.from(
+    { length: Math.max(1, Math.min(concurrency, total)) },
+    async () => {
+      while (next < total) {
+        const entry = entries[next++];
+        let ok = false;
+        try {
+          ok = (await worker(entry)) === true;
+        } catch {
+          ok = false;
+        }
+        if (ok) success++;
+        else failed++;
+        done++;
+        if (onProgress) onProgress({ done, total, current: entry.name, success, failed });
+      }
+    },
+  );
+  await Promise.all(runners);
+  return { success, failed };
+}

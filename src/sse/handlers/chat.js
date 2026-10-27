@@ -212,11 +212,17 @@ async function handleChatImpl(request, clientRawRequest = null) {
       (typeof m === "string" && !m.includes("/") && topInjectVariants[m]
         ? m
         : modelStr);
+    // Capacity pools may hold variants: judge them by their backing model,
+    // and keep the variant name in the pool so its prompt still fires.
+    const topVariantBacking = (m) =>
+      (typeof m === "string" && !m.includes("/") && topInjectVariants[m]
+        ? topInjectVariants[m].model || null
+        : null);
     // Check for combo-specific strategy first, fallback to global;
     // a multi-model pair defaults to round-robin (see pairStrategy.js)
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = await resolveComboStrategy(modelStr, comboModels, settings, apiKey);
-    const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings), comboModels);
+    const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings, topVariantBacking), comboModels);
     const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
 
     if (comboStrategy === "fusion") {
@@ -247,7 +253,8 @@ async function handleChatImpl(request, clientRawRequest = null) {
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
         (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m)),
-        adapterAdded
+        adapterAdded,
+        topVariantBacking
       ),
       log,
       comboName: modelStr,
@@ -270,7 +277,18 @@ async function handleChatImpl(request, clientRawRequest = null) {
 
   // Single model request — may still switch to a capacity-adapter model if the
   // target lacks a capability the request needs (e.g. no vision, request has an image).
-  const soloAugmented = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter([modelStr], requiredCapabilities, settings), [modelStr]);
+  // Same variant rules as the combo branches: a pool model that names a variant
+  // is judged by its backing model, and carries its bare name so its prompt fires.
+  const soloInjectVariants = await getInjectVariants().catch(() => ({}));
+  const soloVariantBacking = (m) =>
+    (typeof m === "string" && !m.includes("/") && soloInjectVariants[m]
+      ? soloInjectVariants[m].model || null
+      : null);
+  const soloInjectName = (m) =>
+    (typeof m === "string" && !m.includes("/") && soloInjectVariants[m]
+      ? m
+      : modelStr);
+  const soloAugmented = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter([modelStr], requiredCapabilities, settings, soloVariantBacking), [modelStr]);
   if (soloAugmented.length > 1) {
     const adapterAdded = soloAugmented.filter((m) => m !== modelStr);
     log.info("CHAT", `Capacity adapter for [${[...requiredCapabilities].join(",")}] on "${modelStr}" → trying ${soloAugmented.join(", ")}`);
@@ -278,8 +296,9 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, modelStr),
-        adapterAdded
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, soloInjectName(m)),
+        adapterAdded,
+        soloVariantBacking
       ),
       log,
       comboName: modelStr,
@@ -323,6 +342,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         (typeof m === "string" && !m.includes("/") && comboInjectVariants[m]
           ? m
           : (injectModelName || modelStr));
+      const nestedVariantBacking = (m) =>
+        (typeof m === "string" && !m.includes("/") && comboInjectVariants[m]
+          ? comboInjectVariants[m].model || null
+          : null);
       const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global;
       // a multi-model pair defaults to round-robin (see pairStrategy.js)
@@ -332,7 +355,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // Nested combo (a combo member that is itself a combo): the access decision
       // was made on the outer target; only drop adapter models the key may not call.
       const keyAccess = await getKeyAccessContext(request);
-      const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, chatSettings), comboModels);
+      const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, chatSettings, nestedVariantBacking), comboModels);
       const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
 
       if (comboStrategy === "fusion") {
@@ -365,7 +388,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
           (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m)),
-          adapterAdded
+          adapterAdded,
+          nestedVariantBacking
         ),
         log,
         comboName: modelStr,

@@ -559,19 +559,27 @@ export default function ModelSelectModal({
   // entries keep the old rule and only appear when their model is
   // missing from the catalog, unless they carry a custom name.
   const filteredInjections = useMemo(() => {
-    if (hideInjections || kindFilter || capFilter) return [];
+    if (hideInjections || kindFilter) return [];
     const known = new Set();
     Object.values(groupedModels).forEach((g) =>
       g.models.forEach((m) => { known.add(m.value); known.add(m.id); })
     );
-    const items = injectedEntries.filter((it) =>
+    let items = injectedEntries.filter((it) =>
       it.sub !== null || !known.has(it.value)
     );
+    // A capability pool may only hold models that satisfy the cap: a variant
+    // qualifies through its backing model, whose caps the catalog knows.
+    // (Variants themselves never carry caps — the lookup is by variant name
+    // and always misses.) Entries without a backing cannot be verified and
+    // stay out of capability pools.
+    if (capFilter) {
+      items = items.filter((it) => it.sub && getCaps(it.sub)?.[capFilter] === true);
+    }
     if (parsedQuery.isEmpty) return items;
     return items.filter((it) =>
       matchesSearch([it.display, it.value, it.sub].filter(Boolean), parsedQuery)
     );
-  }, [injectedEntries, groupedModels, parsedQuery, kindFilter, capFilter, hideInjections]);
+  }, [injectedEntries, groupedModels, parsedQuery, kindFilter, capFilter, hideInjections, getCaps]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {

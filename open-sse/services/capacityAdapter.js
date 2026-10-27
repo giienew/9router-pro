@@ -76,10 +76,17 @@ export function getActiveAdapterStrategy(requiredCapabilities, settings) {
   return "fallback";
 }
 
-function modelSatisfies(modelStr, requiredHard) {
-  const slash = modelStr.indexOf("/");
-  const provider = slash > 0 ? modelStr.slice(0, slash) : "";
-  const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
+function modelSatisfies(modelStr, requiredHard, resolveBacking = null) {
+  // A variant (bare custom name) carries no caps of its own — judge it by its
+  // backing model. The resolver is supplied by the caller (chat handler),
+  // so this module stays free of storage access; without one, a bare name
+  // is judged as-is, exactly as before.
+  const routable = (resolveBacking && !modelStr.includes("/"))
+    ? (resolveBacking(modelStr) || modelStr)
+    : modelStr;
+  const slash = routable.indexOf("/");
+  const provider = slash > 0 ? routable.slice(0, slash) : "";
+  const model = slash > 0 ? routable.slice(slash + 1) : routable;
   const caps = getCapabilitiesForModel(provider, model);
   return requiredHard.every((c) => caps[c] === true);
 }
@@ -90,12 +97,12 @@ function modelSatisfies(modelStr, requiredHard) {
 // original models follow as fallback. Leaves `models` untouched when the
 // original list already covers it (combo.js's reorderByCapabilities handles
 // that case via autoSwitch).
-export function augmentModelsWithCapacityAdapter(models, requiredCapabilities, settings) {
+export function augmentModelsWithCapacityAdapter(models, requiredCapabilities, settings, resolveBacking = null) {
   const hard = [...(requiredCapabilities || [])].filter((c) => HARD_CAPS.has(c));
   if (hard.length === 0 || !Array.isArray(models) || models.length === 0) return models;
-  if (models.some((m) => modelSatisfies(m, hard))) return models;
+  if (models.some((m) => modelSatisfies(m, hard, resolveBacking))) return models;
 
-  const pool = getCapacityAdapterModels(settings).filter((m) => !models.includes(m) && modelSatisfies(m, hard));
+  const pool = getCapacityAdapterModels(settings).filter((m) => !models.includes(m) && modelSatisfies(m, hard, resolveBacking));
   if (pool.length === 0) return models;
   return [...pool, ...models];
 }
@@ -158,14 +165,17 @@ export function stripHistoryForContext(body, contextWindow) {
 
 // Wrap a handleSingleModel callback so calls to a capacity-adapter model strip
 // history to fit its context window first. No-op passthrough when the pool is empty.
-export function withCapacityAdapterStripping(handleSingleModel, adapterModels) {
+export function withCapacityAdapterStripping(handleSingleModel, adapterModels, resolveBacking = null) {
   const adapterSet = new Set(adapterModels);
   if (adapterSet.size === 0) return handleSingleModel;
   return (body, modelStr, ...rest) => {
     if (adapterSet.has(modelStr)) {
-      const slash = modelStr.indexOf("/");
-      const provider = slash > 0 ? modelStr.slice(0, slash) : "";
-      const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
+      const routable = (resolveBacking && !modelStr.includes("/"))
+        ? (resolveBacking(modelStr) || modelStr)
+        : modelStr;
+      const slash = routable.indexOf("/");
+      const provider = slash > 0 ? routable.slice(0, slash) : "";
+      const model = slash > 0 ? routable.slice(slash + 1) : routable;
       const { contextWindow } = getCapabilitiesForModel(provider, model);
       body = stripHistoryForContext(body, contextWindow);
     }

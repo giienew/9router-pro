@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/localDb";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
+import { isTotpEnabled } from "@/lib/auth/totp.js";
 
 export async function GET() {
   try {
@@ -36,6 +37,7 @@ export async function GET() {
       samlConfigured: isSamlConfigured(settings),
       samlLoginLabel: (settings.samlLoginLabel || "Sign in with SAML SSO").trim() || "Sign in with SAML SSO",
       hasPassword: !!settings.password,
+      totpEnabled: await isTotpEnabled(),
       displayName,
       loginMethod,
       authenticated: !!session,
@@ -56,6 +58,7 @@ export async function GET() {
       samlConfigured: false,
       samlLoginLabel: "Sign in with SAML SSO",
       hasPassword: false,
+      totpEnabled: false,
       displayName: "Password user",
       loginMethod: "Password",
       authenticated: false,

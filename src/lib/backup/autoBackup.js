@@ -90,6 +90,7 @@ export function startAutoBackupScheduler() {
   if (String(process.env.AUTO_BACKUP || "").toLowerCase() === "off") return;
 
   const check = async () => {
+    let attempted = false;
     try {
       const settings = await getSettings();
       if (settings.autoBackupEnabled !== false) {
@@ -97,10 +98,23 @@ export function startAutoBackupScheduler() {
         const age = latest
           ? Date.now() - new Date(latest.createdAt).getTime()
           : Number.POSITIVE_INFINITY;
-        if (age >= DAY_MS) await createSnapshot("scheduled");
+        if (age >= DAY_MS) {
+          attempted = true;
+          const snap = await createSnapshot("scheduled");
+          // Silent jobs need an outside signal: notify on success too, so a
+          // missing success message is itself the alarm.
+          const { sendNotification } = await import("@/lib/notify.js");
+          await sendNotification("backup", { title: "Scheduled backup completed", detail: `snapshot ${snap?.id || "unknown"}` });
+        }
       }
     } catch (e) {
       console.warn("[AutoBackup] check failed:", e?.message || e);
+      if (attempted) {
+        try {
+          const { sendNotification } = await import("@/lib/notify.js");
+          await sendNotification("backup", { title: "Scheduled backup FAILED", error: e?.message || e });
+        } catch { /* notify is fail-open; the warn above already fired */ }
+      }
     }
     timer = setTimeout(check, CHECK_INTERVAL_MS);
     timer.unref?.();

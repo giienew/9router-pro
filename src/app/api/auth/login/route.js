@@ -6,6 +6,7 @@ import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
+import { isTotpEnabled, verifyTotp, consumeBackupCode, getTotpConfig } from "@/lib/auth/totp.js";
 import { isLocalRequest } from "@/dashboardGuard";
 
 const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
@@ -29,7 +30,7 @@ export async function POST(request) {
       );
     }
 
-    const { password } = await request.json();
+    const { password, totpCode } = await request.json();
     const settings = await getSettings();
 
     // Block login via tunnel/tailscale if dashboard access is disabled
@@ -60,6 +61,27 @@ export async function POST(request) {
     }
 
     if (isValid) {
+      // TOTP second factor (password login only): no session cookie is
+      // issued until the code passes. A backup code (XXXX-XXXX) works in
+      // place of a TOTP code and is consumed on use.
+      if (await isTotpEnabled()) {
+        const code = String(totpCode || "").trim();
+        let totpOk = false;
+        if (code.includes("-")) {
+          totpOk = await consumeBackupCode(code);
+        } else if (code) {
+          const cfg = await getTotpConfig();
+          totpOk = verifyTotp(cfg.secret, code);
+        }
+        if (!totpOk) {
+          const { remainingBeforeLock } = recordFail(ip);
+          return NextResponse.json(
+            { error: `Invalid authenticator code. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock, totpRequired: true },
+            { status: 401, headers: NO_STORE_HEADERS }
+          );
+        }
+      }
+
       recordSuccess(ip);
 
       // Default password still in use on a remote client → force a password
