@@ -6,11 +6,13 @@ import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
 import * as log from "../utils/logger.js";
 
-// Mutex to prevent race conditions during account selection. Only the
-// round-robin and sticky-random branches take it (they mutate shared
-// sticky state). Balanced picks are lock-free (see below) and every
-// other branch only reads, so they never queue behind another request's
-// selection.
+// Dedicated mutex chain for round-robin / sticky-random account selection
+// (they mutate shared sticky state). It is a SEPARATE chain that no other
+// strategy touches: previously every request overwrote the shared chain
+// link, so a round-robin pick could capture a balanced request's link and
+// run concurrently with an earlier round-robin pick, double-picking the
+// same account. Balanced picks stay lock-free (see below) and never queue
+// behind another request's selection.
 
 // Sticky-random current key per provider+model (9Router Pro): the key a
 // successful request sticks to until it locks. In-memory only — a restart
@@ -27,7 +29,7 @@ function stickyRouteKey(providerId, model) {
 export function resetStickyCurrent() {
   stickyCurrentByRoute.clear();
 }
-let selectionMutex = Promise.resolve();
+let stickySelectionMutex = Promise.resolve();
 
 // Deferred lastUsedAt persistence for lock-free balanced picks. The pick
 // stamps the in-memory overlay synchronously (that is what keeps
@@ -91,23 +93,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const requestedModel = options?.requestedModel || model;
   // Strategy is resolved before any lock (settings is one small row).
   // Only round-robin and sticky-random mutate shared sticky state, so
-  // only they take the mutex, exactly like before: lock first, then read. Every other
-  // branch only reads (balanced stamps the in-memory overlay
-  // synchronously), so those requests never queue behind another
-  // request's selection. The chain link is still created for every
-  // request and resolved in finally, so the chain can never stall.
+  // only they join the dedicated sticky chain: lock first, then read.
+  // Every other branch only reads (balanced stamps the in-memory overlay
+  // synchronously) and touches no mutex at all, so those requests never
+  // queue behind another request's selection and can never break the
+  // sticky chain. The chain link is resolved in finally, so the chain
+  // can never stall.
   // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
   const providerId = resolveProviderId(provider);
   const settings = await getSettings();
   const providerOverride = (settings.providerStrategies || {})[providerId] || {};
   const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "balanced";
-  let resolveMutex;
+  let resolveStickyMutex;
   if (strategy === "round-robin" || strategy === "sticky-random") {
-    const currentMutex = selectionMutex;
-    selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+    const currentMutex = stickySelectionMutex;
+    stickySelectionMutex = new Promise(resolve => { resolveStickyMutex = resolve; });
     await currentMutex;
-  } else {
-    selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
   }
 
   try {
@@ -354,7 +355,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       _connection: connection
     };
   } finally {
-    if (resolveMutex) resolveMutex();
+    if (resolveStickyMutex) resolveStickyMutex();
   }
 }
 
