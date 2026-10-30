@@ -51,6 +51,7 @@
 
 import { makeKv } from "../helpers/kvStore.js";
 import { getCombos, getComboByName, getComboById, deleteCombo } from "./combosRepo.js";
+import { getModelAliases } from "./aliasRepo.js";
 import { getProviderNodes, resolveRoutableBacking } from "./nodesRepo.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
@@ -249,9 +250,11 @@ export async function deleteInjectModelPrompt(model) {
 // and must not contain "/" (a "/" would make it a provider/model value).
 // The backing model must be a provider/model ("provider/model").
 
+// Over-long names are rejected, not truncated: truncation silently merged
+// two distinct names into one map key (the later save overwrote the first).
 export function cleanVariantName(raw) {
-  const name = typeof raw === "string" ? raw.trim().slice(0, 80) : "";
-  if (!name || name.includes("/")) return null;
+  const name = typeof raw === "string" ? raw.trim() : "";
+  if (!name || name.length > 80 || name.includes("/")) return null;
   return name;
 }
 
@@ -307,6 +310,13 @@ export async function setInjectVariant(name, input = {}) {
   // combos first, so a colliding variant would be unreachable);
   // re-saving an existing variant is always fine.
   if (!(cleanName in map) && (await getComboByName(cleanName).catch(() => null))) return null;
+  // A new variant name must not shadow a model alias either: dispatch
+  // checks variants before aliases, so a colliding variant would silently
+  // hijack the alias route. Re-saving an existing variant is always fine.
+  if (!(cleanName in map)) {
+    const aliases = await getModelAliases().catch(() => ({}));
+    if (aliases && typeof aliases === "object" && cleanName in aliases) return null;
+  }
   map[cleanName] = { ...routedEntry, comboId: null };
   await kv.set(VARIANTS_KEY, map);
   invalidateInjectSnapshot();
@@ -364,9 +374,16 @@ export async function migrateModelPromptsToVariants() {
         const entry = cleanEntry(entryRaw);
         if (!entry || !model.includes("/")) { leftovers[model] = entryRaw; continue; }
         let base = entry.name || slugVariantName(model);
-        let candidate = base;
+        // Cap the first candidate too, and build the "-N" suffix inside the
+        // 80-char budget: slicing a full-length base cut the suffix away,
+        // leaving the candidate unchanged and the loop below spinning
+        // forever on an 80-char colliding name.
+        let candidate = base.slice(0, 80);
         let n = 2;
-        while (taken.has(candidate)) candidate = `${base}-${n++}`.slice(0, 80);
+        while (taken.has(candidate)) {
+          const suffix = `-${n++}`;
+          candidate = base.slice(0, 80 - suffix.length) + suffix;
+        }
         variants[candidate] = { ...entry, model, comboId: null };
         taken.add(candidate);
         migratedCount++;

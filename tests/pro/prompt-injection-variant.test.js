@@ -17,6 +17,7 @@ const MODEL_B = "dahl/zai-org/GLM-5.3-Flash";
 
 let repo;
 let combosRepo;
+let aliasRepo;
 let tmpDir;
 
 beforeAll(async () => {
@@ -24,6 +25,7 @@ beforeAll(async () => {
   process.env.DATA_DIR = tmpDir;
   repo = await import("@/lib/db/repos/promptInjectRepo.js");
   combosRepo = await import("@/lib/db/repos/combosRepo.js");
+  aliasRepo = await import("@/lib/db/repos/aliasRepo.js");
 });
 
 afterAll(() => {
@@ -51,11 +53,16 @@ describe("prompt injection variants", () => {
     assert.equal(await repo.setInjectVariant("noname", { model: "bare-model", mode: "single", content: "x" }), null);
   });
 
-  it("caps a variant name at 80 chars", async () => {
-    const saved = await repo.setInjectVariant("v".repeat(200), { model: MODEL_A, mode: "single", content: "x" });
+  it("rejects a variant name over 80 chars instead of truncating it", async () => {
+    // Truncation used to merge two distinct names into one map key, so the
+    // later save silently overwrote the first. Over-long names are now a
+    // save error; exactly 80 chars still saves.
+    assert.equal(await repo.setInjectVariant("v".repeat(200), { model: MODEL_A, mode: "single", content: "x" }), null);
+    assert.equal(await repo.setInjectVariant("v".repeat(81), { model: MODEL_A, mode: "single", content: "x" }), null);
+    const saved = await repo.setInjectVariant("v".repeat(80), { model: MODEL_A, mode: "single", content: "x" });
     assert.ok(saved);
     const map = await repo.getInjectVariants();
-    assert.ok(Object.keys(map).some((k) => k.length === 80));
+    assert.ok(!Object.keys(map).some((k) => k.length > 80));
     await repo.deleteInjectVariant("v".repeat(80));
   });
 
@@ -63,6 +70,28 @@ describe("prompt injection variants", () => {
     await combosRepo.createCombo({ name: "taken", models: [MODEL_B] });
     assert.equal(await repo.setInjectVariant("taken", { model: MODEL_A, mode: "single", content: "x" }), null);
     await combosRepo.deleteCombo((await combosRepo.getComboByName("taken")).id);
+  });
+
+  it("refuses a variant name already owned by a model alias", async () => {
+    await aliasRepo.setModelAlias("myalias", MODEL_A);
+    assert.equal(await repo.setInjectVariant("myalias", { model: MODEL_A, mode: "single", content: "x" }), null);
+    await aliasRepo.deleteModelAlias("myalias");
+  });
+
+  it("migration suffix stays inside 80 chars and terminates on a full-length colliding name", async () => {
+    // Old code sliced `${base}-${n}` to 80 chars, which cut the suffix off
+    // an 80-char base and looped forever. The legacy entry name is itself
+    // capped to 80 by cleanEntry, so a 200-char name lands exactly on the
+    // colliding 80-char variant name.
+    await repo.setInjectVariant("v".repeat(80), { model: MODEL_A, mode: "single", content: "x" });
+    await repo.setInjectModelPrompt(MODEL_B, { mode: "single", content: "y", name: "v".repeat(200) });
+    await repo.migrateModelPromptsToVariants();
+    const map = await repo.getInjectVariants();
+    const migratedKey = "v".repeat(78) + "-2";
+    assert.equal(map[migratedKey]?.model, MODEL_B);
+    assert.ok(!Object.keys(map).some((k) => k.length > 80));
+    await repo.deleteInjectVariant("v".repeat(80));
+    await repo.deleteInjectVariant(migratedKey);
   });
 
   it("changing the backing updates the entry, still no combo", async () => {

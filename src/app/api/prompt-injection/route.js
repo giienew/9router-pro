@@ -4,6 +4,7 @@ import {
   setInjectModelPrompt, setInjectUserPrompt, setInjectGlobal, setInjectKeyModelPrompt,
   deleteInjectModelPrompt, deleteInjectUserPrompt, deleteInjectKeyModelPrompt,
   getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants,
+  getModelAliases,
   getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
 } from "@/lib/localDb";
 import { getComboByName } from "@/lib/db/repos/combosRepo.js";
@@ -90,9 +91,9 @@ export async function PUT(request) {
     if (body.variant && typeof body.variant === "object") {
       const v = body.variant;
       const name = typeof v.name === "string" ? v.name.trim() : "";
-      if (!name || name.includes("/")) {
+      if (!name || name.length > 80 || name.includes("/")) {
         return NextResponse.json(
-          { error: "Variant needs a custom name without \"/\" (e.g. dahlunce)" },
+          { error: "Variant needs a custom name without \"/\" and at most 80 characters (e.g. dahlunce)" },
           { status: 400 }
         );
       }
@@ -108,6 +109,15 @@ export async function PUT(request) {
           { error: `Nama "${name}" sudah dipakai combo — pilih nama lain` },
           { status: 400 }
         );
+      }
+      if (!existing) {
+        const aliases = await getModelAliases().catch(() => ({}));
+        if (aliases && typeof aliases === "object" && name in aliases) {
+          return NextResponse.json(
+            { error: `Nama "${name}" sudah dipakai alias model — pilih nama lain` },
+            { status: 400 }
+          );
+        }
       }
       const saved = await setInjectVariant(name, v);
       if (!saved) {
