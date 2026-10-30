@@ -39,7 +39,7 @@ async function handleTtsImpl(request, requestId = null) {
 
   const url = new URL(request.url);
   const modelStr = body.model;
-  const responseFormat = url.searchParams.get("response_format") || "mp3"; // mp3 (default) | json
+  const responseFormat = url.searchParams.get("response_format") || body.response_format || "mp3"; // mp3 (default) | json
   const language = body.language || ""; // Optional language hint (currently used by Gemini)
   const style = body.style || ""; // Optional style/voice instructions (e.g. Xiaomi MiMo)
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
@@ -121,6 +121,21 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, st
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
+      // ollama-local needs no credentials: synthesize locally on first
+      // attempt (upstream port), with the same G9 estimated-usage row as
+      // the other TTS success paths.
+      if (provider === "ollama-local" && excludeConnectionIds.size === 0 && !credentials?.allRateLimited) {
+        const result = await handleTtsCore({ provider, model, input: body.input, credentials: null, responseFormat, language, style });
+        if (result.success) {
+          recordModalityUsage({
+            provider, model, connectionId: null, ...usageCtx,
+            tokens: { prompt_tokens: estimateTokensFromText(body.input), completion_tokens: 0 },
+            meta: { accrual: "estimated", basis: "input chars/4" },
+          });
+          return result.response;
+        }
+        return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
+      }
       return accountExhaustedResponse({
         credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
         scope: `${provider}/${model}`, provider,
