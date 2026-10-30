@@ -71,6 +71,44 @@ export default function ChangelogModal({ isOpen, onClose }) {
 
         {/* Body */}
         <div className="p-6 overflow-y-auto flex-1">
+          {/* Pro-only section (P3-30): what Pro adds over the base. Static
+              and public-safe by construction — live-only patches on the
+              operator's own instance are never listed here. */}
+          <section className="mb-6 border-b border-black/10 pb-5 dark:border-white/10">
+            <h3 className="text-base font-semibold text-text-main">What Pro adds over the base</h3>
+            <div className="mt-3 flex flex-col gap-3 text-sm text-text-main">
+              <div>
+                <p className="font-medium">Routing</p>
+                <ul className="list-disc pl-5 text-text-muted">
+                  <li>Direct variant routing — a variant name routes to its model plus its prompt, with no backing combo.</li>
+                  <li>Scored auto-routing — <code>auto:coding</code>, <code>auto:fast</code>, <code>auto:cheap</code>, <code>auto:headroom</code> pick from healthy providers by capability and headroom.</li>
+                  <li>Per-combo strategies — fallback, round-robin, smart router, panel-plus-judge fusion, and capacity ordering, plus an account pin per member.</li>
+                  <li>Combo member failover cap, and a total request deadline shared across retried members.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium">Keys &amp; quotas</p>
+                <ul className="list-disc pl-5 text-text-muted">
+                  <li>Per-key policy — model allow-list, token and spend caps, and expiry, enforced on every endpoint, with a per-key usage view.</li>
+                  <li>Quota and rate-limit admission at every handler entry, including the non-chat modalities.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium">Resilience</p>
+                <ul className="list-disc pl-5 text-text-muted">
+                  <li>Three layers — provider breaker, connection cooldown, and model lockout — with distinct timers and dashboard states.</li>
+                  <li>Auto-quarantine after repeated auth failures, and fail-open database handling so one bad row never kills a request.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium">Dashboard</p>
+                <ul className="list-disc pl-5 text-text-muted">
+                  <li>Testing Studio — two models or combos compared side by side through the router itself.</li>
+                  <li>Per-provider model lists are cached and resolved concurrently instead of one slow pass.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
           {loading && (
             <div className="flex items-center justify-center py-10 text-text-muted">
               <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>

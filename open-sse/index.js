@@ -36,10 +36,7 @@ export {
 export { parseModel, resolveModelAliasFromMap, getModelInfoCore } from "./services/model.js";
 
 export {
-  checkFallbackError,
-  isAccountUnavailable,
-  getUnavailableUntil,
-  filterAvailableAccounts
+  checkFallbackError
 } from "./services/accountFallback.js";
 
 export {
