@@ -177,6 +177,13 @@ const getPageInfo = (pathname) => {
       icon: "monitor",
       breadcrumbs: [],
     };
+  if (pathname.includes("/testing-studio"))
+    return {
+      title: "Testing Studio",
+      description: "Compare two models or combos side by side",
+      icon: "science",
+      breadcrumbs: [],
+    };
   if (pathname === "/dashboard")
     return {
       title: "Endpoint",
