@@ -4,6 +4,23 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.14
+
+- **Automation menu**: four new cards — **Notifications** (Telegram + webhook), **Response cache**, **Two-factor authentication** (TOTP + backup codes), and **Database maintenance** — plus a **latency stats card** on the Usage page.
+- **Capacity Adapter variant fixes**: variant capacity handling corrected.
+- **Bulk API-key add, faster**: adds now run through a bounded 6-worker pool instead of one at a time.
+
+## v0.5.109-pro.13
+
+- **Sticky-random routing**: the router sticks to a working key until it dies, then re-rolls randomly — a successful key keeps serving its provider+model instead of rotating on every request.
+- **Variant backing, resolved automatically**: alias prefixes now resolve to routable node ids when a variant is saved, when a combo is saved, and on backup import — no more dead alias references.
+- **Variant prompt injection flows through combo members**: a variant used inside a combo now carries its prompt, not just when picked directly.
+- **Friendly backing labels everywhere**: combo cards, the combo edit form, the add-model modal, and the injection page all show readable backing names; custom provider icons no longer 404.
+- **Providers/combos render faster**: the connected-provider lookup is memoized.
+- **Settings consistency**: the `fallbackStrategy` default (`balanced`) is now stored instead of implied.
+- **Combo presets removed**: the presets API, library, and tests are gone; combos themselves are unchanged.
+- **Full audit pass**: 39 baseline failures resolved (38 fixed, 1 skipped for a dead upstream free channel); suite green, 4223 passed, 0 failed.
+
 ## v0.5.109-pro.12
 
 - **Packaging fix**: this release ships the correct slim npm distribution. The pro.11 npm publish was staged from the wrong pack output and never went live — approve pro.12, not pro.11. No code changes from pro.11.
