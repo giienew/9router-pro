@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import Toggle from "@/shared/components/Toggle";
@@ -868,6 +869,9 @@ export default function ProviderLimits() {
             Connect to providers with OAuth to track your API quota limits and
             usage.
           </p>
+          <Link href="/dashboard/providers" className="mt-4 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+            Connect providers
+          </Link>
         </div>
       </Card>
     );
@@ -893,6 +897,12 @@ export default function ProviderLimits() {
 
   return (
     <div className="space-y-6">
+      <p className="text-xs text-text-muted">
+        Provider quotas — per-connection balances from your providers. To cap
+        what one API key can spend, set an{" "}
+        <Link href="/dashboard/endpoint" className="text-primary hover:underline">API key token quota</Link>{" "}
+        on the Endpoint page.
+      </p>
       {/* Header Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex flex-wrap items-center gap-1.5">

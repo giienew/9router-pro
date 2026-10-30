@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 
@@ -134,7 +135,7 @@ export default function MediaProviderKindPage() {
   const notify = useNotificationStore();
   const { kind } = useParams();
   const router = useRouter();
-  const [statsMap, setStatsMap] = useState({});
+  const { statsMap, setStatsMap } = useProviderSummary();
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
@@ -152,10 +153,6 @@ export default function MediaProviderKindPage() {
 
   useEffect(() => {
     if (!kindConfig) return;
-    fetch("/api/providers?summary=1", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setStatsMap(d.stats || {}))
-      .catch(() => {});
     if (isEmbedding) {
       fetch("/api/provider-nodes", { cache: "no-store" })
         .then((r) => r.json())

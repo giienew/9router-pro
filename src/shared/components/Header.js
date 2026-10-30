@@ -103,7 +103,7 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/quota"))
     return {
       title: "Provider Quota",
-      description: "Track and manage your API quota limits",
+      description: "Provider-side quota balances per connection",
       icon: "data_usage",
       breadcrumbs: [],
     };

@@ -192,7 +192,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
             <p className="mt-1.5 text-xs text-text-muted">This key can call every combo and model.</p>
           )}
 
-          {/* Token quota */}
+          {/* API key token quota (per-key budget — not provider balances) */}
           <div className="mt-4 border-t border-border-subtle pt-4">
             <GroupLabel
               right={
@@ -211,7 +211,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
                 />
               }
             >
-              Token quota
+              API key token quota
             </GroupLabel>
             {!!quota?.enabled && (
               <div className="mt-2.5">

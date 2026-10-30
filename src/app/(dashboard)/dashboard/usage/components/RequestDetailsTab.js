@@ -345,7 +345,7 @@ export default function RequestDetailsTab() {
                         </p>
                       </div>
                     ) : (
-                      "No request details match the current filters"
+                      "No request details match the current filters — send a request through the router, or clear the filters above."
                     )}
                   </td>
                 </tr>

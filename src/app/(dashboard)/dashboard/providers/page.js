@@ -24,9 +24,35 @@ import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { useVisibleCount } from "@/shared/hooks/useVisibleCount";
+import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
+
+// Plain-language meaning for the raw error codes shown on provider cards
+// (B-F17): a code alone ("429") tells the user nothing about what broke or
+// what to do. Rendered as the badge's hover tooltip.
+const ERROR_CODE_EXPLANATIONS = {
+  AUTH: "Authentication failed — the credential is invalid or expired. Reconnect the provider.",
+  RUNTIME: "The provider call crashed at runtime — check the console log for details.",
+  NET: "Network error — the router could not reach the provider. Check connectivity.",
+  "401": "Authentication failed — the credential is invalid or expired. Reconnect the provider.",
+  "403": "Access denied — this account may not use the requested model.",
+  "404": "Not found — the model or endpoint no longer exists on the provider.",
+  "429": "Rate limited — too many requests. Wait a bit; it usually clears on its own.",
+  "5XX": "Provider server error — try again later.",
+};
+
+function explainErrorCode(errorCode) {
+  if (!errorCode) return null;
+  if (ERROR_CODE_EXPLANATIONS[errorCode]) return ERROR_CODE_EXPLANATIONS[errorCode];
+  const numeric = Number(errorCode);
+  if (Number.isFinite(numeric)) {
+    if (numeric >= 400 && numeric < 500) return "Client error — the request was rejected by the provider. Check the credential and model.";
+    if (numeric >= 500) return "Provider server error — try again later.";
+  }
+  return null;
+}
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -41,10 +67,19 @@ function getStatusDisplay(connected, error, errorCode) {
     const errText = errorCode
       ? `${error} Error (${errorCode})`
       : `${error} Error`;
+    const explanation = explainErrorCode(errorCode);
     parts.push(
-      <Badge key="error" variant="error" size="sm" dot>
-        {errText}
-      </Badge>,
+      explanation ? (
+        <span key="error" title={explanation}>
+          <Badge variant="error" size="sm" dot>
+            {errText}
+          </Badge>
+        </span>
+      ) : (
+        <Badge key="error" variant="error" size="sm" dot>
+          {errText}
+        </Badge>
+      ),
     );
   }
   if (parts.length === 0) {
@@ -162,7 +197,7 @@ function NotConnectedProviders({ entries, forceOpen }) {
 }
 
 export default function ProvidersPage() {
-  const [statsMap, setStatsMap] = useState({});
+  const { statsMap, setStatsMap } = useProviderSummary();
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
@@ -238,14 +273,8 @@ export default function ProvidersPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [connectionsRes, nodesRes] = await Promise.all([
-          fetch("/api/providers?summary=1"),
-          fetch("/api/provider-nodes"),
-        ]);
-        const connectionsData = await connectionsRes.json();
+        const nodesRes = await fetch("/api/provider-nodes");
         const nodesData = await nodesRes.json();
-        if (connectionsRes.ok)
-          setStatsMap(connectionsData.stats || {});
         if (nodesRes.ok) setProviderNodes(nodesData.nodes || []);
       } catch (error) {
         console.log("Error fetching data:", error);

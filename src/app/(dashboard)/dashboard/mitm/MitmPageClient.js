@@ -83,6 +83,17 @@ export default function MitmPageClient() {
         </p>
       </div>
 
+      {!hasActiveProviders() && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border">
+          <span className="material-symbols-outlined text-[16px] text-text-muted mt-0.5 shrink-0">info</span>
+          <p className="text-xs text-text-muted leading-relaxed">
+            No active providers yet — connect one on the{" "}
+            <a href="/dashboard/providers" className="font-medium text-primary underline">Providers</a>{" "}
+            page first, otherwise MITM has nowhere to route requests.
+          </p>
+        </div>
+      )}
+
       {/* MITM Server Card */}
       <MitmServerCard
         apiKeys={apiKeys}

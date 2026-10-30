@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -20,6 +21,80 @@ import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
 import KeyAccessControls from "./components/KeyAccessControls";
+import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
+// Dismissible first-run checklist (B-F17). Steps 1-2 auto-check from live
+// data (shared provider summary + key list); step 3 is guidance, not a
+// tracked state — the card is dismissed with "Got it" once setup is done.
+function FirstRunChecklist({ keysExist }) {
+  const { statsMap } = useProviderSummary();
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("9router-endpoint-checklist-dismissed") === "1") {
+        setDismissed(true);
+      }
+    } catch { /* private mode etc. — checklist just stays */ }
+  }, []);
+  if (dismissed) return null;
+  const providerDone = Object.values(statsMap).some((s) => (s.total || 0) > 0);
+  const steps = [
+    {
+      done: providerDone,
+      label: "Connect a provider",
+      href: "/dashboard/providers",
+      action: "Connect",
+    },
+    {
+      done: keysExist,
+      label: "Create an API key",
+      href: null,
+      action: null,
+    },
+    {
+      done: false,
+      label: "Send your first request, then watch it in Usage",
+      href: "/dashboard/usage",
+      action: "Usage",
+    },
+  ];
+  return (
+    <div className="mb-4 rounded-xl border border-border bg-surface-2 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-text-main">Get started</p>
+        <button
+          type="button"
+          className="text-xs text-text-muted hover:text-text-main"
+          onClick={() => {
+            try {
+              localStorage.setItem("9router-endpoint-checklist-dismissed", "1");
+            } catch { /* ignore */ }
+            setDismissed(true);
+          }}
+        >
+          Got it, hide this
+        </button>
+      </div>
+      <ul className="mt-2 space-y-1.5">
+        {steps.map((step) => (
+          <li key={step.label} className="flex items-center gap-2 text-sm">
+            <span className={`material-symbols-outlined text-[16px] ${step.done ? "text-green-500" : "text-text-muted"}`}>
+              {step.done ? "check_circle" : "radio_button_unchecked"}
+            </span>
+            <span className={step.done ? "text-text-muted line-through" : "text-text-main"}>
+              {step.label}
+            </span>
+            {!step.done && step.href && (
+              <Link href={step.href} className="text-xs font-medium text-primary hover:underline">
+                {step.action} →
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const notify = useNotificationStore();
@@ -1103,6 +1178,8 @@ export default function APIPageClient({ machineId }) {
           </div>
         )}
 
+        <FirstRunChecklist keysExist={keys.length > 0} />
+
         {keys.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
@@ -1259,9 +1336,9 @@ export default function APIPageClient({ machineId }) {
               </div>
             )}
 
-            {/* Token quota */}
+            {/* API key token quota (per-key budget — not provider balances) */}
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
-              <span className="text-sm text-text-main">Token quota</span>
+              <span className="text-sm text-text-main">API key token quota</span>
               <Toggle
                 size="sm"
                 checked={newKeyDraft.quotaEnabled}
@@ -1269,6 +1346,12 @@ export default function APIPageClient({ machineId }) {
               />
             </div>
             {newKeyDraft.quotaEnabled && (
+              <>
+              <p className="mt-1 text-[11px] text-text-muted">
+                Caps what this key can spend. Provider-side balances live on the{" "}
+                <Link href="/dashboard/quota" className="text-primary hover:underline">Provider Quota</Link>{" "}
+                page.
+              </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
                   type="number"
@@ -1289,6 +1372,13 @@ export default function APIPageClient({ machineId }) {
                   <option value={720}>30 days</option>
                 </select>
               </div>
+              {!(parseInt(newKeyDraft.quotaLimit, 10) > 0) && (
+                <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                  Enter a positive number of tokens — an empty, zero, or invalid
+                  value is ignored and the key is created without a quota.
+                </p>
+              )}
+              </>
             )}
 
             {/* Key limits */}

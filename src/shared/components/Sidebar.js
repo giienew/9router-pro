@@ -345,6 +345,23 @@ export default function Sidebar({ onClose }) {
               <span className="text-[13px] font-medium">9English</span>
             </a>
 
+            {/* Docs & Help */}
+            <a
+              href="https://github.com/giienew/9router-pro"
+              target="_blank"
+              rel="noreferrer"
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
+                "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              )}
+            >
+              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
+                help
+              </span>
+              <span className="text-[13px] font-medium">Docs & Help</span>
+            </a>
+
             {/* Settings */}
             <Link
               href="/dashboard/profile"
