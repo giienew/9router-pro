@@ -6,6 +6,7 @@ import { RequestLogger, CardSkeleton, SegmentedControl } from "@/shared/componen
 import UsageStats from "@/shared/components/UsageStats";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 import LatencyCard from "./components/LatencyCard";
+import UsageProofSections from "./components/UsageProof";
 
 const PERIODS = [
   { value: "today", label: "Today" },
@@ -110,6 +111,7 @@ function UsageContent() {
             range={period === "custom" ? customRange : null}
           />
           <LatencyCard period={period} />
+          <UsageProofSections />
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger />}

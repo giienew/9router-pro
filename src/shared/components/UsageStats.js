@@ -220,6 +220,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [fetching, setFetching] = useState(false);
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
+  // R8: chart series for the overview-card sparklines (same endpoint the
+  // UsageChart already uses; skipped for custom ranges, which have none).
+  const [series, setSeries] = useState(null);
   const [providers, setProviders] = useState([]);
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
@@ -285,6 +288,22 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         setLoading(false);
         setFetching(false);
       });
+    if (period !== "custom") {
+      fetch(`/api/usage/chart?period=${period}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((buckets) => {
+          if (Array.isArray(buckets)) {
+            setSeries({
+              requests: buckets.map((b) => b.requests || 0),
+              tokens: buckets.map((b) => b.tokens || 0),
+              cost: buckets.map((b) => b.cost || 0),
+            });
+          }
+        })
+        .catch(() => {});
+    } else {
+      setSeries(null);
+    }
   }, [period, range?.start, range?.end]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
@@ -512,7 +531,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       )}
 
       {/* Overview cards */}
-      {loading ? spinner : <OverviewCards stats={stats} />}
+      {loading ? spinner : <OverviewCards stats={stats} series={series} />}
       {!loading && stats && (
         <p className="-mt-3 text-xs text-text-muted">
           Some providers don&apos;t report token usage — their requests are counted,
