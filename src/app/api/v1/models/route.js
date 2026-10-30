@@ -10,6 +10,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
+import { getModelsListCache, setModelsListCache } from "@/sse/services/modelsListCache.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
@@ -473,6 +474,36 @@ export async function buildModelsList(kindFilter, options = {}) {
       });
     }
   } else {
+    // Live catalogs resolve concurrently under one shared budget: sequential
+    // awaits summed every provider's latency into the /v1/models response.
+    // Providers with explicit enabledModels keep their static list (as
+    // before) and kind-filtered-out providers are never resolved.
+    // On budget expiry, providers without a result fall back to their
+    // static lists below; the in-flight fetches finish unobserved.
+    const LIVE_RESOLVER_BUDGET_MS = 30000;
+    const liveByProvider = new Map();
+    const liveEntries = [...activeConnectionByProvider.entries()].filter(([providerId, conn]) => {
+      if (!LIVE_MODEL_RESOLVERS[providerId]) return false;
+      if (!providerMatchesKinds(providerId, kindFilter)) return false;
+      const enabledModels = conn?.providerSpecificData?.enabledModels;
+      return !(Array.isArray(enabledModels) && enabledModels.length > 0);
+    });
+    if (liveEntries.length) {
+      const settled = await Promise.race([
+        Promise.all(liveEntries.map(async ([providerId, conn]) => {
+          try {
+            const live = await LIVE_MODEL_RESOLVERS[providerId](conn);
+            return [providerId, live?.models?.length ? live : null];
+          } catch (err) {
+            console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
+            return [providerId, null];
+          }
+        })),
+        new Promise((resolve) => setTimeout(() => resolve(null), LIVE_RESOLVER_BUDGET_MS)),
+      ]);
+      if (settled) for (const [providerId, live] of settled) liveByProvider.set(providerId, live);
+    }
+
     for (const [providerId, conn] of activeConnectionByProvider.entries()) {
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
 
@@ -511,28 +542,22 @@ export async function buildModelsList(kindFilter, options = {}) {
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic
-      // -thinking/-agentic variants per account). On failure, fall back to
-      // whatever rawModelIds already holds.
-      const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-      if (liveResolver && !hasExplicitEnabledModels) {
-        try {
-          const live = await liveResolver(conn);
-          if (live?.models?.length) {
-            rawModelIds = live.models.map((m) => m.id);
-            liveModelKindById = new Map(
-              live.models
-                .filter((m) => m?.id)
-                .map((m) => [m.id, modelKind(m)])
-            );
-            liveCapabilitiesById = new Map(
-              live.models
-                .filter((m) => m?.id && m.capabilities)
-                .map((m) => [m.id, m.capabilities])
-            );
-          }
-        } catch (err) {
-          console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
-        }
+      // -thinking/-agentic variants per account), resolved concurrently
+      // above. On failure or budget expiry, fall back to whatever
+      // rawModelIds already holds.
+      const live = liveByProvider.get(providerId);
+      if (live?.models?.length) {
+        rawModelIds = live.models.map((m) => m.id);
+        liveModelKindById = new Map(
+          live.models
+            .filter((m) => m?.id)
+            .map((m) => [m.id, modelKind(m)])
+        );
+        liveCapabilitiesById = new Map(
+          live.models
+            .filter((m) => m?.id && m.capabilities)
+            .map((m) => [m.id, m.capabilities])
+        );
       }
 
       const modelIds = rawModelIds
@@ -693,10 +718,21 @@ export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
+    const ctx = await getKeyAccessContext(request);
+    // Key-scoped cache: restricted keys by key id, unrestricted keys share
+    // the single "full" entry (they all see the unfiltered list).
+    const cacheKey = ctx?.keyId ? `key:${ctx.keyId}` : "full";
+    const cached = getModelsListCache(cacheKey);
+    if (cached) {
+      return Response.json({ object: "list", data: cached }, {
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    }
     const data = await filterModelsListForKey(
-      await getKeyAccessContext(request),
+      ctx,
       await buildModelsList([LLM_KIND], { skipDynamicFetch })
     );
+    setModelsListCache(cacheKey, data);
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

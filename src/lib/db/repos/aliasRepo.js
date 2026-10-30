@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { invalidateModelsListCache } from "../../../sse/services/modelsListCache.js";
 
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");
@@ -13,10 +14,12 @@ export async function getModelAliases() {
 
 export async function setModelAlias(alias, model) {
   await aliasKv.set(alias, model);
+  invalidateModelsListCache();
 }
 
 export async function deleteModelAlias(alias) {
   await aliasKv.remove(alias);
+  invalidateModelsListCache();
 }
 
 // customModels: key=`${providerAlias}|${id}|${type}`, value=full model object
@@ -47,11 +50,13 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
     db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
     added = true;
   });
+  if (added) invalidateModelsListCache();
   return added;
 }
 
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {
   await customKv.remove(customKey(providerAlias, id, type));
+  invalidateModelsListCache();
 }
 
 // mitmAlias: key=toolName, value=mappings object

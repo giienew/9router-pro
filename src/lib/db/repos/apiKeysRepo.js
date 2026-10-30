@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { keyAccessFromColumns, keyAccessToColumns } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
+import { invalidateModelsListCache } from "@/sse/services/modelsListCache.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -55,6 +56,7 @@ export async function createApiKey(name, machineId) {
     `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, accessRestricted, accessAllow) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
     [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, cols.accessRestricted, cols.accessAllow]
   );
+  invalidateModelsListCache();
   return apiKey;
 }
 
@@ -72,13 +74,16 @@ export async function updateApiKey(id, data) {
     );
     result = rowToKey(db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]));
   });
+  if (result) invalidateModelsListCache();
   return result;
 }
 
 export async function deleteApiKey(id) {
   const db = await getAdapter();
   const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
-  return (res?.changes ?? 0) > 0;
+  const ok = (res?.changes ?? 0) > 0;
+  if (ok) invalidateModelsListCache();
+  return ok;
 }
 
 export async function validateApiKey(key) {

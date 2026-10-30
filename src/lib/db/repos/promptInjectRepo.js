@@ -52,6 +52,7 @@
 import { makeKv } from "../helpers/kvStore.js";
 import { getCombos, getComboByName, getComboById, deleteCombo } from "./combosRepo.js";
 import { getModelAliases } from "./aliasRepo.js";
+import { invalidateModelsListCache } from "../../../sse/services/modelsListCache.js";
 import { getProviderNodes, resolveRoutableBacking } from "./nodesRepo.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
@@ -320,6 +321,7 @@ export async function setInjectVariant(name, input = {}) {
   map[cleanName] = { ...routedEntry, comboId: null };
   await kv.set(VARIANTS_KEY, map);
   invalidateInjectSnapshot();
+  invalidateModelsListCache();
   return map[cleanName];
 }
 
@@ -338,6 +340,7 @@ export async function deleteInjectVariant(name) {
   delete map[cleanName];
   await kv.set(VARIANTS_KEY, map);
   invalidateInjectSnapshot();
+  invalidateModelsListCache();
   return true;
 }
 
@@ -392,6 +395,7 @@ export async function migrateModelPromptsToVariants() {
       }
     }
     await kv.set(VARIANTS_KEY, variants);
+    invalidateModelsListCache();
     if (Object.keys(leftovers).length) await kv.set(MODELS_KEY, leftovers);
     else await kv.remove(MODELS_KEY);
     invalidateInjectSnapshot();

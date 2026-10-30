@@ -1,6 +1,19 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { invalidateModelsListCache } from "../../../sse/services/modelsListCache.js";
+
+// List-affecting subset of a connection: only these fields change what
+// /v1/models publishes. Health writes (locks, errors, tokens) must NOT
+// invalidate the models cache, or every failure storm would thrash it.
+function modelsListSignature(conn) {
+  const spec = conn?.providerSpecificData || {};
+  return JSON.stringify([
+    conn?.isActive,
+    spec.enabledModels || null,
+    spec.prefix || null,
+  ]);
+}
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -177,6 +190,7 @@ export async function bulkSetConnectionsActive(provider, authTypes, isActive) {
     `UPDATE providerConnections SET isActive = ?, updatedAt = ? WHERE provider = ? AND authType IN (${placeholders})`,
     [isActive ? 1 : 0, new Date().toISOString(), provider, ...authTypes],
   );
+  if ((info?.changes ?? 0) > 0) invalidateModelsListCache();
   return info?.changes ?? 0;
 }
 
@@ -365,6 +379,7 @@ export async function createProviderConnection(data) {
     result = conn;
   });
 
+  invalidateModelsListCache();
   return result;
 }
 
@@ -376,11 +391,13 @@ export async function updateProviderConnection(id, data) {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
+    const beforeSig = modelsListSignature(existing);
     const normalized = resetHealthStateOnActivation(existing, data);
     const merged = { ...existing, ...normalized, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
+    if (modelsListSignature(merged) !== beforeSig) invalidateModelsListCache();
   });
   return result;
 }
@@ -395,6 +412,7 @@ export async function deleteProviderConnection(id) {
     reorderInTx(db, row.provider);
     ok = true;
   });
+  if (ok) invalidateModelsListCache();
   return ok;
 }
 
@@ -402,7 +420,9 @@ export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
   const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
   db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-  return before?.n || 0;
+  const deleted = before?.n || 0;
+  if (deleted > 0) invalidateModelsListCache();
+  return deleted;
 }
 
 export async function reorderProviderConnections(providerId) {
@@ -438,5 +458,6 @@ export async function cleanupProviderConnections() {
       if (dirty) upsert(db, conn);
     }
   });
+  if (cleaned > 0) invalidateModelsListCache();
   return cleaned;
 }
