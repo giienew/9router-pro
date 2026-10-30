@@ -378,7 +378,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     const routeKey = stickyRouteKey(resolveProviderId(provider), model);
     if (stickyCurrentByRoute.get(routeKey) === connectionId) stickyCurrentByRoute.delete(routeKey);
   }
-  const connections = await getProviderConnections({ provider });
+  // Fail open: a locked or busy DB must not kill the request. If the read
+  // fails, the lock just won't persist — the caller still falls back on
+  // the cooldown computed from the status alone.
+  let connections = [];
+  try {
+    connections = await getProviderConnections({ provider });
+  } catch (err) {
+    log.warn("AUTH", `getProviderConnections failed during markAccountUnavailable, continuing without persisted lock: ${err?.message || err}`);
+  }
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
@@ -420,7 +428,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     update.testStatus = "unavailable";
   }
 
-  await updateProviderConnection(connectionId, update);
+  try {
+    await updateProviderConnection(connectionId, update);
+  } catch (err) {
+    // Fail open: the lock is lost, but the request still falls back below
+    // instead of dying on a busy database.
+    log.warn("AUTH", `persisting lock for ${String(connectionId).slice(0, 8)} failed, continuing in-memory only: ${err?.message || err}`);
+  }
 
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
   const statusWords = log.describeStatus?.(status) || "";

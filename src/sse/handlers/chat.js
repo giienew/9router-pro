@@ -602,9 +602,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
-    const shouldFallback = provider === "antigravity" && quotaResetMs
-      ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+    let shouldFallback;
+    if (provider === "antigravity" && quotaResetMs) {
+      shouldFallback = true;
+    } else {
+      try {
+        shouldFallback = (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+      } catch (err) {
+        // Fail open: bookkeeping must never kill the request — fall back to
+        // the next account even if the lock could not be recorded.
+        log.warn("FALLBACK", `markAccountUnavailable threw, falling back anyway: ${err?.message || err}`);
+        shouldFallback = true;
+      }
+    }
 
     if (shouldFallback) {
       log.warn("FALLBACK", `${credentials.connectionName} failed (${result.status}${log.describeStatus?.(result.status) ? ` ${log.describeStatus(result.status)}` : ""}) → trying next account`);
