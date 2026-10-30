@@ -61,7 +61,12 @@ export default function ProviderBarChart({ byProvider }) {
       </div>
 
       {!chartData.length ? (
-        <div className="h-44 flex items-center justify-center text-text-muted text-sm">No provider usage yet</div>
+        <div className="h-44 flex flex-col items-center justify-center gap-2 text-center text-text-muted text-sm">
+          <span>No provider usage yet</span>
+          <a href="/dashboard/providers" className="text-xs font-medium text-primary hover:underline">
+            Connect a provider, then send a request →
+          </a>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>

@@ -179,6 +179,7 @@ export default function PxpipeClient() {
 
       <Card className="p-4">
         <h3 className="font-medium mb-3">Tokens saved — last 30 days</h3>
+        <p className="mb-3 text-xs text-text-muted">Token Saver shows this same savings number for the last 14 days — see <a href="/dashboard/token-saver" className="font-medium text-primary hover:underline">Token Saver</a>.</p>
         {stats?.timeline?.some((d) => d.tokensSavedEst > 0) ? (
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.timeline} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>

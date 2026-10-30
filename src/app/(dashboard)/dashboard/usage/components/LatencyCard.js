@@ -35,7 +35,12 @@ export default function LatencyCard({ period = "7d" }) {
       {error && <p className="text-xs text-red-500">{error}</p>}
       {!data && !error && <p className="text-xs text-text-muted">Loading…</p>}
       {data && data.samples === 0 && (
-        <p className="text-xs text-text-muted">No latency data yet — it accrues from requests served after this feature landed.</p>
+        <div>
+          <p className="text-xs text-text-muted">No latency data yet — it accrues from requests served after this feature landed.</p>
+          <a href="/dashboard/endpoint" className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
+            Send a request, then check back →
+          </a>
+        </div>
       )}
       {data && data.samples > 0 && (
         <div className="flex flex-col gap-3">

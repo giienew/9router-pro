@@ -64,7 +64,12 @@ export default function TopModelsChart({ byModel }) {
       </div>
 
       {!chartData.length ? (
-        <div className="h-44 flex items-center justify-center text-text-muted text-sm">No model usage yet</div>
+        <div className="h-44 flex flex-col items-center justify-center gap-2 text-center text-text-muted text-sm">
+          <span>No model usage yet</span>
+          <a href="/dashboard/endpoint" className="text-xs font-medium text-primary hover:underline">
+            Create a key and send your first request →
+          </a>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart

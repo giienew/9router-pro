@@ -81,7 +81,12 @@ export default function UsageChart({ period = "7d" }) {
       {loading ? (
         <div className="h-48 flex items-center justify-center text-text-muted text-sm">Loading...</div>
       ) : !hasData ? (
-        <div className="h-48 flex items-center justify-center text-text-muted text-sm">No data for this period</div>
+        <div className="h-48 flex flex-col items-center justify-center gap-2 text-center text-text-muted text-sm">
+          <span>No data for this period</span>
+          <a href="/dashboard/endpoint" className="text-xs font-medium text-primary hover:underline">
+            Create a key and send your first request →
+          </a>
+        </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>

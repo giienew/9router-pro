@@ -58,12 +58,23 @@ export default function RequestLogger() {
         </div>
       </div>
 
+      <p className="text-xs text-text-muted">
+        One line per API request served by this router. For a per-request breakdown (tokens, cost, timing),
+        see <a href="/dashboard/usage?tab=details" className="font-medium text-primary hover:underline">Usage → Details</a>;
+        for live server console output, see <a href="/dashboard/console-log" className="font-medium text-primary hover:underline">Console Log</a>.
+      </p>
+
       <Card className="overflow-hidden bg-black/5 dark:bg-black/20">
         <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
           {loading && logs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">Loading logs...</div>
           ) : logs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
+            <div className="p-8 text-center text-text-muted">
+              <p>No logs recorded yet.</p>
+              <a href="/dashboard/endpoint" className="mt-2 inline-block text-xs font-medium text-primary hover:underline">
+                Create a key and send your first request →
+              </a>
+            </div>
           ) : (
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead className="sticky top-0 bg-bg-subtle border-b border-border z-10">

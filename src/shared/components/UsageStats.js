@@ -50,7 +50,12 @@ function RecentRequests({ requests = [] }) {
       </div>
 
       {!requests.length ? (
-        <div className="flex-1 flex items-center justify-center text-text-muted text-sm">No requests yet.</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center text-text-muted text-sm">
+          <span>No requests yet.</span>
+          <a href="/dashboard/endpoint" className="text-xs font-medium text-primary hover:underline">
+            Create a key and send your first request →
+          </a>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
           <table className="w-full min-w-[300px] border-collapse text-xs">

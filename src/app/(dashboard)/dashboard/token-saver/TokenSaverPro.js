@@ -114,7 +114,7 @@ function SavingsPanel() {
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-text-muted">Estimates from RTK byte savings (÷4 chars/token), counted on this instance only.</p>
+          <p className="mt-3 text-xs text-text-muted">Estimates from RTK byte savings (÷4 chars/token), counted on this instance only. The <a href="/dashboard/pxpipe" className="font-medium text-primary hover:underline">PxPipe dashboard</a> tracks the same savings story over 30 days.</p>
         </>
       )}
     </Card>

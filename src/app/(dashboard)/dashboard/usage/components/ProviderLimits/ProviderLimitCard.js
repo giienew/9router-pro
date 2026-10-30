@@ -180,6 +180,9 @@ export default function ProviderLimitCard({
             data_usage
           </span>
           <p className="text-sm mt-2">No quota data available</p>
+          <a href="/dashboard/providers" className="mt-2 inline-block text-xs font-medium text-primary hover:underline">
+            Connect a provider with usage reporting →
+          </a>
         </div>
       )}
     </Card>
