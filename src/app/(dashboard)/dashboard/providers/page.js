@@ -1161,6 +1161,13 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                         </Badge>
                       </span>
                     )}
+                    {breaker?.state === "closed" && (breaker?.failuresInWindow || 0) > 0 && (
+                      <span title="Provider breaker pre-trip — recent failures in the window, still serving. It opens after repeated failures from multiple connections.">
+                        <Badge variant="default" size="sm">
+                          Breaker watching ({breaker.failuresInWindow})
+                        </Badge>
+                      </span>
+                    )}
                     {errorTime && (
                       <span className="text-text-muted">{errorTime}</span>
                     )}
@@ -1298,6 +1305,13 @@ function ApiKeyProviderCard({
                       <span title="Provider breaker probing — traffic resumes, one failure re-opens it.">
                         <Badge variant="warning" size="sm">
                           Breaker probing
+                        </Badge>
+                      </span>
+                    )}
+                    {breaker?.state === "closed" && (breaker?.failuresInWindow || 0) > 0 && (
+                      <span title="Provider breaker pre-trip — recent failures in the window, still serving. It opens after repeated failures from multiple connections.">
+                        <Badge variant="default" size="sm">
+                          Breaker watching ({breaker.failuresInWindow})
                         </Badge>
                       </span>
                     )}

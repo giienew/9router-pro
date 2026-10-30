@@ -52,6 +52,20 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
 
   const noProxyText = boundProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
 
+  // Health tier (G10, defensive): mirrors the router's connectionHealthTier
+  // from whatever fields the API returns — no new API fields assumed.
+  // Failed = backoff or a recorded error; a failure older than the 1h
+  // probation window heals back to clean. Pristine rows show no badge.
+  const tierFailed = (connection?.backoffLevel || 0) > 0 || !!connection?.lastError;
+  const tierHealed = tierFailed && connection?.lastErrorAt
+    && (Date.now() - new Date(connection.lastErrorAt).getTime() >= 3600000);
+  const tierSuspect = tierFailed && !tierHealed;
+  const quarantineText = connection?.quarantineReason
+    ? (String(connection.quarantineReason).startsWith("Auto-quarantined")
+      ? connection.quarantineReason
+      : `Auto-quarantined: ${connection.quarantineReason}`)
+    : null;
+
   let proxyBadgeVariant = "default";
   if (boundProxyPool?.isActive === true) {
     proxyBadgeVariant = "success";
@@ -226,6 +240,21 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             {connection.lastError && connection.isActive !== false && (
               <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={connection.lastError}>
                 {connection.lastError}
+              </span>
+            )}
+            {tierSuspect && (
+              <Badge variant="warning" size="sm" title="Suspect: routing deprioritises this connection while it heals (1h without errors).">
+                Suspect (probation)
+              </Badge>
+            )}
+            {tierHealed && (
+              <Badge variant="success" size="sm" title="Clean: the last failure is older than the 1h probation window, so routing treats this connection as healthy again.">
+                Clean
+              </Badge>
+            )}
+            {quarantineText && (
+              <span className="max-w-full text-xs text-orange-500 sm:max-w-[300px]" title={quarantineText}>
+                {quarantineText} — re-enabling resets the counter.
               </span>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
