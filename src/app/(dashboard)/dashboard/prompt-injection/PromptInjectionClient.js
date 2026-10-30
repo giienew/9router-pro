@@ -497,7 +497,7 @@ function InjectionForm({
                 scope === "variant" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
               }`}
             >
-              Varian
+              Variant
             </button>
             <button
               type="button"
@@ -557,11 +557,11 @@ function InjectionForm({
 
       {scope === "variant" && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text-muted">Nama varian (wajib)</span>
+          <span className="text-xs font-medium text-text-muted">Variant name (required)</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. dahlunce — nama custom model ini"
+            placeholder="e.g. dahlunce — this model's custom name"
             className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
           />
         </label>

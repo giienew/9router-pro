@@ -88,6 +88,17 @@ export default function CombosPage() {
   const adapterSaveRef = useRef({ busy: false, pending: null });
   const [searchQuery, setSearchQuery] = useState("");
   const { copied, copy } = useCopyToClipboard();
+
+  // Client-side combo export (G22) from already-fetched state — no new API route.
+  const downloadCombosJson = () => {
+    const blob = new Blob([JSON.stringify(combos, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "9router-combos.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const notify = useNotificationStore();
   useEffect(() => {
     fetchData();
@@ -464,6 +475,9 @@ export default function CombosPage() {
               </button>
             )}
           </div>
+          <Button variant="outline" onClick={downloadCombosJson} disabled={combos.length === 0} className="w-full sm:w-auto whitespace-nowrap">
+            Export JSON
+          </Button>
           <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
             Create Combo
           </Button>

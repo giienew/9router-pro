@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Input, Toggle } from "@/shared/components";
+import { Card, Button, Input, Toggle, CardSkeleton } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 
 export default function AutomationPage() {
@@ -163,7 +163,7 @@ export default function AutomationPage() {
     notify.success("Two-factor authentication disabled");
   };
 
-  if (loading) return <p className="text-sm text-text-muted">Loading…</p>;
+  if (loading) return <CardSkeleton />;
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">

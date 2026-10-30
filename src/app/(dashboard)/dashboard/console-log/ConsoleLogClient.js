@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button } from "@/shared/components";
+import { Card, Button, ConfirmModal } from "@/shared/components";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 import { parseConsoleLine } from "@/lib/logLineParse";
 
@@ -44,6 +44,7 @@ export default function ConsoleLogClient() {
   const [connected, setConnected] = useState(false);
   const [retries, setRetries] = useState(0);
   const [connectKey, setConnectKey] = useState(0);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const logRef = useRef(null);
 
   const handleClear = async () => {
@@ -122,7 +123,7 @@ export default function ConsoleLogClient() {
                 Reconnect
               </Button>
             )}
-            <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
+            <Button size="sm" variant="outline" icon="delete" onClick={() => setShowClearConfirm(true)}>
               Clear
             </Button>
           </div>
@@ -150,6 +151,16 @@ export default function ConsoleLogClient() {
           )}
         </div>
       </Card>
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={() => { setShowClearConfirm(false); handleClear(); }}
+        title="Clear console logs"
+        message="Clear all console logs? This cannot be undone."
+        confirmText="Clear"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

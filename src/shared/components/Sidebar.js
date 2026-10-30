@@ -322,6 +322,28 @@ export default function Sidebar({ onClose }) {
               ) : null;
             })}
 
+            {/* Settings */}
+            <Link
+              href="/dashboard/profile"
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all group",
+                isActive("/dashboard/profile")
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              )}
+            >
+              <span
+                className={cn(
+                  "material-symbols-outlined text-[18px]",
+                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
+                )}
+              >
+                settings
+              </span>
+              <span className="text-[13px] font-medium">Profile & Settings</span>
+            </Link>
+
             {/* Remote */}
             <a
               href="https://9remote.cc"
@@ -376,27 +398,6 @@ export default function Sidebar({ onClose }) {
               <span className="text-[13px] font-medium">Docs & Help</span>
             </a>
 
-            {/* Settings */}
-            <Link
-              href="/dashboard/profile"
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                settings
-              </span>
-              <span className="text-[13px] font-medium">Profile & Settings</span>
-            </Link>
           </div>
         </nav>
 
