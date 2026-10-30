@@ -13,6 +13,7 @@ import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseAutoTarget, buildAutoCandidates } from "../services/autoRouting.js";
+import { orderModelsByCapacity } from "../services/capacityOrder.js";
 import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
 import { recordProviderSuccess } from "../services/providerBreaker.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -39,6 +40,31 @@ export async function handleChat(request, clientRawRequest = null) {
   return withKeyAdmission(request, () => handleChatImpl(request, clientRawRequest), recheckKeyQuotaAfterCompletion);
 }
 import { resolveSmartChoice } from "../services/systemoneRouter.js";
+
+// Per-combo member pins (P3-28): settings.comboMemberPins[combo][member]
+// names the connection that member should use. Stored value may be a bare
+// connection id (legacy) or { id, label }; anything else means no pin.
+// A missing/unavailable pinned connection falls back to normal selection
+// inside getProviderCredentials (preferredConnectionId semantics).
+const memberPinFor = (settingsObj, comboName) => (member) => {
+  const pin = settingsObj?.comboMemberPins?.[comboName]?.[member];
+  if (typeof pin === "string") return pin;
+  return pin?.id || null;
+};
+
+// Capacity ordering reads every provider's connections; cache the snapshot
+// briefly so a capacity-strategy request doesn't scan the whole table each
+// time. Staleness only affects ORDER, never correctness — failover still
+// tries every member, and locks are re-checked at credential selection.
+let capacityConnectionsCache = { at: 0, data: [] };
+const CAPACITY_CONNECTIONS_TTL_MS = 10_000;
+async function getCapacityConnections() {
+  const now = Date.now();
+  if (now - capacityConnectionsCache.at < CAPACITY_CONNECTIONS_TTL_MS) return capacityConnectionsCache.data;
+  const data = await getProviderConnections().catch(() => []);
+  capacityConnectionsCache = { at: now, data };
+  return data;
+}
 
 // Provider-breaker success signal (P3-27): a 2xx through a member closes a
 // half-open breaker for that member's provider. `backingOf` maps a member
@@ -189,6 +215,16 @@ async function handleChatImpl(request, clientRawRequest = null) {
     const comboStrategy = await resolveComboStrategy(modelStr, comboModels, settings, apiKey);
     const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings, topVariantBacking), comboModels);
     const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
+    // P3-28 capacity strategy: reorder by live fleet capacity, then fall
+    // back in that order — rotation must not reshuffle it, so the combo
+    // runs as "fallback" over the capacity-ordered list.
+    let effectiveComboStrategy = comboStrategy;
+    let orderedModels = augmentedModels;
+    if (comboStrategy === "capacity") {
+      orderedModels = orderModelsByCapacity(augmentedModels, await getCapacityConnections(), { resolveBacking: topVariantBacking });
+      effectiveComboStrategy = "fallback";
+      log.info("CHAT", `Combo "${modelStr}" capacity order → [${orderedModels.join(", ")}]`);
+    }
 
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
@@ -201,7 +237,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings), signal);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings), signal, memberPinFor(settings, modelStr)(m));
         }, (m) => topVariantBacking(m) || m),
         log,
         comboName: modelStr,
@@ -212,13 +248,13 @@ async function handleChatImpl(request, clientRawRequest = null) {
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboCfg = comboStrategies[modelStr] || {};
-    log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("CHAT", `Combo "${modelStr}" with ${orderedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
-      models: augmentedModels,
+      models: orderedModels,
       handleSingleModel: withCapacityAdapterStripping(
         withBreakerSuccess(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings)),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings), undefined, memberPinFor(settings, modelStr)(m)),
           (m) => topVariantBacking(m) || m,
         ),
         adapterAdded,
@@ -226,7 +262,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
       ),
       log,
       comboName: modelStr,
-      comboStrategy,
+      comboStrategy: effectiveComboStrategy,
       comboStickyLimit,
       sessionId,
       smartPolicy: comboCfg.smartPolicy || "smart",
@@ -305,7 +341,7 @@ function withFlakyRetriesHeader(response, retries) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null, pinnedConnectionId = null) {
   // Direct variant pick without a backing combo: a bare name that names a
   // variant routes straight to its backing model, with the variant name
   // carried so its prompt still fires. This covers both direct picks and
@@ -320,7 +356,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // whole pool (a dahl direct pick timed out at 150s). Resolve the
       // cap here when the caller passed none (top-level picks pass null).
       const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
-      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal);
+      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId);
     }
   }
   const modelInfo = await getModelInfo(modelStr);
@@ -352,6 +388,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const keyAccess = await getKeyAccessContext(request);
       const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, chatSettings, nestedVariantBacking), comboModels);
       const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
+      // P3-28 capacity strategy (nested branch mirrors the outer branch).
+      let nestedEffectiveStrategy = comboStrategy;
+      let nestedOrderedModels = augmentedModels;
+      if (comboStrategy === "capacity") {
+        nestedOrderedModels = orderModelsByCapacity(augmentedModels, await getCapacityConnections(), { resolveBacking: nestedVariantBacking });
+        nestedEffectiveStrategy = "fallback";
+        log.info("CHAT", `Combo "${modelStr}" capacity order → [${nestedOrderedModels.join(", ")}]`);
+      }
 
       if (comboStrategy === "fusion") {
         log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
@@ -364,7 +408,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings), signal);
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings), signal, memberPinFor(chatSettings, modelStr)(m));
           },
           log,
           comboName: modelStr,
@@ -377,18 +421,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const comboCfg = comboStrategies[modelStr] || {};
       const nestedSession = resolveSessionIdentity({ headers: clientRawRequest?.headers, body });
       const nestedSessionId = nestedSession?.sessionId || null;
-      log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+      log.info("CHAT", `Combo "${modelStr}" with ${nestedOrderedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
       return handleComboChat({
         body,
-        models: augmentedModels,
+        models: nestedOrderedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings)),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings), undefined, memberPinFor(chatSettings, modelStr)(m)),
           adapterAdded,
           nestedVariantBacking
         ),
         log,
         comboName: modelStr,
-        comboStrategy,
+        comboStrategy: nestedEffectiveStrategy,
         comboStickyLimit,
         sessionId: nestedSessionId,
         smartPolicy: comboCfg.smartPolicy || "smart",
@@ -431,7 +475,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let memberFallbackFailures = 0;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model, preferredConnectionId: pinnedConnectionId || undefined });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {

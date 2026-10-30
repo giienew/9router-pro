@@ -54,6 +54,7 @@ const STRATEGY_OPTIONS = [
   { value: "round-robin", label: "Round Robin — rotate" },
   { value: "smart", label: "Smart Router — System One" },
   { value: "fusion", label: "Fusion — panel + judge" },
+  { value: "capacity", label: "Capacity — most healthy accounts first" },
 ];
 
 function getPolicyBadgeLabel(strategy = {}) {
@@ -76,6 +77,7 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [comboMemberPins, setComboMemberPins] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
@@ -160,6 +162,7 @@ export default function CombosPage() {
         setActiveProviders((providersData.connections || []).filter((c) => c.isActive !== false));
       }
       setComboStrategies(settingsData.comboStrategies || {});
+      setComboMemberPins(settingsData.comboMemberPins || {});
       const rawAdapter = settingsData.capacityAdapter || {};
       const normalized = {};
       for (const cap of CAPACITY_ADAPTER_CAPS) {
@@ -232,6 +235,24 @@ export default function CombosPage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
+        // Renaming a combo migrates its pins to the new name (pins are
+        // keyed by combo name); otherwise they would orphan. Pins of
+        // members no longer in the combo are pruned on the same save.
+        const oldName = editingCombo?.name;
+        let pinsAfter = comboMemberPins;
+        if (oldName && data.name && data.name !== oldName && pinsAfter[oldName]) {
+          pinsAfter = { ...pinsAfter };
+          pinsAfter[data.name] = pinsAfter[oldName];
+          delete pinsAfter[oldName];
+        }
+        if (data.name && pinsAfter[data.name]) {
+          const kept = {};
+          for (const m of data.models || []) if (pinsAfter[data.name][m]) kept[m] = pinsAfter[data.name][m];
+          if (Object.keys(kept).length !== Object.keys(pinsAfter[data.name]).length) {
+            pinsAfter = { ...pinsAfter, [data.name]: kept };
+          }
+        }
+        if (pinsAfter !== comboMemberPins) await persistComboMemberPins(pinsAfter);
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -258,6 +279,21 @@ export default function CombosPage() {
     setComboStrategies(updated);
   };
 
+  // Per-member account pins (P3-28): { [comboName]: { [member]: { id, label } } }
+  const persistComboMemberPins = async (updated) => {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comboMemberPins: updated }),
+    });
+    setComboMemberPins(updated);
+  };
+  const prunePinsForNames = (names, base = comboMemberPins) => {
+    const updated = { ...base };
+    for (const name of names) delete updated[name];
+    return updated;
+  };
+
   const handleDelete = async (id) => {
     const combo = combos.find((c) => c.id === id);
     setConfirmState({
@@ -270,6 +306,7 @@ export default function CombosPage() {
           if (res.ok) {
             if (combo?.name) {
               await persistComboStrategies(pruneStrategiesForNames([combo.name]));
+              await persistComboMemberPins(prunePinsForNames([combo.name]));
             }
             setCombos((prev) => prev.filter((c) => c.id !== id));
             setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -302,6 +339,7 @@ export default function CombosPage() {
           );
           const failed = results.filter((r) => !r.ok).length;
           await persistComboStrategies(pruneStrategiesForNames(names));
+          await persistComboMemberPins(prunePinsForNames(names));
           setCombos((prev) => prev.filter((c) => !ids.includes(c.id)));
           clearSelection();
           setConfirmState(null);
@@ -593,6 +631,15 @@ export default function CombosPage() {
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
           prefixById={prefixById}
+          pins={comboMemberPins[editingCombo.name] || {}}
+          onPinChange={(member, pin) => {
+            const next = { ...comboMemberPins };
+            const comboPins = { ...(next[editingCombo.name] || {}) };
+            if (pin) comboPins[member] = pin;
+            else delete comboPins[member];
+            next[editingCombo.name] = comboPins;
+            persistComboMemberPins(next);
+          }}
         />
       )}
 
@@ -1086,7 +1133,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, pinLabel = null, onPin = null }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1172,6 +1219,19 @@ function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit,
         </button>
       </div>
 
+      {/* Account pin (P3-28): only for provider/model members; variants
+          carry bare names and resolve via their backing model, so they
+          cannot be pinned here. */}
+      {onPin && model.includes("/") && (
+        <button
+          onClick={onPin}
+          className={`p-0.5 rounded shrink-0 ${pinLabel ? "text-primary" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`}
+          title={pinLabel ? `Pinned to ${pinLabel} — click to change` : "Pin to a specific account (falls back to normal selection when unavailable)"}
+        >
+          <span className={`material-symbols-outlined text-[12px] ${pinLabel ? "fill-1" : ""}`}>push_pin</span>
+        </button>
+      )}
+
       {/* Remove */}
       <button
         onClick={onRemove}
@@ -1184,11 +1244,92 @@ function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit,
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefixById = {}, kindFilter = null }) {
+// Account pin picker (P3-28): picks one connection for a combo member.
+// The pin is advisory — an unavailable pinned connection falls back to
+// normal selection at request time (preferredConnectionId semantics).
+function PinPickerModal({ member, currentPin, onPick, onClose }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const providerId = resolveProviderId(member.split("/")[0]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ provider: providerId, pageSize: "20" });
+        if (query.trim()) params.set("search", query.trim());
+        const res = await fetch(`/api/providers?${params}`);
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) setResults(data.connections || []);
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [providerId, query]);
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Pin account for ${member}`}>
+      <div className="flex flex-col gap-3">
+        <Input
+          placeholder="Search by name or email…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {loading ? (
+          <p className="text-xs text-text-muted text-center py-4">Loading…</p>
+        ) : results.length === 0 ? (
+          <p className="text-xs text-text-muted text-center py-4">No connections found for this provider.</p>
+        ) : (
+          <div className="flex max-h-[40vh] flex-col gap-1 overflow-y-auto">
+            {results.map((c) => {
+              const label = c.name || c.email || `…${String(c.id).slice(-6)}`;
+              const isCurrent = currentPin?.id === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => onPick({ id: c.id, label })}
+                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${isCurrent ? "border-primary/50 bg-primary/5" : "border-black/10 hover:border-primary/50 dark:border-white/10"}`}
+                >
+                  <span className="min-w-0 truncate">{label}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {c.isActive === false && <Badge variant="warning" size="sm">paused</Badge>}
+                    {isCurrent && <span className="text-primary font-medium">current</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div className="flex gap-2">
+          {currentPin && (
+            <Button variant="ghost" size="sm" fullWidth onClick={() => onPick(null)}>
+              Clear pin
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" fullWidth onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+        <p className="text-[10px] text-text-muted">
+          If the pinned account is unavailable, the router falls back to normal selection for that member.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefixById = {}, kindFilter = null, pins = null, onPinChange = null }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
   const [showModelSelect, setShowModelSelect] = useState(false);
+  const [pinMember, setPinMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
@@ -1336,6 +1477,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}
+                      pinLabel={pins?.[model]?.label || (pins?.[model]?.id ? `…${String(pins[model].id).slice(-6)}` : null)}
+                      onPin={onPinChange ? () => setPinMember(model) : null}
                     />
                   ))}
                 </div>
@@ -1383,6 +1526,19 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
           kindFilter={kindFilter}
           addedModelValues={models}
           closeOnSelect={false}
+        />
+      )}
+
+      {/* Account Pin Picker */}
+      {pinMember && onPinChange && (
+        <PinPickerModal
+          member={pinMember}
+          currentPin={pins?.[pinMember] || null}
+          onPick={(pin) => {
+            onPinChange(pinMember, pin);
+            setPinMember(null);
+          }}
+          onClose={() => setPinMember(null)}
         />
       )}
     </>

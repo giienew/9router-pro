@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
   comboStrategy: "auto",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
+  // Per-combo member pins (P3-28): { [comboName]: { [member]: { id, label } | id } }
+  comboMemberPins: {},
   capacityAdapter: {
     vision: { enabled: true, roundRobin: false, models: [] },
     pdf: { enabled: false, roundRobin: false, models: [] },
