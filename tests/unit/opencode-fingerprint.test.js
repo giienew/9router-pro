@@ -53,7 +53,9 @@ describe("opencodeFingerprint — request side", () => {
     const map = applyFingerprintTools(body, true);
     expect(namesOf(body.tools)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
     expect(map.size).toBe(0);
-    expect(body.instructions).toBeUndefined();
+    // P1-17d: the <env> marker is required on every free-lane request, so a
+    // body with no instructions gains the marker alone.
+    expect(body.instructions).toContain("<env>");
   });
 
   it("drops duplicate declarations of one fingerprint name", () => {
@@ -73,27 +75,37 @@ describe("opencodeFingerprint — request side", () => {
     expect(chatBody.tool_choice).toBeUndefined();
   });
 
-  it("never injects a placeholder note into the prompt", () => {
+  it("never injects a placeholder note into the prompt (env marker still appended)", () => {
     // The old "Do not call the ... tools" note is flagged by upstream OpenCode
     // content filtering as a third-party relay (429 FreeUsageLimitError), so
-    // the prompt must stay exactly as the caller sent it.
+    // that wording must never appear. P1-17d: the CLI <env> marker IS
+    // appended (it is the second half of the free-tier gate), with the
+    // caller's own text preserved in front of it.
     const responses = { instructions: "Be brief.", tools: [] };
     applyFingerprintTools(responses, true);
-    expect(responses.instructions).toBe("Be brief.");
+    expect(responses.instructions.startsWith("Be brief.")).toBe(true);
+    expect(responses.instructions).toContain("<env>");
+    expect(responses.instructions).not.toContain("placeholders that do nothing");
     expect(namesOf(responses.tools)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
 
     const chatBody = { messages: [{ role: "system", content: "Be brief." }, { role: "user", content: "hi" }] };
     applyFingerprintTools(chatBody, false);
     expect(chatBody.messages).toHaveLength(2);
-    expect(chatBody.messages[0].content).toBe("Be brief.");
+    expect(chatBody.messages[0].content.startsWith("Be brief.")).toBe(true);
+    expect(chatBody.messages[0].content).toContain("<env>");
 
     const noSystem = { messages: [{ role: "user", content: "hi" }] };
     applyFingerprintTools(noSystem, false);
-    expect(noSystem.messages).toEqual([{ role: "user", content: "hi" }]);
+    expect(noSystem.messages).toHaveLength(2);
+    expect(noSystem.messages[0].role).toBe("system");
+    expect(noSystem.messages[0].content).toContain("<env>");
+    expect(noSystem.messages[1]).toEqual({ role: "user", content: "hi" });
 
     const claudeShape = { system: "Be brief.", messages: [{ role: "user", content: "hi" }] };
     applyFingerprintTools(claudeShape, false);
     expect(claudeShape.messages).toHaveLength(1);
+    expect(claudeShape.system.startsWith("Be brief.")).toBe(true);
+    expect(claudeShape.system).toContain("<env>");
   });
 
   it("retargets flat tool_choice that points at an aliased tool", () => {
@@ -237,8 +249,10 @@ describe("opencodeFingerprint — in-place normalization", () => {
     expect(takeRenamedToolNames(body)).toBeNull();
     expect(body.tools[0].description).toContain("Commands run on Linux using bash.");
     expect(body.tools[0].parameters.required).toEqual(["command"]);
-    // The appended `read` arrives without any placeholder note: prompts stay pristine.
-    expect(body.instructions).toBeUndefined();
+    // The appended `read` arrives without any placeholder note; the <env>
+    // marker (P1-17d) is the only prompt addition.
+    expect(body.instructions).toContain("<env>");
+    expect(body.instructions).not.toContain("placeholders that do nothing");
   });
 
   it("normalizes the nested chat shape without adding a system note", () => {
@@ -291,7 +305,7 @@ describe("opencodeFingerprint — in-place normalization", () => {
 
     expect(namesOf(body.tools)).toEqual(["shell_client", "read", "shell"]);
     expect(map.get("shell_client")).toBe("shell");
-    expect(body.instructions).toBeUndefined();
+    expect(body.instructions).toContain("<env>");
   });
 
   it("conceals when the caller declares an argument the fingerprint does not", () => {

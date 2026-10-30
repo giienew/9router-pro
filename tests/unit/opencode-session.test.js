@@ -278,8 +278,13 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     // tool_choice "none" is answered with 403 FreeTierError upstream.
     expect(chatNoTools.tool_choice).toBeUndefined();
     expect(chatNoTools.tools.map((t) => t.function?.name)).toEqual(["read", "shell"]);
-    // No placeholder note is injected: the prompt stays pristine.
-    expect(chatNoTools.messages).toEqual([{ role: "user", content: "hi" }]);
+    // No placeholder note is injected; P1-17d appends only the <env> marker
+    // as a system message, with the caller's messages untouched behind it.
+    expect(chatNoTools.messages).toHaveLength(2);
+    expect(chatNoTools.messages[0].role).toBe("system");
+    expect(chatNoTools.messages[0].content).toContain("<env>");
+    expect(chatNoTools.messages[0].content).not.toContain("placeholders that do nothing");
+    expect(chatNoTools.messages[1]).toEqual({ role: "user", content: "hi" });
 
     const chatWithTools = executor.transformRequest("nemotron-3-ultra-free", {
       messages: [{ role: "user", content: "hi" }],
