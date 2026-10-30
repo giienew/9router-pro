@@ -15,6 +15,7 @@ export async function GET(request) {
     const pageSize = Number.isNaN(pageSizeRaw) ? 20 : pageSizeRaw;
     const provider = searchParams.get("provider");
     const model = searchParams.get("model");
+    const requestId = searchParams.get("requestId");
     const connectionId = searchParams.get("connectionId");
     const status = searchParams.get("status");
     const startDate = searchParams.get("startDate");
@@ -41,6 +42,7 @@ export async function GET(request) {
     
     if (provider) filter.provider = provider;
     if (model) filter.model = model;
+    if (requestId) filter.requestId = requestId;
     if (connectionId) filter.connectionId = connectionId;
     if (status) filter.status = status;
     if (startDate) filter.startDate = startDate;
