@@ -554,8 +554,6 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       promptInjects,
       briefLevel,
       onRtkStats: (stats) => { try { recordRtkSavings(stats); } catch {} },
-      customPromptEnabled: !!chatSettings.customPromptEnabled,
-      customPrompt: chatSettings.customPrompt || "",
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
