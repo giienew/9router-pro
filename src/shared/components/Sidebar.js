@@ -364,7 +364,7 @@ export default function Sidebar({ onClose }) {
               >
                 settings
               </span>
-              <span className="text-[13px] font-medium">Settings</span>
+              <span className="text-[13px] font-medium">Profile & Settings</span>
             </Link>
           </div>
         </nav>

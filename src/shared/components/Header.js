@@ -158,8 +158,8 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/profile"))
     return {
-      title: "Settings",
-      description: "Manage your preferences",
+      title: "Profile & Settings",
+      description: "Manage your profile and preferences",
       icon: "settings",
       breadcrumbs: [],
     };
