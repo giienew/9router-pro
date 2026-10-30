@@ -394,6 +394,13 @@ export async function updateProviderConnection(id, data) {
     const beforeSig = modelsListSignature(existing);
     const normalized = resetHealthStateOnActivation(existing, data);
     const merged = { ...existing, ...normalized, updatedAt: new Date().toISOString() };
+    // Re-enable is a deliberate operator action: a quarantined account
+    // gets a fresh chance instead of re-quarantining on its next failure.
+    if (existing.isActive === false && merged.isActive === true) {
+      merged.consecutiveAuthFailures = 0;
+      merged.quarantineReason = null;
+      merged.quarantinedAt = null;
+    }
     upsert(db, merged);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;

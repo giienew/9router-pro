@@ -40,6 +40,35 @@ let stickySelectionMutex = Promise.resolve();
 // stamp in memory, so rotation stays correct until restart.
 const lastUsedDirty = new Map();
 let lastUsedFlushTimer = null;
+
+// Auto-quarantine (9Router Pro): a credential that fails auth repeatedly
+// is dead, not unlucky — per-model locks alone would retry it forever
+// across models. After QUARANTINE_AFTER_AUTH_FAILURES consecutive 401/403s
+// the account is deactivated with a dashboard-visible reason (lastError)
+// and can be re-enabled by hand (which resets the counter).
+const QUARANTINE_AFTER_AUTH_FAILURES = 5;
+
+// Provider-wide auth-failure guard: if several distinct accounts of one
+// provider fail auth within a short window, the provider itself is sick
+// (endpoint change, global outage) — quarantining each account would
+// empty the fleet on a false signal. While the burst lasts, the counter
+// freezes instead of counting provider noise as account death.
+const PROVIDER_AUTH_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const PROVIDER_AUTH_FAILURE_DISTINCT_LIMIT = 5;
+const providerAuthFailures = new Map(); // providerId -> Map(accountId -> timestamp)
+function providerAuthFailureIsBroad(providerId, connectionId) {
+  const now = Date.now();
+  let perAccount = providerAuthFailures.get(providerId);
+  if (!perAccount) {
+    perAccount = new Map();
+    providerAuthFailures.set(providerId, perAccount);
+  }
+  perAccount.set(connectionId, now);
+  for (const [id, at] of perAccount) {
+    if (now - at > PROVIDER_AUTH_FAILURE_WINDOW_MS) perAccount.delete(id);
+  }
+  return perAccount.size >= PROVIDER_AUTH_FAILURE_DISTINCT_LIMIT;
+}
 function scheduleLastUsedFlush(id, lastUsedAt, consecutiveUseCount) {
   if (!id) return;
   lastUsedDirty.set(id, { lastUsedAt, consecutiveUseCount });
@@ -428,6 +457,27 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     update.testStatus = "unavailable";
   }
 
+  // Account-level auth-failure quarantine: 401/403 only (402 is payment,
+  // 404 is a missing model — neither proves a dead credential). Only
+  // counted when the connection row actually loaded; a failed DB read
+  // must not clobber the true counter with a fresh 1. Success resets
+  // the counter (clearAccountError); manual re-enable resets it too.
+  if (conn && (status === 401 || status === 403)) {
+    const providerId = provider ? resolveProviderId(provider) : null;
+    const broad = providerId ? providerAuthFailureIsBroad(providerId, connectionId) : false;
+    if (!broad) {
+      const failures = (conn.consecutiveAuthFailures || 0) + 1;
+      update.consecutiveAuthFailures = failures;
+      if (failures >= QUARANTINE_AFTER_AUTH_FAILURES) {
+        update.isActive = false;
+        update.quarantinedAt = new Date().toISOString();
+        update.quarantineReason = `Auto-quarantined after ${failures} consecutive auth failures (last: ${status})`;
+        update.lastError = update.quarantineReason;
+        update.testStatus = "unavailable";
+      }
+    }
+  }
+
   try {
     await updateProviderConnection(connectionId, update);
   } catch (err) {
@@ -495,6 +545,10 @@ export async function clearAccountError(connectionId, currentConnection, model =
       backoffLevel: 0
     });
   }
+
+  // A success proves the credential alive: the auth-failure counter
+  // resets even when other models' locks remain.
+  if (conn.consecutiveAuthFailures) clearObj.consecutiveAuthFailures = 0;
 
   await updateProviderConnection(connectionId, clearObj);
 }
