@@ -3,6 +3,12 @@
   "version": "0.5.109-pro.15",
   "description": "9Router Pro by Gienetic \u2014 AI router with a Prompt Inject engine (per-model / per-key / global system prompts), based on 9Router by decolua",
   "author": "Gienetic",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giienew/9router-pro.git"
+  },
+  "homepage": "https://github.com/giienew/9router-pro#readme",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev --port 20127",
