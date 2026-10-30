@@ -1071,7 +1071,7 @@ export default function ProvidersPage() {
               <h3 className="font-semibold">Test Results</h3>
               <button
                 onClick={() => setTestResults(null)}
-                className="p-1 rounded-lg hover:bg-bg text-text-muted hover:text-text-main transition-colors"
+                className="p-2 rounded-lg hover:bg-bg text-text-muted hover:text-text-main transition-colors"
                 aria-label="Close test results"
               >
                 <span className="material-symbols-outlined text-lg">close</span>
@@ -1172,7 +1172,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
           <div className="flex shrink-0 items-center gap-2">
             {stats.total > 0 && (
               <div
-                className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                className="transition-opacity"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1324,7 +1324,7 @@ function ApiKeyProviderCard({
           <div className="flex shrink-0 items-center gap-2">
             {stats.total > 0 && (
               <div
-                className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                className="transition-opacity"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();

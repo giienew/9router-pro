@@ -1070,7 +1070,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                         type="button"
                         onClick={() => handleMove(index, -1)}
                         disabled={!enabled || index === 0}
-                        className={`p-1 rounded transition-colors ${
+                        className={`p-2 rounded transition-colors ${
                           !enabled || index === 0
                             ? "text-text-muted/20 cursor-not-allowed"
                             : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"
@@ -1083,7 +1083,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                         type="button"
                         onClick={() => handleMove(index, 1)}
                         disabled={!enabled || index === models.length - 1}
-                        className={`p-1 rounded transition-colors ${
+                        className={`p-2 rounded transition-colors ${
                           !enabled || index === models.length - 1
                             ? "text-text-muted/20 cursor-not-allowed"
                             : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"
@@ -1099,7 +1099,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
                       type="button"
                       onClick={() => handleRemove(index)}
                       disabled={!enabled}
-                      className={`p-1 rounded transition-colors ${
+                      className={`p-2 rounded transition-colors ${
                         !enabled
                           ? "text-text-muted/20 cursor-not-allowed"
                           : "text-text-muted hover:text-red-500 hover:bg-red-500/10"
