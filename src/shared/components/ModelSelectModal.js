@@ -716,6 +716,14 @@ export default function ModelSelectModal({
         </span>
       </div>
 
+      {/* Auto-routing hint (G6, text only): the auto: targets exist in the
+          router but are not list entries yet — the backend track adds them. */}
+      <p className="mb-3 px-1 text-xs text-text-muted">
+        Tip: you can also ask for <code className="font-mono">auto:coding</code>, <code className="font-mono">auto:fast</code>,{" "}
+        <code className="font-mono">auto:cheap</code>, or <code className="font-mono">auto:headroom</code> — the router picks a
+        connected model for that job.
+      </p>
+
       {/* Search & batch actions */}
       <div className="mb-3 space-y-2">
         <div className="relative">
