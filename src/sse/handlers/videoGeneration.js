@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings, getProviderConnectionById } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
@@ -17,6 +17,8 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 const NO_AUTH_VIDEO_PROVIDERS = new Set(["veoaifree-web"]);
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
+import { recordModalityUsage } from "../services/modalityUsage.js";
 
 // Video generation is xAI-only today; requests without a provider prefix
 // (bare model id, or multipart bodies we deliberately don't parse) land here.
@@ -112,10 +114,26 @@ function withConnectionHeader(response, connectionId) {
  * POST /v1/videos/{generations|edits|extensions} — async job creation proxy.
  */
 export async function handleVideoCreate(request, action) {
-  return withKeyAdmission(request, () => handleVideoCreateImpl(request, action));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleVideoCreateImpl(request, action, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleVideoCreateImpl(request, action) {
+// G9: video creation only ACCEPTS an async job — the provider bills on
+// completion, and the poll path surfaces no usage payload, so no token or
+// USD figure exists to accrue at creation time. Creation records a
+// request-only row (visible in usage history, moves no quota). That is an
+// explicit disclosed gap, not a silent omission: token/cost quotas do not
+// count video spend until a provider reports it.
+async function handleVideoCreateImpl(request, action, requestId = null) {
+  const apiKey = extractApiKey(request);
+  const endpoint = new URL(request.url).pathname;
+  const recordVideoAcceptance = (connectionId, provider, model) => {
+    recordModalityUsage({
+      provider, model: model || "video", connectionId, apiKey, endpoint, requestId,
+      meta: { accrual: "request-only", reason: "async job billed on completion; no usage reported at acceptance" },
+    });
+  };
   const authError = await requireValidApiKey(request);
   if (authError) return authError;
 
@@ -155,7 +173,10 @@ async function handleVideoCreateImpl(request, action) {
       signal: request.signal,
       log,
     });
-    if (result.success) return result.response;
+    if (result.success) {
+      recordVideoAcceptance(null, provider, model);
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Video generation failed");
   }
 
@@ -167,21 +188,17 @@ async function handleVideoCreateImpl(request, action) {
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
   const settings = await getSettings();
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, provider, model));
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        return unavailableResponse(status, `[${provider}/${model || "video"}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: `${provider}/${model || "video"}`, provider,
+        noCredentialsMessage: `No credentials for provider: ${provider}`,
+      });
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
@@ -209,6 +226,7 @@ async function handleVideoCreateImpl(request, action) {
 
     if (result.success) {
       await clearAccountError(credentials.connectionId, credentials, model);
+      recordVideoAcceptance(credentials.connectionId, provider, model);
       log.info("VIDEO", `${provider.toUpperCase()} | ${action} accepted (connection ${credentials.connectionId})`);
       return withConnectionHeader(result.response, credentials.connectionId);
     }

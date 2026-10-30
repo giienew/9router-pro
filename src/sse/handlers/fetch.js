@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
@@ -13,6 +13,8 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
+import { recordModalityUsage } from "../services/modalityUsage.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -25,10 +27,12 @@ import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
  * @param {Request} request
  */
 export async function handleFetch(request) {
-  return withKeyAdmission(request, () => handleFetchImpl(request));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleFetchImpl(request, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleFetchImpl(request) {
+async function handleFetchImpl(request, requestId = null) {
   let body;
   try {
     body = await request.json();
@@ -111,7 +115,7 @@ async function handleFetchImpl(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings, requestId),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -119,10 +123,24 @@ async function handleFetchImpl(request) {
     });
   }
 
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings, requestId);
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
+// G9: fetch spend is USD-per-call (providerConfig.costPerQuery), not
+// tokens — same cost-only accrual as search (see search.js). A provider
+// with no costPerQuery records a request-only row.
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings, requestId = null) {
+  const endpoint = new URL(request.url).pathname;
+  function recordFetchUsage(providerConfig, connectionId) {
+    const cost = providerConfig?.costPerQuery;
+    recordModalityUsage({
+      provider: providerId, model: "fetch", connectionId, apiKey, endpoint, requestId,
+      ...(Number.isFinite(cost) ? { costOverride: cost } : {}),
+      meta: Number.isFinite(cost)
+        ? { accrual: "cost-only", fetches: 1 }
+        : { accrual: "request-only", reason: "no costPerQuery configured" },
+    });
+  }
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -159,6 +177,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       log
     });
     if (result.success) {
+      recordFetchUsage(providerConfig, null);
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -179,24 +198,18 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, providerId));
 
   while (true) {
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds, fetchLockKey);
 
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        log.warn("FETCH", `[${providerId}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${providerId}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) {
-        log.error("AUTH", `No credentials for provider: ${providerId}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${providerId}`);
-      }
-      log.warn("FETCH", "No more accounts available", { provider: providerId });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: providerId, provider: providerId,
+        noCredentialsMessage: `No credentials for provider: ${providerId}`,
+        log, label: "FETCH", logNoCredentials: true,
+      });
     }
 
     log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
@@ -223,6 +236,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
 
     if (result.success) {
       await clearAccountError(credentials.connectionId, credentials, fetchLockKey);
+      recordFetchUsage(providerConfig, credentials.connectionId);
       return new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });

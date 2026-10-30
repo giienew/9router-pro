@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
@@ -13,6 +13,8 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
+import { recordModalityUsage } from "../services/modalityUsage.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -24,10 +26,12 @@ import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAc
  * @param {Request} request
  */
 export async function handleSearch(request) {
-  return withKeyAdmission(request, () => handleSearchImpl(request));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleSearchImpl(request, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleSearchImpl(request) {
+async function handleSearchImpl(request, requestId = null) {
   let body;
   try {
     body = await request.json();
@@ -91,7 +95,7 @@ async function handleSearchImpl(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings, requestId),
       log,
       comboName: providerInput,
       comboStrategy,
@@ -99,10 +103,28 @@ async function handleSearchImpl(request) {
     });
   }
 
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings, requestId);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
+// G9: search spend is USD-per-query (providerConfig.costPerQuery), not
+// tokens, so it accrues via costOverride ("cost-only" in meta) — cost
+// quotas count it, token quotas do not (there are no tokens to count).
+// Search-via-chat providers have no costPerQuery, so they record a
+// request-only row: visible in usage history, moving no quota.
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings, requestId = null) {
+  const endpoint = new URL(request.url).pathname;
+  // Defined inside so it closes over the resolved provider, the caller's
+  // key, and the request id of this search.
+  function recordSearchUsage(providerConfig, connectionId) {
+    const cost = providerConfig?.costPerQuery;
+    recordModalityUsage({
+      provider: providerId, model: "search", connectionId, apiKey, endpoint, requestId,
+      ...(Number.isFinite(cost) ? { costOverride: cost } : {}),
+      meta: Number.isFinite(cost)
+        ? { accrual: "cost-only", queries: 1 }
+        : { accrual: "request-only", reason: "no costPerQuery configured" },
+    });
+  }
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -151,7 +173,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       credentials: null,
       log
     });
-    if (result.success) return result.response;
+    if (result.success) {
+      recordSearchUsage(providerConfig, null);
+      return result.response;
+    }
     return result.response;
   }
 
@@ -175,7 +200,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, providerId));
 
   while (true) {
     // Provider that actually owns the connection in use — differs from
@@ -194,18 +219,12 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     }
 
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        log.warn("SEARCH", `[${providerId}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${providerId}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) {
-        log.error("AUTH", `No credentials for provider: ${providerId}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${providerId}`);
-      }
-      log.warn("SEARCH", "No more accounts available", { provider: providerId });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: providerId, provider: providerId,
+        noCredentialsMessage: `No credentials for provider: ${providerId}`,
+        log, label: "SEARCH", logNoCredentials: true,
+      });
     }
 
     log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
@@ -231,7 +250,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      recordSearchUsage(providerConfig, credentials.connectionId);
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, credentialProviderId, searchLockKey);
 

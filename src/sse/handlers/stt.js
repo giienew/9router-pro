@@ -2,7 +2,7 @@ import {
   extractApiKey, isValidApiKey,
   getProviderCredentials, markAccountUnavailable, clearAccountError,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings, getCustomModels } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
@@ -12,8 +12,31 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { recordModalityUsage, estimateTokensFromText } from "../services/modalityUsage.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
+
+// G9: STT providers report no token usage and audio duration is not
+// decoded here, so spend is estimated from the transcript text at
+// chars/4 (see modalityUsage.js) and marked "estimated". The response
+// is cloned so measuring the transcript never consumes the client's copy.
+function recordSttUsage(response, { provider, model, connectionId, usageCtx }) {
+  const base = { provider, model, connectionId, ...usageCtx };
+  try {
+    response.clone().text().then((txt) => {
+      recordModalityUsage({
+        ...base,
+        tokens: { prompt_tokens: 0, completion_tokens: estimateTokensFromText(txt) },
+        meta: { accrual: "estimated", basis: "transcript chars/4" },
+      });
+    }).catch(() => {
+      recordModalityUsage({ ...base, meta: { accrual: "request-only", reason: "transcript unreadable" } });
+    });
+  } catch {
+    recordModalityUsage({ ...base, meta: { accrual: "request-only", reason: "transcript unreadable" } });
+  }
+}
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -40,10 +63,12 @@ async function resolveCustomModelTransport(provider, model) {
 }
 
 export async function handleStt(request) {
-  return withKeyAdmission(request, () => handleSttImpl(request));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleSttImpl(request, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleSttImpl(request) {
+async function handleSttImpl(request, requestId = null) {
   let formData;
   try {
     formData = await request.formData();
@@ -54,9 +79,10 @@ async function handleSttImpl(request) {
   const modelStr = formData.get("model");
   log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
+  const apiKey = extractApiKey(request);
+  const usageCtx = { apiKey, endpoint: "/v1/audio/transcriptions", requestId };
   const settings = await getSettings();
   if (settings.requireApiKey) {
-    const apiKey = extractApiKey(request);
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     const valid = await isValidApiKey(apiKey);
     if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
@@ -82,7 +108,10 @@ async function handleSttImpl(request) {
   // noAuth providers
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
     const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig, transport: modelTransport });
-    if (result.success) return result.response;
+    if (result.success) {
+      recordSttUsage(result.response, { provider, model, connectionId: null, usageCtx });
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }
 
@@ -94,19 +123,17 @@ async function handleSttImpl(request) {
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, provider, model));
 
   while (true) {
     let credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const msg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        return unavailableResponse(status, `[${provider}/${model}] ${msg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: `${provider}/${model}`, provider,
+        noCredentialsMessage: `No credentials for provider: ${provider}`,
+      });
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
@@ -127,6 +154,7 @@ async function handleSttImpl(request) {
       }
       if (result.success) {
         if (isCodex) await clearAccountError(credentials.connectionId, credentials, model);
+        recordSttUsage(result.response, { provider, model, connectionId: credentials.connectionId, usageCtx });
         return result.response;
       }
     } catch {

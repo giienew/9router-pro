@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { getKeyAccessContext, enforceKeyAccess } from "../services/keyAccess.js";
@@ -17,18 +17,22 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
+import { recordModalityUsage } from "../services/modalityUsage.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui", "veoaifree-web"]);
 
-function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoint, usage }) {
-  if (!usage || typeof usage !== "object") return;
+// Returns true when a usage row was actually written, so the caller can
+// tell a reported-usage success from a no-usage success (G9 fallback below).
+function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoint, usage, requestId }) {
+  if (!usage || typeof usage !== "object") return false;
   const promptTokens = usage.prompt_tokens;
   const completionTokens = usage.completion_tokens;
   if (!Number.isSafeInteger(promptTokens) || promptTokens < 0 ||
       !Number.isSafeInteger(completionTokens) || completionTokens < 0) {
-    return;
+    return false;
   }
 
   saveRequestUsage({
@@ -39,7 +43,10 @@ function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoi
     endpoint: endpoint || null,
     tokens: usage,
     status: "success",
+    requestId: requestId || undefined,
+    meta: { accrual: "reported" },
   }).catch(() => {});
+  return true;
 }
 
 /**
@@ -47,10 +54,12 @@ function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoi
  * @param {Request} request
  */
 export async function handleImageGeneration(request) {
-  return withKeyAdmission(request, () => handleImageGenerationImpl(request));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleImageGenerationImpl(request, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleImageGenerationImpl(request) {
+async function handleImageGenerationImpl(request, requestId = null) {
   let body;
   try {
     body = await request.json();
@@ -89,7 +98,7 @@ async function handleImageGenerationImpl(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname, requestId }),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -97,10 +106,10 @@ async function handleImageGenerationImpl(request) {
     });
   }
 
-  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname });
+  return handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint: url.pathname, requestId });
 }
 
-async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint } = {}) {
+async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutput, preferredConnectionId, apiKey, endpoint, requestId } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -114,7 +123,16 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       credentials: null,
       binaryOutput,
     });
-    if (result.success) return result.response;
+    // G9: noAuth image adapters report no token usage, so a successful
+    // generation records a request-only row (visible, moves no quota —
+    // there is no token or USD figure to count).
+    if (result.success) {
+      recordModalityUsage({
+        provider, model, connectionId: null, apiKey, endpoint, requestId,
+        meta: { accrual: "request-only", reason: "provider reports no token usage" },
+      });
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
@@ -127,21 +145,17 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
   const settings = await getSettings();
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, provider, model));
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) {
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: `${provider}/${model}`, provider,
+        noCredentialsMessage: `No credentials for provider: ${provider}`,
+      });
     }
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
@@ -157,6 +171,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       continue;
     }
 
+    let usageRecorded = false;
     const result = await handleImageGenerationCore({
       body,
       modelInfo: { provider, model },
@@ -172,14 +187,15 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
         });
       },
       onUsage: (usage) => {
-        recordImageRequestUsage({
+        if (recordImageRequestUsage({
           provider,
           model,
           connectionId: credentials.connectionId,
           apiKey,
           endpoint,
           usage,
-        });
+          requestId,
+        })) usageRecorded = true;
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
@@ -191,7 +207,20 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
       }
     });
 
-    if (result.success) return result.response;
+    // G9: when the adapter reported no usage and this is not a stream
+    // (a streaming response may still report usage while delivering, so a
+    // fallback row here could double-count — streaming no-usage images
+    // stay unrecorded and are disclosed as such), record a request-only
+    // row so the generation is at least visible in usage history.
+    if (result.success) {
+      if (!wantsStream && !usageRecorded) {
+        recordModalityUsage({
+          provider, model, connectionId: credentials.connectionId, apiKey, endpoint, requestId,
+          meta: { accrual: "request-only", reason: "provider reports no token usage" },
+        });
+      }
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
 
