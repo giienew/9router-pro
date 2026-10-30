@@ -4,26 +4,27 @@ import { getApiKeyByKey, getInjectKeyModelPrompts, getInjectModelPrompts } from 
  * Resolve a combo's effective strategy (9Router Pro pair rotation).
  *
  * Precedence: the combo's own configured strategy, then the global
- * combo strategy, then the default. The default is "fallback" —
- * EXCEPT for a pair: a name carrying its own prompt injection (set on
- * the Prompt Injection page, for all keys or for the calling key)
- * backed by more than one model. A pair rotates its starting model
- * per request ("round-robin", sticky 1) so the load spreads across
- * the backing providers instead of the first model serving until it
- * fails; a failure still falls through the remaining models in
- * order. Storage errors fail open to "fallback".
+ * combo strategy, then "auto". "auto" is the untouched default: a pair
+ * — a name carrying its own prompt injection (set on the Prompt
+ * Injection page, for all keys or for the calling key) backed by more
+ * than one model — rotates its starting model per request
+ * ("round-robin", sticky 1) so the load spreads across the backing
+ * providers instead of the first model serving until it fails; a
+ * failure still falls through the remaining models in order.
+ * Everything else falls back sequentially. Storage errors fail open
+ * to "fallback".
  *
- * The global value only counts as a choice when it is not "fallback":
- * the settings defaults materialize comboStrategy: "fallback" even
- * when the user never picked anything, so an ambient "fallback"
- * cannot be told apart from the default — and a per-combo
- * "fallback" remains the way to pin one pair to sequential order.
+ * An explicit global "fallback" means fallback everywhere, including
+ * pairs — that was the surprise: the old default materialized
+ * "fallback" for users who never chose anything, so the global value
+ * only counted when it was not "fallback" and an explicit fallback
+ * could not pin pairs. A per-combo "fallback" still pins one pair.
  */
 export async function resolveComboStrategy(modelStr, comboModels, settings, apiKey) {
   const comboStrategies = settings?.comboStrategies || {};
   const specific = comboStrategies[modelStr]?.fallbackStrategy;
-  if (specific) return specific;
-  if (settings?.comboStrategy && settings.comboStrategy !== "fallback") return settings.comboStrategy;
+  if (specific && specific !== "auto") return specific;
+  if (settings?.comboStrategy && settings.comboStrategy !== "auto") return settings.comboStrategy;
 
   if (Array.isArray(comboModels) && comboModels.length > 1) {
     try {

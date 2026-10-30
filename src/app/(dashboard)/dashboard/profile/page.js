@@ -1942,7 +1942,9 @@ export default function ProfilePage() {
                     : "Currently using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
-                : " Combos always start with their first model."}
+                : settings.comboStrategy === "fallback"
+                  ? " Combos always start with their first model."
+                  : " Combos start with their first model, except pairs with an injection rotate their starting model per request."}
             </p>
           </div>
         </Card>

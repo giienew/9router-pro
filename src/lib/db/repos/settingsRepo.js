@@ -17,7 +17,14 @@ const DEFAULT_SETTINGS = {
   fallbackStrategy: "balanced",
   providerStrategies: {},
   quotaVisibility: {},
-  comboStrategy: "fallback",
+  // Global combo strategy default is "auto", not "fallback": "auto" keeps
+  // the pair rule (an injected multi-model pair rotates its starting
+  // model per request, everything else falls back sequentially), while an
+  // explicit "fallback" means fallback everywhere. The old default
+  // materialized "fallback" for users who never chose anything, which
+  // made an explicit "fallback" indistinguishable from the default — so
+  // setting the global strategy to fallback did NOT pin pairs.
+  comboStrategy: "auto",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
   capacityAdapter: {
