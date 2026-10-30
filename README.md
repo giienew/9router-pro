@@ -138,17 +138,15 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 ## 🚀 Quick Start (Pro)
 
 ```bash
-# from source
-git clone https://github.com/giienew/9router-pro.git
-cd 9router-pro
-npm install
-npm run build
-npm run start        # dashboard on http://localhost:20127
-
-# or with Docker — see the original documentation below for the full guide
+npm install -g 9router-pro
+9router-pro        # dashboard on http://localhost:20127
 ```
 
-Then open the dashboard, add a provider, and visit **Prompt Injection** to set up your injections.
+Then open the dashboard and log in. On a fresh install with no saved password, sign in with `INITIAL_PASSWORD` if you set one, otherwise the fallback `9routerpro`. From a non-local address, the fallback password alone is refused with a 403 until you change the password from the local machine or set `INITIAL_PASSWORD` — that is deliberate, not a bug.
+
+Then add a provider, and visit **Prompt Injection** to set up your injections.
+
+> Other install methods: run from source (`git clone https://github.com/giienew/9router-pro.git`, `npm install`, `npm run build`, `npm run start`) or with Docker — see the original documentation below for the full guide.
 
 > Already running the original 9Router? Keep your providers, combos and keys — follow the [migration guide](./MIGRATION.md) (about two minutes, via backup export/import).
 
@@ -1495,7 +1493,8 @@ docker pull decolua/9router:latest   # update to latest
 | `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt`                    | Salt for stable machine ID hashing                                                  |
 | `ENABLE_REQUEST_LOGS`                                | `false`                                  | Enables request/response logs under `logs/`                                         |
 | `AUTH_COOKIE_SECURE`                                 | `false`                                  | Force `Secure` auth cookie (set `true` behind HTTPS reverse proxy)                  |
-| `REQUIRE_API_KEY`                                    | `false`                                  | Enforce Bearer API key on `/v1/*` routes (recommended for internet-exposed deploys) |
+| `REQUIRE_API_KEY`                                    | `true`                                   | Enforce Bearer API key on `/v1/*` routes (recommended for internet-exposed deploys) |
+| `ENABLE_TRANSLATOR`                                  | `false`                                  | Shows the Translator (debug) page in the sidebar when `true`. This env variable is the only gate — there is no in-dashboard toggle for it. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | empty                                    | Optional outbound proxy for upstream provider calls                                 |
 | `SEARXNG_URL`                                        | `http://localhost:8888/search`           | Endpoint for the built-in unauthenticated SearXNG web-search provider               |
 
@@ -1673,9 +1672,8 @@ Authorization: Bearer your-api-key
 
 ## 📧 Support
 
-- **Website**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **GitHub**: [github.com/giienew/9router-pro](https://github.com/giienew/9router-pro)
+- **Issues**: [github.com/giienew/9router-pro/issues](https://github.com/giienew/9router-pro/issues)
 
 ---
 
