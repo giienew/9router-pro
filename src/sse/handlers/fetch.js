@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
@@ -170,6 +171,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   // failure must not take the account offline for LLM requests.
   const fetchLockKey = `webfetch:${providerId}`;
 
+  // Bound the account-retry loop: without a cap, a campaign-wide failure
+  // grinds the whole pool (chat has had this cap; the modality handlers
+  // did not). Null cap = disabled, same as chat.
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+
   while (true) {
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds, fetchLockKey);
 
@@ -230,7 +236,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
-      continue;
+      attemptLimiter.recordFailure();
+      if (attemptLimiter.exceeded) {
+        log.warn("FETCH", `Attempt cap reached (${attemptLimiter.failures} failed accounts), returning last error`);
+      } else {
+        continue;
+      }
     }
 
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");

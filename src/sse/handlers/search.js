@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
 import { getSettings, getCombos } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
@@ -166,6 +167,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   // getProviderCredentials too, so the lock is read back under the same key.
   const searchLockKey = `websearch:${providerId}`;
 
+  // Bound the account-retry loop: without a cap, a campaign-wide failure
+  // grinds the whole pool (chat has had this cap; the modality handlers
+  // did not). Null cap = disabled, same as chat.
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+
   while (true) {
     // Provider that actually owns the connection in use — differs from
     // providerId once we fall back, and error locks must be attributed to it.
@@ -229,7 +235,12 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
-      continue;
+      attemptLimiter.recordFailure();
+      if (attemptLimiter.exceeded) {
+        log.warn("SEARCH", `Attempt cap reached (${attemptLimiter.failures} failed accounts), returning last error`);
+      } else {
+        continue;
+      }
     }
 
     return result.response;

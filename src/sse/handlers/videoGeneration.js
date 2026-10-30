@@ -5,6 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
 import { getSettings, getProviderConnectionById } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
@@ -157,6 +158,11 @@ export async function handleVideoCreate(request, action) {
   let lastError = null;
   let lastStatus = null;
 
+  // Bound the account-retry loop: without a cap, a campaign-wide failure
+  // grinds the whole pool (chat has had this cap; the modality handlers
+  // did not). Null cap = disabled, same as chat.
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
@@ -210,7 +216,12 @@ export async function handleVideoCreate(request, action) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
-      continue;
+      attemptLimiter.recordFailure();
+      if (attemptLimiter.exceeded) {
+        log.warn("VIDEO", `Attempt cap reached (${attemptLimiter.failures} failed accounts), returning last error`);
+      } else {
+        continue;
+      }
     }
 
     return result.response;

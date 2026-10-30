@@ -15,3 +15,18 @@ export function resolveComboMemberAttemptCap(settings) {
   if (!Number.isFinite(v)) return DEFAULT_COMBO_MEMBER_ATTEMPT_CAP;
   return Math.min(MAX_COMBO_MEMBER_ATTEMPT_CAP, Math.max(1, Math.floor(v)));
 }
+
+// Shared account-attempt limiter for the modality fallback loops
+// (embeddings, fetch, search, tts, stt, image, video, systemone): the same
+// cap chat uses, so a campaign-wide failure stops after `cap` failed
+// accounts instead of grinding the whole pool. A null cap disables it
+// (the old exhaustive behaviour). Only failed accounts count — skipped
+// accounts (e.g. image adapters skipping unentitled plans) do not.
+export function createAttemptLimiter(cap) {
+  let failures = 0;
+  return {
+    get failures() { return failures; },
+    recordFailure() { failures++; },
+    get exceeded() { return cap !== null && cap !== undefined && failures >= cap; },
+  };
+}
