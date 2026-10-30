@@ -4,6 +4,7 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS, LAST_USED_FLUSH_DELAY_MS, LAST_USED_FLUSH_MAX_BATCH } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
+import { providerBreakerGate, recordProviderFailure } from "./providerBreaker.js";
 import * as log from "../utils/logger.js";
 
 // Dedicated mutex chain for round-robin / sticky-random account selection
@@ -189,6 +190,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const isAvailable = (c) => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // Provider breaker (P3-27, layer 1): a tripped provider contributes
+      // nothing until its probe window. Half-open reads as available —
+      // the first probe failure re-opens immediately.
+      if (providerBreakerGate(providerId) === "skip") {
+        log.debug("AUTH", `${c.id?.slice(0, 8)} | provider breaker open for ${providerId} — skip`);
+        return false;
+      }
       // Kiro: an account whose profileArn could not be resolved (refresh
       // proved it, no ARN stored) must not be picked for OAuth/social
       // auth — the translator would inject the shared default ARN, which
@@ -471,6 +479,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, resolveProviderId(provider)));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+
+  // Provider breaker (P3-27): only genuine outages count — 429, 5xx, or a
+  // missing status (network failure). Auth failures (401/403) are
+  // credential problems handled by quarantine; 402/404 are request-scoped
+  // and never reach here (shouldFallback is false for them).
+  if (provider) {
+    const s = Number(status);
+    const isOutage = status == null || s === 429 || (Number.isFinite(s) && s >= 500);
+    if (isOutage) recordProviderFailure(resolveProviderId(provider), connectionId);
+  }
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);

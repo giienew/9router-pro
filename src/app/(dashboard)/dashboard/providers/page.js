@@ -197,7 +197,7 @@ function NotConnectedProviders({ entries, forceOpen }) {
 }
 
 export default function ProvidersPage() {
-  const { statsMap, setStatsMap } = useProviderSummary();
+  const { statsMap, setStatsMap, breakers } = useProviderSummary();
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
@@ -324,6 +324,10 @@ export default function ProvidersPage() {
       errorCode,
       errorTime,
       allDisabled: anyEntry && total > 0 ? allDisabled : false,
+      // Provider breaker (P3-27) keyed by registry provider id. Compatible
+      // nodes use synthetic ids, so they never match — their single
+      // endpoint is covered by the connection-cooldown layer instead.
+      breaker: breakers[providerId] || null,
     };
   };
 
@@ -1060,7 +1064,7 @@ export default function ProvidersPage() {
 }
 
 function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
-  const { connected, error, errorCode, errorTime, allDisabled } = stats;
+  const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
   const isNoAuth = !!provider.noAuth;
 
   const dotColors = {
@@ -1119,6 +1123,20 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}
+                    {breaker?.state === "open" && (
+                      <span title="Provider breaker open — broad failures, no traffic until the probe window.">
+                        <Badge variant="error" size="sm">
+                          Breaker open
+                        </Badge>
+                      </span>
+                    )}
+                    {breaker?.state === "half-open" && (
+                      <span title="Provider breaker probing — traffic resumes, one failure re-opens it.">
+                        <Badge variant="warning" size="sm">
+                          Breaker probing
+                        </Badge>
+                      </span>
+                    )}
                     {errorTime && (
                       <span className="text-text-muted">{errorTime}</span>
                     )}
@@ -1177,7 +1195,7 @@ function ApiKeyProviderCard({
   authType,
   onToggle,
 }) {
-  const { connected, error, errorCode, errorTime, allDisabled } = stats;
+  const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
   const isCompatible = providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
   const isAnthropicCompatible = providerId.startsWith(
     ANTHROPIC_COMPATIBLE_PREFIX,
@@ -1245,6 +1263,20 @@ function ApiKeyProviderCard({
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}
+                    {breaker?.state === "open" && (
+                      <span title="Provider breaker open — broad failures, no traffic until the probe window.">
+                        <Badge variant="error" size="sm">
+                          Breaker open
+                        </Badge>
+                      </span>
+                    )}
+                    {breaker?.state === "half-open" && (
+                      <span title="Provider breaker probing — traffic resumes, one failure re-opens it.">
+                        <Badge variant="warning" size="sm">
+                          Breaker probing
+                        </Badge>
+                      </span>
+                    )}
                     {isCompatible && (
                       <Badge variant="default" size="sm">
                         {provider.apiType === "responses"

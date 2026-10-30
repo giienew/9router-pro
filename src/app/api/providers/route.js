@@ -12,6 +12,7 @@ import {
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { getProviderBreakerSnapshot } from "@/sse/services/providerBreaker.js";
 import { toProviderConnectionResponse } from "@/lib/providerConnectionResponse";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +94,9 @@ export async function GET(request) {
       if (!statsCache.data || Date.now() - statsCache.at > STATS_TTL_MS) {
         statsCache = { at: Date.now(), data: await getProviderConnectionStats() };
       }
-      return NextResponse.json({ stats: statsCache.data });
+      // Breaker states are live (they flip on failures) so they bypass the
+      // stats cache — reading the in-memory map is cheap.
+      return NextResponse.json({ stats: statsCache.data, breakers: getProviderBreakerSnapshot() });
     }
     const providerFilter = params.get("provider") || undefined;
     const lite = params.get("lite") === "1";

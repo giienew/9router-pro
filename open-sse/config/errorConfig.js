@@ -74,6 +74,19 @@ export const UNAVAILABLE_LABEL_MIN_COOLDOWN_MS = 60 * 1000;
 // on their own instead of shrinking forever.
 export const SUSPECT_PROBATION_MS = 60 * 60 * 1000;
 
+// Provider breaker (P3-27, 9Router Pro): the third resilience layer. When a
+// provider's fleet fails broadly, the whole provider stops receiving
+// traffic for a minute instead of every request hammering it, then re-opens
+// for a short probing window. Distinct from connection cooldown (one
+// account) and model lockout (one model on one account): this is
+// provider-wide. Auth failures (401/403) never trip it — those are
+// credential problems, handled by quarantine, not outages.
+export const PROVIDER_BREAKER_WINDOW_MS = 5 * 60 * 1000;
+export const PROVIDER_BREAKER_MIN_FAILURES = 5;
+export const PROVIDER_BREAKER_MIN_CONNECTIONS = 2;
+export const PROVIDER_BREAKER_OPEN_MS = 60 * 1000;
+export const PROVIDER_BREAKER_PROBE_MS = 30 * 1000;
+
 // Small-fleet rescue: when every connection of a small provider is locked
 // but the earliest lock lifts within this wait, selection retries that
 // connection instead of failing the request outright. Large fleets never

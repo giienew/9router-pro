@@ -8,11 +8,14 @@ import { useState, useEffect, useCallback } from "react";
  * `${providerId}|${authType}`), so pages never download every connection
  * just to count them. Pages that also mutate counts optimistically (toggle /
  * test) keep working: the raw `setStatsMap` setter is exposed alongside.
+ * Also carries live provider-breaker states (P3-27), which bypass the
+ * server's stats cache.
  *
- * @returns {{ statsMap: object, setStatsMap: function, loading: boolean, error: string|null, refresh: () => Promise<void> }}
+ * @returns {{ statsMap: object, setStatsMap: function, breakers: object, loading: boolean, error: string|null, refresh: () => Promise<void> }}
  */
 export function useProviderSummary() {
   const [statsMap, setStatsMap] = useState({});
+  const [breakers, setBreakers] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -23,6 +26,7 @@ export function useProviderSummary() {
       const data = await res.json();
       if (res.ok) {
         setStatsMap(data.stats || {});
+        setBreakers(data.breakers || {});
         setError(null);
       } else {
         setError(data.error || `HTTP ${res.status}`);
@@ -38,5 +42,5 @@ export function useProviderSummary() {
     refresh();
   }, [refresh]);
 
-  return { statsMap, setStatsMap, loading, error, refresh };
+  return { statsMap, setStatsMap, breakers, loading, error, refresh };
 }

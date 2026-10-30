@@ -13,7 +13,8 @@ import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseAutoTarget, buildAutoCandidates } from "../services/autoRouting.js";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
+import { recordProviderSuccess } from "../services/providerBreaker.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
@@ -38,6 +39,22 @@ export async function handleChat(request, clientRawRequest = null) {
   return withKeyAdmission(request, () => handleChatImpl(request, clientRawRequest), recheckKeyQuotaAfterCompletion);
 }
 import { resolveSmartChoice } from "../services/systemoneRouter.js";
+
+// Provider-breaker success signal (P3-27): a 2xx through a member closes a
+// half-open breaker for that member's provider. `backingOf` maps a member
+// string to the model string to parse (variants carry bare names — their
+// backing model is what actually served). Never throws, never blocks.
+const withBreakerSuccess = (fn, backingOf) => async (b, m, ...rest) => {
+  const r = await fn(b, m, ...rest);
+  try {
+    if (r?.ok) {
+      const target = (backingOf ? backingOf(m) : null) || m;
+      const p = parseModel(target);
+      if (p?.provider) recordProviderSuccess(p.provider);
+    }
+  } catch { /* breaker bookkeeping must not fail the request */ }
+  return r;
+};
 
 /**
  * Handle chat completion request
@@ -140,7 +157,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
     return handleComboChat({
       body,
       models: candidates,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, modelStr, resolveComboMemberAttemptCap(settings)),
+      handleSingleModel: withBreakerSuccess((b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, modelStr, resolveComboMemberAttemptCap(settings))),
       log,
       comboName: modelStr,
       comboStrategy: "fallback",
@@ -178,14 +195,14 @@ async function handleChatImpl(request, clientRawRequest = null) {
       return handleFusionChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m, isPanel, signal) => {
+        handleSingleModel: withBreakerSuccess((b, m, isPanel, signal) => {
           let cleanRawReq = clientRawRequest;
           if (isPanel && clientRawRequest) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
           return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings), signal);
-        },
+        }, (m) => topVariantBacking(m) || m),
         log,
         comboName: modelStr,
         judgeModel: comboStrategies[modelStr]?.judgeModel,
@@ -200,7 +217,10 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings)),
+        withBreakerSuccess(
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings)),
+          (m) => topVariantBacking(m) || m,
+        ),
         adapterAdded,
         topVariantBacking
       ),
@@ -244,7 +264,10 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, soloInjectName(m), resolveComboMemberAttemptCap(settings)),
+        withBreakerSuccess(
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, soloInjectName(m), resolveComboMemberAttemptCap(settings)),
+          (m) => soloVariantBacking(m) || m,
+        ),
         adapterAdded,
         soloVariantBacking
       ),
@@ -254,7 +277,15 @@ async function handleChatImpl(request, clientRawRequest = null) {
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null);
+  const soloResult = await handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null);
+  try {
+    if (soloResult?.ok) {
+      const target = soloVariantBacking(modelStr) || modelStr;
+      const p = parseModel(target);
+      if (p?.provider) recordProviderSuccess(p.provider);
+    }
+  } catch { /* breaker bookkeeping must not fail the request */ }
+  return soloResult;
 }
 
 /**
