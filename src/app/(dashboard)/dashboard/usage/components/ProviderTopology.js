@@ -207,7 +207,6 @@ function TopologyEdge({
           r={i % 2 === 0 ? 4 : 2.5}
           fill={i % 3 === 0 ? "#fde047" : i % 3 === 1 ? "#67e8f9" : "#fff"}
           opacity={0.95}
-          style={{ filter: "drop-shadow(0 0 4px #22d3ee)" }}
         >
           <animateMotion
             dur={`${0.4 + i * 0.08}s`}

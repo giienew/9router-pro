@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Badge, Button } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 
@@ -144,6 +145,7 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
 }
 
 export default function WebProvidersPage() {
+  const notify = useNotificationStore();
   const router = useRouter();
   const [connections, setConnections] = useState([]);
   const [combos, setCombos] = useState([]);
@@ -184,7 +186,7 @@ export default function WebProvidersPage() {
       router.push(`/dashboard/media-providers/combo/${created.id}`);
     } else {
       const err = await res.json();
-      alert(err.error || "Failed to create combo");
+      notify.error(err.error || "Failed to create combo");
     }
   };
 

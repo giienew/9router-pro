@@ -12,6 +12,7 @@ import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
+import { useNotificationStore } from "@/store/notificationStore";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelRow from "./ModelRow";
@@ -40,6 +41,7 @@ function sleep(ms) {
 }
 
 export default function ProviderDetailPage() {
+  const notify = useNotificationStore();
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
@@ -581,7 +583,7 @@ export default function ProviderDetailPage() {
         await fetchAliases();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to set alias");
+        notify.error(data.error || "Failed to set alias");
       }
     } catch (error) {
       console.log("Error setting alias:", error);
@@ -615,7 +617,7 @@ export default function ProviderDetailPage() {
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to add custom model");
+        notify.error(data.error || "Failed to add custom model");
       }
     } catch (error) {
       console.log("Error adding custom model:", error);
@@ -640,7 +642,7 @@ export default function ProviderDetailPage() {
     if (importingQoderModels) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) {
-      alert(translate("Please add an active Qoder connection first"));
+      notify.warning(translate("Please add an active Qoder connection first"));
       return;
     }
 
@@ -649,12 +651,12 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || translate("Failed to fetch models"));
+        notify.error(data.error || translate("Failed to fetch models"));
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
-        alert(translate("No models returned"));
+        notify.warning(translate("No models returned"));
         return;
       }
 
@@ -678,13 +680,13 @@ export default function ProviderDetailPage() {
       }
       
       if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
+        notify.warning(translate("All models already exist, no new models added"));
       } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
+        notify.success(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
       }
     } catch (error) {
       console.log("Error importing Qoder models:", error);
-      alert(translate("Error fetching models") + ": " + error.message);
+      notify.error(translate("Error fetching models") + ": " + error.message);
     } finally {
       setImportingQoderModels(false);
     }
@@ -695,7 +697,7 @@ export default function ProviderDetailPage() {
     if (importingClineModels) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) {
-      alert(translate("Please add an active Cline connection first"));
+      notify.warning(translate("Please add an active Cline connection first"));
       return;
     }
     setImportingClineModels(true);
@@ -703,12 +705,12 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || translate("Failed to fetch models"));
+        notify.error(data.error || translate("Failed to fetch models"));
         return;
       }
       const models = data.models || [];
       if (models.length === 0) {
-        alert(translate("No models returned"));
+        notify.warning(translate("No models returned"));
         return;
       }
       let importedCount = 0;
@@ -725,13 +727,13 @@ export default function ProviderDetailPage() {
         importedCount += 1;
       }
       if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
+        notify.warning(translate("All models already exist, no new models added"));
       } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
+        notify.success(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
       }
     } catch (error) {
       console.log("Error importing Cline models:", error);
-      alert(translate("Error fetching models") + ": " + error.message);
+      notify.error(translate("Error fetching models") + ": " + error.message);
     } finally {
       setImportingClineModels(false);
     }
@@ -868,7 +870,7 @@ export default function ProviderDetailPage() {
         }
         setConnections(prev => prev.filter(c => !idsToDelete.includes(c.id)));
         setSelectedConnectionIds([]);
-        if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
+        if (failed > 0) notify.warning(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
       }
     });
   };
@@ -1039,7 +1041,7 @@ export default function ProviderDetailPage() {
           failed += 1;
         }
       }
-      if (failed > 0) alert(`Updated with ${failed} failed request(s).`);
+      if (failed > 0) notify.warning(`Updated with ${failed} failed request(s).`);
       await fetchConnections();
       setShowBulkProxyModal(false);
     } finally {
@@ -1057,7 +1059,7 @@ export default function ProviderDetailPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to apply proxy.");
+        notify.error(data.error || "Failed to apply proxy.");
         return;
       }
       await fetchConnections();
@@ -1081,7 +1083,7 @@ export default function ProviderDetailPage() {
     }
     const activePools = proxyPools.filter((p) => p.isActive === true);
     if (activePools.length === 0) {
-      alert("No active proxy pools available.");
+      notify.warning("No active proxy pools available.");
       return;
     }
     const targets = connections.map((c, i) => ({

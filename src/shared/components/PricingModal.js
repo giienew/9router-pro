@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { getDefaultPricing, formatCost } from "open-sse/providers/pricing.js";
+import { ConfirmModal } from "./Modal";
+import { useNotificationStore } from "@/store/notificationStore";
 
 export default function PricingModal({ isOpen, onClose, onSave }) {
+  const notify = useNotificationStore();
   const [pricingData, setPricingData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -62,19 +66,18 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         onClose();
       } else {
         const error = await response.json();
-        alert(`Failed to save pricing: ${error.error}`);
+        notify.error(`Failed to save pricing: ${error.error}`);
       }
     } catch (error) {
       console.error("Failed to save pricing:", error);
-      alert("Failed to save pricing");
+      notify.error("Failed to save pricing");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleReset = async () => {
-    if (!confirm("Reset all pricing to defaults? This cannot be undone.")) return;
-
+  const handleConfirmReset = async () => {
+    setShowResetConfirm(false);
     try {
       const response = await fetch("/api/pricing", { method: "DELETE" });
       if (response.ok) {
@@ -83,7 +86,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
       }
     } catch (error) {
       console.error("Failed to reset pricing:", error);
-      alert("Failed to reset pricing");
+      notify.error("Failed to reset pricing");
     }
   };
 
@@ -179,7 +182,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         {/* Footer */}
         <div className="p-4 border-t border-border flex items-center justify-between gap-2">
           <button
-            onClick={handleReset}
+            onClick={() => setShowResetConfirm(true)}
             className="px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 rounded border border-red-500/20 transition-colors"
             disabled={saving}
           >
@@ -203,6 +206,14 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
           </div>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={handleConfirmReset}
+        title="Reset all pricing to defaults?"
+        message="This cannot be undone."
+        confirmText="Reset"
+      />
     </div>
   );
 }

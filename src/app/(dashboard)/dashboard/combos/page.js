@@ -217,7 +217,7 @@ export default function CombosPage() {
         setShowCreateModal(false);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to create combo");
+        notify.error(err.error || "Failed to create combo");
       }
     } catch (error) {
       console.log("Error creating combo:", error);
@@ -236,7 +236,7 @@ export default function CombosPage() {
         setEditingCombo(null);
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to update combo");
+        notify.error(err.error || "Failed to update combo");
       }
     } catch (error) {
       console.log("Error updating combo:", error);
@@ -305,10 +305,10 @@ export default function CombosPage() {
           setCombos((prev) => prev.filter((c) => !ids.includes(c.id)));
           clearSelection();
           setConfirmState(null);
-          if (failed > 0) alert(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}.`);
+          if (failed > 0) notify.warning(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}.`);
         } catch (error) {
           console.log("Error bulk deleting combos:", error);
-          alert("Failed to delete selected combos");
+          notify.error("Failed to delete selected combos");
           setConfirmState((prev) => prev ? { ...prev, loading: false } : null);
         } finally {
           setBulkBusy(false);
@@ -354,7 +354,7 @@ export default function CombosPage() {
       await persistComboStrategies(updated);
     } catch (error) {
       console.log("Error bulk updating combo strategy:", error);
-      alert("Failed to update strategy for selected combos");
+      notify.error("Failed to update strategy for selected combos");
     } finally {
       setBulkBusy(false);
     }

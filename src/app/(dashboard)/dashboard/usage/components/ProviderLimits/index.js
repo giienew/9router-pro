@@ -411,9 +411,11 @@ export default function ProviderLimits() {
     }
   }, []);
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
   const handleDeleteConnection = useCallback(
     async (id) => {
-      if (!confirm("Delete this connection?")) return;
+      setDeleteConfirmId(null);
       setDeletingId(id);
       try {
         const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
@@ -1322,7 +1324,7 @@ export default function ProviderLimits() {
                     <Tooltip text="Delete connection">
                       <button
                         type="button"
-                        onClick={() => handleDeleteConnection(conn.id)}
+                        onClick={() => setDeleteConfirmId(conn.id)}
                         disabled={rowBusy}
                         aria-label="Delete connection"
                         className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-500/10 text-red-500 transition-colors disabled:opacity-50"
@@ -1538,6 +1540,18 @@ export default function ProviderLimits() {
             </div>
           </div>
         </div>
+
+      <ConfirmModal
+        isOpen={Boolean(deleteConfirmId)}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => handleDeleteConnection(deleteConfirmId)}
+        title="Delete this connection?"
+        message="This removes the connection and its quota data. This cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={Boolean(deletingId)}
+      />
 
       <ConfirmModal
         isOpen={Boolean(resetConfirmState)}

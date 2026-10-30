@@ -3,7 +3,8 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
+import { Card, Button, Input, Toggle, ModelSelectModal, ConfirmModal } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 
@@ -45,6 +46,7 @@ function getListingHref(kind) {
 }
 
 export default function ComboDetailPage() {
+  const notify = useNotificationStore();
   const { id } = useParams();
   const router = useRouter();
   const [combo, setCombo] = useState(null);
@@ -107,7 +109,7 @@ export default function ComboDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    if (!res.ok) { const err = await res.json(); alert(err.error || "Failed to save"); return false; }
+    if (!res.ok) { const err = await res.json(); notify.error(err.error || "Failed to save"); return false; }
     return true;
   };
 
@@ -163,8 +165,10 @@ export default function ComboDetailPage() {
     });
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const handleDelete = async () => {
-    if (!confirm(`Delete combo "${combo.name}"?`)) return;
+    setShowDeleteConfirm(false);
     const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
     if (res.ok) router.push(getListingHref(combo.kind));
   };
@@ -255,7 +259,7 @@ export default function ComboDetailPage() {
             <code className="text-lg font-semibold font-mono">{combo.name}</code>
           </div>
         </div>
-        <Button variant="outline" icon="delete" onClick={handleDelete} className="text-red-500 border-red-200 hover:bg-red-50">
+        <Button variant="outline" icon="delete" onClick={() => setShowDeleteConfirm(true)} className="text-red-500 border-red-200 hover:bg-red-50">
           Delete
         </Button>
       </div>
@@ -407,6 +411,14 @@ export default function ComboDetailPage() {
           closeOnSelect={false}
         />
       )}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete combo?"
+        message={`Delete combo "${combo?.name}"? This cannot be undone.`}
+        confirmText="Delete"
+      />
     </div>
   );
 }

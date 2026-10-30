@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
+import { useNotificationStore } from "@/store/notificationStore";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
@@ -72,6 +73,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 }
 
 export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, connections, isAnthropic }) {
+  const notify = useNotificationStore();
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
@@ -116,7 +118,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     if (!newModel.trim() || adding) return;
     const modelId = newModel.trim();
     if (allModels.some((model) => model.id === modelId)) {
-      alert("Model already exists for this provider.");
+      notify.warning("Model already exists for this provider.");
       return;
     }
 
