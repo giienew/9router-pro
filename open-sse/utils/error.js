@@ -1,4 +1,5 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { emitErrorWebhook } from "@/lib/webhookEvents.js";
 
 /**
  * Build OpenAI-compatible error response body
@@ -97,6 +98,13 @@ export async function parseUpstreamError(response, executor = null) {
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
 export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null) {
+  // Structured webhook event (P3-30): server/upstream failures only
+  // (status >= 500). Client validation errors (4xx) are not events —
+  // they would flood a receiver with the caller's own mistakes. Off by
+  // default, fire-and-forget, never blocks the error response itself.
+  if (Number(statusCode) >= 500) {
+    emitErrorWebhook({ status: Number(statusCode), error: String(message || "").slice(0, 500) });
+  }
   return {
     success: false,
     status: statusCode,

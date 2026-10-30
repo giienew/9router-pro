@@ -13,6 +13,20 @@ export function defaultNotifyConfig() {
   return {
     telegram: { enabled: false, botToken: "", chatId: "" },
     webhook: { enabled: false, url: "", secret: "" },
+    // Structured webhook events (see webhookEvents.js): every event type
+    // is off by default; masking is on by default (see that module for
+    // the exact "mask on → [masked], mask off → dropped" semantics).
+    webhookEvents: { usage: false, quota: false, error: false, maskCredentials: true },
+  };
+}
+
+export function normalizeWebhookEvents(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    usage: r.usage === true,
+    quota: r.quota === true,
+    error: r.error === true,
+    maskCredentials: r.maskCredentials !== false,
   };
 }
 
@@ -31,6 +45,7 @@ export function normalizeNotifyConfig(raw) {
       url: typeof w.url === "string" ? w.url.trim() : "",
       secret: typeof w.secret === "string" ? w.secret : "",
     },
+    webhookEvents: normalizeWebhookEvents(raw?.webhookEvents),
   };
 }
 
@@ -62,6 +77,7 @@ export async function getNotifyStatus() {
       configured: Boolean(cfg.webhook.url),
       url: cfg.webhook.url,
     },
+    webhookEvents: cfg.webhookEvents || defaultNotifyConfig().webhookEvents,
   };
 }
 

@@ -18,6 +18,12 @@ export async function POST(request) {
     // Secrets are never returned by GET, so a blank field means "keep the
     // stored one" — otherwise every save would wipe the token.
     const existing = await getNotifyConfig();
+    // Same keep rule for structured webhook events: the legacy Automation
+    // form does not send webhookEvents, and normalizing it blind would
+    // silently switch every event off on every save.
+    if (raw?.webhookEvents === undefined && existing.webhookEvents) {
+      cfg.webhookEvents = existing.webhookEvents;
+    }
     if (!cfg.telegram.botToken) cfg.telegram.botToken = existing.telegram.botToken;
     if (!cfg.webhook.secret) cfg.webhook.secret = existing.webhook.secret;
     if (cfg.telegram.enabled && (!cfg.telegram.botToken || !cfg.telegram.chatId)) {

@@ -9,16 +9,21 @@
 // A limiter outage must not take the API down. The one hard rule is a
 // key that is actually over its configured limit: that gets a 429.
 //
-// Deliberate boundary: the token budget sums usageHistory, so modalities
-// that do not persist usage (fetch, search, TTS, STT, video) are gated by
-// the budget their recorded spend has already consumed, but their own
-// spend does not accrue toward it. Rate limits (rpm/rph/rpd/concurrency)
-// are in-memory and apply to every modality regardless.
+// Accrual boundary (G9): every modality now persists a usage row, so
+// the token/cost budget sums recorded spend for chat, embeddings, image,
+// systemone, TTS (estimated), STT (estimated), search (cost-only) and
+// fetch (cost-only). The remaining disclosed gaps move no quota: video
+// (async job, billed on completion, no usage at acceptance), streaming
+// image generations whose adapter reports no usage, and any modality row
+// marked accrual "request-only" in usageHistory meta. Rate limits
+// (rpm/rph/rpd/concurrency) are in-memory and apply to every modality
+// regardless.
 import { getApiKeyByKey, checkKeyQuota, getKeyLimits, getKeyUsageInWindow, isKeyExpired } from "@/lib/localDb";
 import { peekKeyLimits, admitKeyRequest } from "@/lib/keyRateLimiter.js";
 import { extractApiKey } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import * as log from "../utils/logger.js";
+import { emitQuotaWebhook } from "@/lib/webhookEvents.js";
 
 const LIMIT_MESSAGES = {
   rpm: (v) => `API key rate limit exceeded (${v.used}/${v.limit} requests in the last minute)`,
@@ -63,6 +68,17 @@ export async function admitKey(request) {
     }
     const quota = await checkKeyQuota(keyRecord.id, rawKey);
     if (quota.blocked) {
+      // Structured webhook event (P3-30): quota exceeded, off by default.
+      // The key value itself is never sent — only its dashboard name.
+      emitQuotaWebhook({
+        keyName: keyRecord.name,
+        used: quota.used ?? null,
+        limit: quota.quota?.limit ?? null,
+        windowHours: quota.quota?.windowHours ?? null,
+        costBlocked: quota.costBlocked === true,
+        costUsed: quota.costUsed ?? null,
+        costLimit: quota.quota?.costLimit ?? null,
+      });
       if (release) release();
       if (quota.costBlocked) {
         log.warn("QUOTA", `Key "${keyRecord.name}" over cost quota ($${quota.costUsed}/${quota.quota.costLimit} in the last ${quota.quota.windowHours}h)`);
@@ -86,6 +102,14 @@ export function recheckKeyQuotaAfterCompletion(admission) {
   checkKeyQuota(admission.keyRecord.id, admission.rawKey).then((verdict) => {
     if (verdict.blocked) {
       log.warn("QUOTA", `Key "${admission.keyRecord.name}" crossed quota during request (${verdict.used}/${verdict.quota.limit})`);
+      emitQuotaWebhook({
+        keyName: admission.keyRecord.name,
+        used: verdict.used ?? null,
+        limit: verdict.quota?.limit ?? null,
+        windowHours: verdict.quota?.windowHours ?? null,
+        costBlocked: verdict.costBlocked === true,
+        crossedMidRequest: true,
+      });
     }
   }).catch(() => {});
 }

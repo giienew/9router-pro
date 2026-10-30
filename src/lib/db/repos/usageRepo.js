@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { emitUsageWebhook, maskApiKeyForWebhook } from "@/lib/webhookEvents.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -258,7 +259,14 @@ export async function saveRequestUsage(entry) {
     const db = await getAdapter();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+    // Cost override (G9): modalities whose spend is USD-per-call, not
+    // tokens (web search/fetch costPerQuery), have no token price to
+    // calculate from — the caller supplies the USD cost directly so cost
+    // quotas count it. Token-priced callers omit it and keep the
+    // calculated cost exactly as before.
+    entry.cost = Number.isFinite(entry.costOverride)
+      ? entry.costOverride
+      : await calculateCost(entry.provider, entry.model, entry.tokens);
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
@@ -310,7 +318,11 @@ export async function saveRequestUsage(entry) {
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}), entry.requestId || null,
+          // G9: callers may attach accrual metadata (e.g. estimated vs
+          // reported vs cost-only) so a usage row says HOW it was
+          // counted; previously meta was always {}. Absent meta still
+          // stores {} exactly as before.
+          stringifyJson(tokens), stringifyJson(entry.meta || {}), entry.requestId || null,
         ]
       );
 
@@ -333,6 +345,22 @@ export async function saveRequestUsage(entry) {
     if (inserted) {
       pushToRing(entry);
       scheduleStatsEvent("update", 250);
+      // Structured webhook event (P3-30): off by default, fire-and-forget,
+      // never the raw key — only the masked form the usage API already
+      // exposes. Covers chat, embeddings, image, systemone and every
+      // other handler that persists through saveRequestUsage.
+      emitUsageWebhook({
+        provider: entry.provider,
+        model: entry.model,
+        connectionId: entry.connectionId || null,
+        apiKeyMasked: maskApiKeyForWebhook(entry.apiKey),
+        endpoint: entry.endpoint || null,
+        promptTokens,
+        completionTokens,
+        cost: entry.cost || 0,
+        status: entry.status || "ok",
+        requestId: entry.requestId || null,
+      });
     }
   } catch (e) {
     console.error("Failed to save usage stats:", e);
@@ -346,6 +374,7 @@ export async function getUsageHistory(filter = {}) {
 
   if (filter.provider) { conds.push("provider = ?"); params.push(filter.provider); }
   if (filter.model) { conds.push("model = ?"); params.push(filter.model); }
+  if (filter.requestId) { conds.push("requestId = ?"); params.push(filter.requestId); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
@@ -357,6 +386,55 @@ export async function getUsageHistory(filter = {}) {
     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
     cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
   }));
+}
+
+// Per-key usage breakdown (G14): totals + breakdowns by model, provider
+// and endpoint for one key (rawKey) or for all keys (rawKey null).
+// The raw key value is used only as a WHERE filter; callers must mask it
+// before returning anything (see the by-key route, which returns only
+// masked keys, key ids and names).
+export async function getKeyUsageBreakdown({ rawKey = null, startDate = null, endDate = null } = {}) {
+  const db = await getAdapter();
+  const conds = [];
+  const params = [];
+  if (rawKey) { conds.push("apiKey = ?"); params.push(rawKey); }
+  if (startDate) { conds.push("timestamp >= ?"); params.push(new Date(startDate).toISOString()); }
+  if (endDate) { conds.push("timestamp <= ?"); params.push(new Date(endDate).toISOString()); }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+  const totals = db.get(
+    `SELECT COUNT(*) AS requests,
+       COALESCE(SUM(COALESCE(promptTokens, 0)), 0) AS promptTokens,
+       COALESCE(SUM(COALESCE(completionTokens, 0)), 0) AS completionTokens,
+       COALESCE(SUM(COALESCE(cost, 0)), 0) AS cost
+     FROM usageHistory ${where}`,
+    params
+  );
+  const byModel = db.all(
+    `SELECT provider, model, COUNT(*) AS requests,
+       COALESCE(SUM(COALESCE(promptTokens, 0)), 0) AS promptTokens,
+       COALESCE(SUM(COALESCE(completionTokens, 0)), 0) AS completionTokens,
+       COALESCE(SUM(COALESCE(cost, 0)), 0) AS cost
+     FROM usageHistory ${where} GROUP BY provider, model ORDER BY requests DESC`,
+    params
+  );
+  const byProvider = db.all(
+    `SELECT provider, COUNT(*) AS requests,
+       COALESCE(SUM(COALESCE(promptTokens, 0)), 0) AS promptTokens,
+       COALESCE(SUM(COALESCE(completionTokens, 0)), 0) AS completionTokens,
+       COALESCE(SUM(COALESCE(cost, 0)), 0) AS cost
+     FROM usageHistory ${where} GROUP BY provider ORDER BY requests DESC`,
+    params
+  );
+  const byEndpoint = db.all(
+    `SELECT endpoint, COUNT(*) AS requests,
+       COALESCE(SUM(COALESCE(promptTokens, 0)), 0) AS promptTokens,
+       COALESCE(SUM(COALESCE(completionTokens, 0)), 0) AS completionTokens,
+       COALESCE(SUM(COALESCE(cost, 0)), 0) AS cost
+     FROM usageHistory ${where} GROUP BY endpoint ORDER BY requests DESC`,
+    params
+  );
+  return { totals, byModel, byProvider, byEndpoint };
 }
 
 // Scoped usage view (P3-26): one key holder sees ONLY their own rows.
