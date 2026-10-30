@@ -14,6 +14,7 @@ import {
 } from "./endpointConstants";
 import { clientPingUrl, clientPingAny } from "./endpointPing";
 import useSettingsStore from "@/store/settingsStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
@@ -21,6 +22,7 @@ import SecurityWarning from "./components/SecurityWarning";
 import KeyAccessControls from "./components/KeyAccessControls";
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
+  const notify = useNotificationStore();
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -685,9 +687,12 @@ export default function APIPageClient({ machineId }) {
         setCreatedKey(data.key);
         await fetchData();
         closeAddModal();
+      } else {
+        notify.error(data.error || "Failed to create API key");
       }
     } catch (error) {
       console.log("Error creating key:", error);
+      notify.error(error?.message || "Failed to create API key");
     }
   };
 
