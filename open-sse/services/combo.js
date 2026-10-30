@@ -8,6 +8,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
+import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
 import {
   getStickyComboModel,
   setStickyComboModel,
@@ -769,14 +770,23 @@ const FUSION_DEFAULTS = {
   panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
 };
 
-// Resolve a Response (or {__error}) within ms; the loser keeps running but is ignored.
-function withTimeout(promise, ms) {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve({ __timeout: true }), ms);
-    Promise.resolve(promise)
+// Start a panel call with its own abort controller. The timeout aborts the
+// underlying fetch: previously the loser kept running (burning tokens and
+// a concurrency slot) while only its result was ignored. Returns
+// { promise, controller }; the caller aborts leftovers when collection ends.
+function startPanelCall(factory, ms) {
+  const controller = new AbortController();
+  const promise = new Promise((resolve) => {
+    const t = setTimeout(() => {
+      controller.abort();
+      resolve({ __timeout: true });
+    }, ms);
+    Promise.resolve()
+      .then(() => factory(controller.signal))
       .then((v) => { clearTimeout(t); resolve(v); })
       .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
   });
+  return { promise, controller };
 }
 
 /**
@@ -784,11 +794,13 @@ function withTimeout(promise, ms) {
  * start a short grace timer for the rest, then proceed with whatever arrived. This
  * caps the straggler penalty (the slowest model otherwise dominates wall time) while
  * still preferring a full panel when everyone is fast. Bounded by a hard timeout.
- * Returns a sparse array aligned to `calls` (undefined = not yet / dropped).
+ * Returns a sparse array aligned to `entries` (undefined = not yet / dropped).
+ * When collection ends, every still-running panel call is aborted: its result
+ * would be dropped anyway, so its fetch must not run to completion.
  */
-function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
+function collectPanel(entries, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
   return new Promise((resolve) => {
-    const out = new Array(calls.length);
+    const out = new Array(entries.length);
     let settled = 0;
     let ok = 0;
     let finished = false;
@@ -798,21 +810,41 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
       finished = true;
       clearTimeout(hardTimer);
       if (graceTimer) clearTimeout(graceTimer);
+      entries.forEach((e) => e.controller.abort());
       resolve(out);
     };
     const hardTimer = setTimeout(finish, panelHardTimeoutMs);
-    calls.forEach((p, i) => {
-      Promise.resolve(p)
+    entries.forEach((entry, i) => {
+      Promise.resolve(entry.promise)
         .then((v) => { out[i] = v; })
         .catch((e) => { out[i] = { __error: e }; })
         .finally(() => {
           settled++;
           if (out[i] && out[i].ok) ok++;
-          if (settled === calls.length) return finish();
+          if (settled === entries.length) return finish();
           if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
         });
     });
   });
+}
+
+// A lone panel answer is reused, not re-fetched: the panel call already paid
+// for these tokens. Non-streaming clients get the panel response itself;
+// streaming clients get the same text re-emitted as SSE chunks.
+function singleAnswerResponse(body, answer) {
+  if (!body.stream) return answer.res;
+  const json = answer.json || {};
+  const chunk = (delta, finishReason) => `data: ${JSON.stringify({
+    id: json.id || "chatcmpl-fusion",
+    object: "chat.completion.chunk",
+    created: json.created || Math.floor(Date.now() / 1000),
+    model: json.model || answer.model,
+    choices: [{ index: 0, delta, finish_reason: finishReason }],
+  })}\n\n`;
+  return new Response(
+    chunk({ content: answer.text }, null) + chunk({}, "stop") + SSE_DONE,
+    { headers: SSE_HEADERS }
+  );
 }
 
 /**
@@ -831,7 +863,7 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
  * @param {Object} options
  * @param {Object} options.body - Request body (client format)
  * @param {string[]} options.models - Panel model strings
- * @param {Function} options.handleSingleModel - (body, modelStr) => Promise<Response>
+ * @param {Function} options.handleSingleModel - (body, modelStr, isPanel, signal) => Promise<Response>
  * @param {Object} options.log - Logger
  * @param {string} [options.comboName] - Combo name (logging)
  * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
@@ -872,8 +904,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
-  const settled = await collectPanel(calls, { ...cfg, minPanel });
+  const entries = panel.map((m) => startPanelCall((signal) => handleSingleModel(panelBody, m, true, signal), cfg.panelHardTimeoutMs));
+  const settled = await collectPanel(entries, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
   // 2. Collect successful answers.
@@ -889,7 +921,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
       const json = await res.clone().json();
       const text = extractPanelText(json);
       if (text) {
-        answers.push({ model, text });
+        answers.push({ model, text, res, json });
         log.info("FUSION", `Panel ${model} ok (${text.length} chars)`);
       } else {
         log.warn("FUSION", `Panel ${model} returned empty content`);
@@ -908,8 +940,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    log.info("FUSION", `Only ${answers[0].model} succeeded — returning its fetched answer (no fusion, no re-call)`);
+    return singleAnswerResponse(body, answers[0]);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).

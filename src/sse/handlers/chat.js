@@ -231,13 +231,13 @@ async function handleChatImpl(request, clientRawRequest = null) {
       return handleFusionChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m, isPanel) => {
+        handleSingleModel: (b, m, isPanel, signal) => {
           let cleanRawReq = clientRawRequest;
           if (isPanel && clientRawRequest) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m));
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings), signal);
         },
         log,
         comboName: modelStr,
@@ -327,7 +327,7 @@ function withFlakyRetriesHeader(response, retries) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null) {
   // Direct variant pick without a backing combo: a bare name that names a
   // variant routes straight to its backing model, with the variant name
   // carried so its prompt still fires. This covers both direct picks and
@@ -342,7 +342,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // whole pool (a dahl direct pick timed out at 150s). Resolve the
       // cap here when the caller passed none (top-level picks pass null).
       const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
-      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap);
+      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal);
     }
   }
   const modelInfo = await getModelInfo(modelStr);
@@ -380,13 +380,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return handleFusionChat({
           body,
           models: comboModels,
-          handleSingleModel: (b, m, isPanel) => {
+          handleSingleModel: (b, m, isPanel, signal) => {
             let cleanRawReq = clientRawRequest;
             if (isPanel && clientRawRequest) {
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, memberInjectName(m));
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings), signal);
           },
           log,
           comboName: modelStr,
@@ -514,6 +514,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
+      externalSignal: abortSignal,
       clientRawRequest,
       connectionId: credentials.connectionId,
       userAgent,
