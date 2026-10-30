@@ -20,79 +20,7 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import SecurityWarning from "./components/SecurityWarning";
 import KeyAccessControls from "./components/KeyAccessControls";
-import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
-// Dismissible first-run checklist (B-F17). Steps 1-2 auto-check from live
-// data (shared provider summary + key list); step 3 is guidance, not a
-// tracked state — the card is dismissed with "Got it" once setup is done.
-function FirstRunChecklist({ keysExist }) {
-  const { statsMap } = useProviderSummary();
-  const [dismissed, setDismissed] = useState(false);
-  useEffect(() => {
-    try {
-      if (localStorage.getItem("9router-endpoint-checklist-dismissed") === "1") {
-        setDismissed(true);
-      }
-    } catch { /* private mode etc. — checklist just stays */ }
-  }, []);
-  if (dismissed) return null;
-  const providerDone = Object.values(statsMap).some((s) => (s.total || 0) > 0);
-  const steps = [
-    {
-      done: providerDone,
-      label: "Connect a provider",
-      href: "/dashboard/providers",
-      action: "Connect",
-    },
-    {
-      done: keysExist,
-      label: "Create an API key",
-      href: null,
-      action: null,
-    },
-    {
-      done: false,
-      label: "Send your first request, then watch it in Usage",
-      href: "/dashboard/usage",
-      action: "Usage",
-    },
-  ];
-  return (
-    <div className="mb-4 rounded-xl border border-border bg-surface-2 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-text-main">Get started</p>
-        <button
-          type="button"
-          className="text-xs text-text-muted hover:text-text-main"
-          onClick={() => {
-            try {
-              localStorage.setItem("9router-endpoint-checklist-dismissed", "1");
-            } catch { /* ignore */ }
-            setDismissed(true);
-          }}
-        >
-          Got it, hide this
-        </button>
-      </div>
-      <ul className="mt-2 space-y-1.5">
-        {steps.map((step) => (
-          <li key={step.label} className="flex items-center gap-2 text-sm">
-            <span className={`material-symbols-outlined text-[16px] ${step.done ? "text-green-500" : "text-text-muted"}`}>
-              {step.done ? "check_circle" : "radio_button_unchecked"}
-            </span>
-            <span className={step.done ? "text-text-muted line-through" : "text-text-main"}>
-              {step.label}
-            </span>
-            {!step.done && step.href && (
-              <Link href={step.href} className="text-xs font-medium text-primary hover:underline">
-                {step.action} →
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+
 
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
@@ -1206,8 +1134,6 @@ export default function APIPageClient({ machineId }) {
             <SecurityWarning message="Endpoint is exposed without an API key." />
           </div>
         )}
-
-        <FirstRunChecklist keysExist={keys.length > 0} />
 
         {keys.length === 0 ? (
           <div className="text-center py-12">
