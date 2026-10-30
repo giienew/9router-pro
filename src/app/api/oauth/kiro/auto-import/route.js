@@ -3,6 +3,18 @@ import { readFile, readdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
+// Keep a Kiro profile ARN's own region; only an ARN with no region
+// segment falls back to us-east-1. Exported for unit tests.
+export function normalizeKiroArnRegion(arn) {
+  if (!arn) return arn;
+  const regionMatch = arn.match(/^arn:aws:codewhisperer:([^:]*):/);
+  if (regionMatch && regionMatch[1]) return arn;
+  // Empty region segment (arn:aws:codewhisperer::...): fill it. An ARN
+  // that does not match the pattern at all is returned untouched.
+  if (regionMatch) return arn.replace(/^arn:aws:codewhisperer::/, "arn:aws:codewhisperer:us-east-1:");
+  return arn;
+}
+
 /**
  * GET /api/oauth/kiro/auto-import
  * Auto-detect and extract Kiro refresh token from AWS SSO cache.
@@ -90,9 +102,10 @@ export async function GET() {
       }
     }
 
-    // Read profileArn from Kiro IDE's profile.json.
-    // Important: the runtime gateway requires us-east-1 in the ARN regardless
-    // of the IDC region, so we normalize the region in the ARN to us-east-1.
+    // Read profileArn from Kiro IDE's profile.json. Keep the ARN's own
+    // region: only an ARN with no region segment falls back to us-east-1.
+    // (Previously the region was unconditionally rewritten to us-east-1,
+    // which broke accounts whose real region differs.)
     let profileArn = null;
     const kiroProfilePaths = [
       join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
@@ -103,8 +116,7 @@ export async function GET() {
         const profileContent = await readFile(profilePath, "utf-8");
         const profileData = JSON.parse(profileContent);
         if (profileData.arn) {
-          // Normalize region to us-east-1 for the runtime gateway
-          profileArn = profileData.arn.replace(/arn:aws:codewhisperer:[^:]+:/, "arn:aws:codewhisperer:us-east-1:");
+          profileArn = normalizeKiroArnRegion(profileData.arn);
           break;
         }
       } catch (error) {

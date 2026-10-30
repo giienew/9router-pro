@@ -187,6 +187,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     let availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // Kiro: an account whose profileArn could not be resolved (refresh
+      // proved it, no ARN stored) must not be picked for OAuth/social
+      // auth — the translator would inject the shared default ARN, which
+      // 403s for these accounts and flaps them between active and locked.
+      // Skipped with a specific reason instead of a generic lock. This
+      // mirrors the translators' fallback condition exactly: account-bound
+      // auth (api_key / idc / external_idp) never uses the default, so it
+      // is unaffected, and a stored ARN always clears the skip.
+      if (providerId === "kiro") {
+        const psd = c.providerSpecificData || {};
+        const accountBound = psd.authMethod === "api_key" || psd.authMethod === "idc" || psd.authMethod === "external_idp";
+        if (!accountBound && psd.profileArnUnresolved === true && !psd.profileArn) {
+          log.debug("AUTH", `${c.id?.slice(0, 8)} | kiro profileArn unresolved — skip (set the real ARN from the Kiro IDE/AWS console)`);
+          return false;
+        }
+      }
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model

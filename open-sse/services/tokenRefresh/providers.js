@@ -320,7 +320,15 @@ async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, ref
     const { fetchKiroProfileArn } = await import("../../../src/lib/oauth/providers.js");
     profileArn = await fetchKiroProfileArn(accessToken);
   }
-  return profileArn ? { providerSpecificData: { profileArn } } : {};
+  // Distinguish "no resolved profileArn" from a usable ARN: a failed
+  // resolution used to return {} — indistinguishable from "already has
+  // an ARN" — so the account silently fell back to the shared default
+  // ARN at request time and flapped on 403s. Now the failure is stored
+  // explicitly, and selection skips such accounts for OAuth/social auth
+  // (see auth.js) instead of burning generic per-model locks on them.
+  return profileArn
+    ? { providerSpecificData: { profileArn, profileArnUnresolved: false } }
+    : { providerSpecificData: { profileArnUnresolved: true } };
 }
 
 export async function refreshKiroToken(refreshToken, providerSpecificData, log, proxyOptions = null) {
