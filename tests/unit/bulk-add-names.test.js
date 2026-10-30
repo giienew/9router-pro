@@ -111,3 +111,17 @@ describe("planBulkAdd: robustness", () => {
     expect(out[0].name).toBe("Key 1");
   });
 });
+
+describe("planBulkAdd: LLM|id|secret keys stay opaque (upstream 0.5.112)", () => {
+  it("keeps the full key string and auto-names LLM 1, 2, ...", () => {
+    const out = planBulkAdd(["LLM|id1|secret1", "LLM|id2|secret2"], []);
+    expect(out.map((o) => o.name)).toEqual(["LLM 1", "LLM 2"]);
+    expect(out.map((o) => o.apiKey)).toEqual(["LLM|id1|secret1", "LLM|id2|secret2"]);
+  });
+
+  it("ordinary name|key lines still split", () => {
+    const out = planBulkAdd(["mykey|sk-abc"], []);
+    expect(out[0].name).toBe("mykey 1");
+    expect(out[0].apiKey).toBe("sk-abc");
+  });
+});

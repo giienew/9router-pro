@@ -25,6 +25,12 @@
  */
 function parseLine(line, opts = {}) {
   const { isCloudflareAi = false } = opts;
+  // Muse keys are full "LLM|id|secret" strings: keep them opaque instead
+  // of splitting on the first pipe (which used to shred the key into a
+  // bogus name + truncated secret). planBulkAdd auto-names them LLM 1, 2, …
+  if (!isCloudflareAi && /^LLM\|/i.test(line.trim())) {
+    return { baseName: "LLM", apiKey: line.trim() };
+  }
   const parts = line.split("|");
 
   if (isCloudflareAi && parts.length >= 3) {
