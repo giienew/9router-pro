@@ -145,8 +145,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     if (FREE_PROVIDERS[providerId]?.noAuth) {
       const override = providerOverride;
       const strategy = override.rotateStrategy || "none";
+      // An explicitly picked pool beats rotation: a saved combo with
+      // both (e.g. set via the settings API) must not silently rotate
+      // away from the pool the operator chose.
       let pickedId = override.proxyPoolId || null;
-      if (strategy !== "none") {
+      if (!pickedId && strategy !== "none") {
         const allPools = await getProxyPools({ isActive: true });
         const poolIds = resolveRotationPoolIds(allPools, override.proxyPoolIds);
         pickedId = pickProxyPoolId(poolIds, strategy, providerId);

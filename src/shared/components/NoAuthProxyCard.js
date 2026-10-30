@@ -32,8 +32,12 @@ export default function NoAuthProxyCard({ providerId }) {
       if (cancelled) return;
       setProxyPools(poolData.proxyPools || []);
       const override = (settingsData.providerStrategies || {})[providerId] || {};
-      setProxyPoolId(override.proxyPoolId || NONE_PROXY_POOL_VALUE);
-      setRotateStrategy(override.rotateStrategy || "none");
+      const savedPool = override.proxyPoolId || NONE_PROXY_POOL_VALUE;
+      setProxyPoolId(savedPool);
+      // An explicit pool beats rotation on the backend, so a saved combo
+      // with both displays the pool as effective and rotation as off;
+      // the next save writes the displayed state, clearing the stale combo.
+      setRotateStrategy(savedPool !== NONE_PROXY_POOL_VALUE ? "none" : (override.rotateStrategy || "none"));
       setSelectedPoolIds(Array.isArray(override.proxyPoolIds) ? override.proxyPoolIds : []);
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -69,15 +73,25 @@ export default function NoAuthProxyCard({ providerId }) {
     }
   }, [providerId]);
 
+  // Pool and rotation are mutually exclusive: picking a single pool turns
+  // rotation off, enabling rotation clears the single pool. That keeps the
+  // saved state honest about which one actually routes requests.
   const handlePoolChange = (newPoolId) => {
     setProxyPoolId(newPoolId);
-    save(newPoolId, rotateStrategy, selectedPoolIds);
+    const strategy = newPoolId !== NONE_PROXY_POOL_VALUE ? "none" : rotateStrategy;
+    if (strategy === "none") setRotateStrategy("none");
+    save(newPoolId, strategy, selectedPoolIds);
   };
 
   const handleStrategyChange = (newStrategy) => {
     setRotateStrategy(newStrategy);
-    if (newStrategy !== "none") setPickerOpen(true);
-    save(proxyPoolId, newStrategy, selectedPoolIds);
+    if (newStrategy !== "none") {
+      setPickerOpen(true);
+      setProxyPoolId(NONE_PROXY_POOL_VALUE);
+      save(NONE_PROXY_POOL_VALUE, newStrategy, selectedPoolIds);
+    } else {
+      save(proxyPoolId, newStrategy, selectedPoolIds);
+    }
   };
 
   const applySelection = (ids) => {
@@ -105,7 +119,7 @@ export default function NoAuthProxyCard({ providerId }) {
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium">No authentication required</p>
-          <p className="text-xs text-text-muted">This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included.</p>
+          <p className="text-xs text-text-muted">This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included. Rotation here applies to this no-auth lane only; credentialed connections always use their own per-connection pool pin.</p>
         </div>
         {savedFlash && <Badge variant="success" size="sm">Saved</Badge>}
       </div>
@@ -114,12 +128,12 @@ export default function NoAuthProxyCard({ providerId }) {
         label="Proxy Pool"
         value={proxyPoolId}
         onChange={(e) => handlePoolChange(e.target.value)}
-        disabled={saving || isRotation}
+        disabled={saving}
         options={[
           { value: NONE_PROXY_POOL_VALUE, label: "None (direct)" },
           ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
         ]}
-        hint={isRotation ? (selectedPoolIds.length > 0 ? "Rotating through the selected pools." : "Pool selector is ignored when rotation is active — all active pools are used.") : undefined}
+        hint={proxyPoolId !== NONE_PROXY_POOL_VALUE ? "A single pool is selected, so rotation is off." : undefined}
       />
 
       <div className="flex flex-col gap-2 mt-4">

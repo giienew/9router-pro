@@ -81,15 +81,17 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
 export async function resolveConnectionProxyConfig(
   providerSpecificData = {}
 ) {
+  // Parsed before the try: the error path below needs to know whether a
+  // pool was requested even when the pool lookup itself throws.
+  const proxyPoolIdRaw = normalizeString(
+    providerSpecificData?.proxyPoolId
+  );
+
+  // "__none__" means explicitly disabled
+  const proxyPoolId =
+    proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
+
   try {
-    const proxyPoolIdRaw = normalizeString(
-      providerSpecificData?.proxyPoolId
-    );
-
-    // "__none__" means explicitly disabled
-    const proxyPoolId =
-      proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
-
     const legacy = normalizeLegacyProxy(providerSpecificData);
 
     // A strict pool must keep its guarantee even when the pool itself is not
@@ -198,17 +200,22 @@ export async function resolveConnectionProxyConfig(
       error
     );
 
+    // Fail closed: a requested pool that cannot be resolved must never
+    // silently fall back to the direct IP. proxyFetch throws when
+    // strictProxy is true and no proxy resolved, so the request fails
+    // loudly instead of leaking. No pool requested → direct was the
+    // intent, nothing to protect.
     return {
       source: "error",
 
-      proxyPoolId: null,
+      proxyPoolId: proxyPoolId || null,
       proxyPool: null,
 
       connectionProxyEnabled: false,
       connectionProxyUrl: "",
       connectionNoProxy: "",
 
-      strictProxy: false,
+      strictProxy: proxyPoolId ? true : false,
     };
   }
 }
