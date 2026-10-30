@@ -27,6 +27,7 @@ import { useVisibleCount } from "@/shared/hooks/useVisibleCount";
 import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
+import CatalogSearchModal from "./components/CatalogSearchModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
 
 // Plain-language meaning for the raw error codes shown on provider cards
@@ -225,6 +226,7 @@ export default function ProvidersPage() {
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
+  const [showCatalogSearch, setShowCatalogSearch] = useState(false);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
@@ -662,6 +664,9 @@ export default function ProvidersPage() {
             </option>
           ))}
         </select>
+        <Button size="sm" variant="outline" icon="search" onClick={() => setShowCatalogSearch(true)}>
+          Search catalogs
+        </Button>
       </div>
 
       {!hasAnyResult && (
@@ -1037,6 +1042,8 @@ export default function ProvidersPage() {
       </div>
       )}
 
+      {/* R10 cross-provider catalog search */}
+      <CatalogSearchModal isOpen={showCatalogSearch} onClose={() => setShowCatalogSearch(false)} />
       <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}

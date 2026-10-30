@@ -3,11 +3,13 @@ export default function manifest() {
     name: '9Router - AI Infrastructure Management',
     short_name: '9Router',
     description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
+    id: '/',
     start_url: '/',
     display: 'standalone',
     background_color: '#0a0a0a',
     theme_color: '#0a0a0a',
     orientation: 'portrait-primary',
+    categories: ['productivity', 'utilities'],
     icons: [
       {
         src: '/icons/icon-192.svg',

@@ -26,6 +26,7 @@ const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
+  { href: "/dashboard/evals", label: "Eval Runner", icon: "fact_check" },
   { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", badge: "PRO" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
 ];

@@ -82,9 +82,15 @@ if (args[0] === "xai" && args[1] === "video") {
 
 // `9router connect <url>` configures local CLI tools against a remote server, and
 // `9router show` prints what they're currently set to — no local server, no
-// runtime deps. Usable via `npx 9router …`.
-if (args[0] === "connect" || args[0] === "show") {
-  const { run } = require(args[0] === "show" ? "./src/cli/commands/show" : "./src/cli/commands/connect");
+// runtime deps. Usable via `npx 9router …`. `doctor`/`setup`/`dry-run` are
+// the same class: local-only diagnostics and previews, no server spawn.
+if (args[0] === "connect" || args[0] === "show" || args[0] === "doctor" || args[0] === "setup" || args[0] === "dry-run") {
+  const file = args[0] === "show" ? "./src/cli/commands/show"
+    : args[0] === "connect" ? "./src/cli/commands/connect"
+    : args[0] === "doctor" ? "./src/cli/commands/doctor"
+    : args[0] === "setup" ? "./src/cli/commands/setup"
+    : "./src/cli/commands/dryrun";
+  const { run } = require(file);
   run(args.slice(1))
     .then((code) => process.exit(code))
     .catch((err) => {
@@ -172,6 +178,9 @@ Commands:
                       (npx 9router connect http://host:20127 — no install needed)
   show [tool…]        Show each CLI tool's current 9router config and models
                       (e.g. 9router show claude)
+  doctor [--port n]   Diagnose this install (Node, port, config, server health)
+  setup [--port n]    Guided first-run wizard (port + password, previewed first)
+  dry-run --url <u>   Preview what 'connect' would write, without writing
   xai video --prompt "..." --output video.mp4
                       Generate a Grok Imagine video via the running gateway
                       (see: ${APP_NAME} xai video --help)
