@@ -10,7 +10,7 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboStrategy } from "../services/pairStrategy.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, checkKeyQuota, getKeyLimits, getKeyUsageInWindow, getInjectVariants } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -30,84 +30,10 @@ import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
 import { resolveAntiFlakyConfig, inspectChatResponse, inspectChatResponseFull } from "open-sse/rtk/flakyGuard.js";
-import { peekKeyLimits, admitKeyRequest } from "@/lib/keyRateLimiter.js";
-
-// 9Router Pro: per-key rate limits (RPM/TPM/RPH/RPD/max concurrent) — soft
-// admission around the chat handler, fails open exactly like the token
-// quota: a limiter error never blocks a chat. RPM/RPH/RPD/concurrency are
-// tracked in memory; TPM is a soft DB check over the last minute of usage.
-const LIMIT_MESSAGES = {
-  rpm: (v) => `API key rate limit exceeded (${v.used}/${v.limit} requests in the last minute)`,
-  rph: (v) => `API key rate limit exceeded (${v.used}/${v.limit} requests in the last hour)`,
-  rpd: (v) => `API key rate limit exceeded (${v.used}/${v.limit} requests in the last 24 hours)`,
-  concurrency: (v) => `API key concurrency limit exceeded (${v.limit} requests already in flight)`,
-};
-
-async function admitChatForKeyLimits(request) {
-  const apiKey = extractApiKey(request);
-  if (!apiKey) return null;
-  const keyRecord = await getApiKeyByKey(apiKey);
-  if (!keyRecord) return null;
-  const limits = await getKeyLimits(keyRecord.id);
-  if (!limits) return null;
-  if (limits.tpm) {
-    const tpmUsed = await getKeyUsageInWindow(apiKey, 1 / 60);
-    if (tpmUsed >= limits.tpm) {
-      log.warn("LIMIT", `Key "${keyRecord.name}" over TPM (${tpmUsed}/${limits.tpm})`);
-      return { response: errorResponse(429, `API key rate limit exceeded (${tpmUsed}/${limits.tpm} tokens in the last minute)`, { "Retry-After": "60" }) };
-    }
-  }
-  const verdict = peekKeyLimits(keyRecord.id, limits);
-  if (verdict.blocked) {
-    log.warn("LIMIT", `Key "${keyRecord.name}" over ${verdict.kind} (${verdict.used}/${verdict.limit})`);
-    return { response: errorResponse(429, LIMIT_MESSAGES[verdict.kind](verdict), { "Retry-After": String(verdict.retryAfterSec) }) };
-  }
-  return { release: admitKeyRequest(keyRecord.id) };
-}
-
-function wrapResponseWithRelease(response, release) {
-  if (!response || !response.body || typeof response.body.pipeThrough !== "function") {
-    release();
-    return response;
-  }
-  let done = false;
-  const finish = () => {
-    if (!done) {
-      done = true;
-      release();
-    }
-  };
-  try {
-    const stream = response.body.pipeThrough(new TransformStream({
-      transform(chunk, controller) { controller.enqueue(chunk); },
-      flush() { finish(); },
-      cancel() { finish(); },
-    }));
-    return new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers });
-  } catch {
-    finish();
-    return response;
-  }
-}
+import { withKeyAdmission, recheckKeyQuotaAfterCompletion } from "../services/keyAdmission.js";
 
 export async function handleChat(request, clientRawRequest = null) {
-  let release = null;
-  try {
-    const admission = await admitChatForKeyLimits(request);
-    if (admission?.response) return admission.response;
-    release = admission?.release || null;
-  } catch {
-    release = null;
-  }
-  let response;
-  try {
-    response = await handleChatImpl(request, clientRawRequest);
-  } catch (err) {
-    if (release) release();
-    throw err;
-  }
-  if (release) return wrapResponseWithRelease(response, release);
-  return response;
+  return withKeyAdmission(request, () => handleChatImpl(request, clientRawRequest), recheckKeyQuotaAfterCompletion);
 }
 import { resolveSmartChoice } from "../services/systemoneRouter.js";
 
@@ -167,20 +93,6 @@ async function handleChatImpl(request, clientRawRequest = null) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
-  }
-
-  // 9Router Pro: per-key token quota — soft pre-check, fails open
-  if (apiKey) {
-    try {
-      const keyRecord = await getApiKeyByKey(apiKey);
-      if (keyRecord) {
-        const verdict = await checkKeyQuota(keyRecord.id, apiKey);
-        if (verdict.blocked) {
-          log.warn("QUOTA", `Key "${keyRecord.name}" over quota (${verdict.used}/${verdict.quota.limit})`);
-          return errorResponse(429, `API key token quota exceeded (${verdict.used}/${verdict.quota.limit} tokens in the last ${verdict.quota.windowHours}h)`);
-        }
-      }
-    } catch {}
   }
 
   if (!modelStr) {

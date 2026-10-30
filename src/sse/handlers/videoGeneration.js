@@ -16,6 +16,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 
 const NO_AUTH_VIDEO_PROVIDERS = new Set(["veoaifree-web"]);
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 
 // Video generation is xAI-only today; requests without a provider prefix
 // (bare model id, or multipart bodies we deliberately don't parse) land here.
@@ -111,6 +112,10 @@ function withConnectionHeader(response, connectionId) {
  * POST /v1/videos/{generations|edits|extensions} — async job creation proxy.
  */
 export async function handleVideoCreate(request, action) {
+  return withKeyAdmission(request, () => handleVideoCreateImpl(request, action));
+}
+
+async function handleVideoCreateImpl(request, action) {
   const authError = await requireValidApiKey(request);
   if (authError) return authError;
 
@@ -161,6 +166,7 @@ export async function handleVideoCreate(request, action) {
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
+  const settings = await getSettings();
   const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
 
   while (true) {

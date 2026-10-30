@@ -13,6 +13,7 @@ import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 
@@ -32,6 +33,10 @@ function exactEmbeddingUsage(raw) {
  * @param {Request} request
  */
 export async function handleEmbeddings(request) {
+  return withKeyAdmission(request, () => handleEmbeddingsImpl(request));
+}
+
+async function handleEmbeddingsImpl(request) {
   let body;
   try {
     body = await request.json();

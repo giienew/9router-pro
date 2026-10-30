@@ -12,6 +12,7 @@ import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -23,6 +24,10 @@ import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAc
  * @param {Request} request
  */
 export async function handleSearch(request) {
+  return withKeyAdmission(request, () => handleSearchImpl(request));
+}
+
+async function handleSearchImpl(request) {
   let body;
   try {
     body = await request.json();

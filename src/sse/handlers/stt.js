@@ -11,6 +11,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 
@@ -39,6 +40,10 @@ async function resolveCustomModelTransport(provider, model) {
 }
 
 export async function handleStt(request) {
+  return withKeyAdmission(request, () => handleSttImpl(request));
+}
+
+async function handleSttImpl(request) {
   let formData;
   try {
     formData = await request.formData();

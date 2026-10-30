@@ -12,6 +12,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -21,6 +22,10 @@ const CREDENTIALED_PROVIDERS = new Set(
 );
 
 export async function handleTts(request) {
+  return withKeyAdmission(request, () => handleTtsImpl(request));
+}
+
+async function handleTtsImpl(request) {
   let body;
   try {
     body = await request.json();
@@ -93,6 +98,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, st
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
+  const settings = await getSettings();
   const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
 
   while (true) {

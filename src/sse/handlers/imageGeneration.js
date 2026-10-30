@@ -16,6 +16,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
+import { withKeyAdmission } from "../services/keyAdmission.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 
 // Providers that don't require credentials (noAuth)
@@ -46,6 +47,10 @@ function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoi
  * @param {Request} request
  */
 export async function handleImageGeneration(request) {
+  return withKeyAdmission(request, () => handleImageGenerationImpl(request));
+}
+
+async function handleImageGenerationImpl(request) {
   let body;
   try {
     body = await request.json();
@@ -121,6 +126,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
+  const settings = await getSettings();
   const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
 
   while (true) {
