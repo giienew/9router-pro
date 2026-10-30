@@ -4,11 +4,16 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
-## v0.5.109-pro.15 (DRAFT)
+## v0.5.109-pro.15
 
-> DRAFT entry: covers the pre-existing `audit-fixes` content only. It is not
-> final — the coordinator completes it after merging the other tracks (see
-> the subsection at the end of this section).
+### ADDITIONS FROM IMPLEMENTATION RUN
+
+- **Backend — honest models, quotas, health, reliability (P4-33, P3-30, D5/D6, G2/G6/G9/G10/G11/G14)**: shared combo dispatch for the top-level, nested, and solo branches, with one account-exhausted response across all 8 modality handlers; webhook events for usage/quota/error (off by default, HMAC-signed, credential fields masked by default) and scheduled backups verified present; a per-provider/per-model member attempt-cap override (exact provider/model > provider > global > 3, 0 disables); real AbortSignal propagation for System One and request-id correlation (`x-9router-request-id` on every response, threaded into usage rows and request details, filterable); honest `/v1/models` — zero stored connections no longer returns the static catalog, while noAuth-servable models still list and `auto:` targets are listed as servable models; non-chat usage accrual (embeddings exact, image when reported, TTS/STT estimated at chars/4 and marked estimated, search/fetch cost-only via costPerQuery, video request-only until a provider reports completion usage) plus a dashboard-only per-key usage breakdown API (`/api/usage/by-key`); provider summary health fields (`/api/providers?summary=1`: breakers with a pre-trip flag, health totals/by-provider/connections with tier and quarantine state) and a degraded signal on `/api/health` with liveness `ok` preserved.
+- **Frontend — first-run success (G1/G3/G5/G6/G13/G15/G16/G17/G20/G21)**: a dashboard home overview (status, keys, models, usage, quick links); a first-request snippet on Endpoint (key-aware curl, copy button, token-free shell variant); a flat restyle of ProviderTopology plus dead glow cleanup; `auto:` targets shown in model pickers; discoverability fixes (Kiro import affordance, quota vocabulary, usage proof links); mobile tap-target, hover-only, double-padding, and radius fixes; usage zero-data CTAs, log signposting, and a savings single-number cross-reference. The Basic Chat token restyle and the Skills loading state are deliberately left pending (see `9router-pro-audit-2/IMPLEMENTATION.md` for why).
+- **Upstream leftovers (0.5.111/0.5.112)**: Ollama-local embeddings (localhost-only, no key) and Ollama TTS (local synthesis under the same keyless rule); the Runcrate provider; the Nace provider (`drex-max` + `drex-v2.0`, `drex` alias); MiniMax code lease (automatic 30-minute lease, dashboard settings + release); pricing rows for `gpt-6.1-terra` + `kimi-k3.1-pro`; CommandCode 1.88 validate-route headers. Docker bake is documented as skipped — it has no effect on the npm/PM2 path.
+- **Rival-inspired, implemented originally (R1–R15)**: a zero-config free stack (freeStack settings, watchdog, auto combo creation, no-code onboarding path); a trust inbox (trustEvents + unread bell); a security log (per-key, 30-day retention); a combo advisor (catalog coverage, cost, latency, risk); catalog search (feeds + seeds, 7-day cache); a skills evaluator (evalSets/evalRuns, dashboard page); a variant sampling override; a semantic response cache (opt-in, embeddings-gated); at-rest credential encryption (`PRO_CREDENTIAL_KEY`; legacy rows stay plaintext until migrated — documented, not silent); a Pro CLI (doctor/dry-run/setup); a Termux install script; an E2E route inventory; packaging docs (the Electron build pipeline is deliberately not wired — documented).
+- **Docs**: CHANGELOG-PRO entries for pro.13–pro.15, README cleanup, and package metadata (repository, homepage, license).
+- **Capability-first ordering (P3-30)**: verified present, not re-built — the model catalog already exposes capabilities per entry, and combo serving floats capability-matching members first (stable sort, capacity order kept within tiers) via the default-on auto-switch, covered by an existing unit test.
 
 - **Direct variant routing**: a variant name routes directly to its backing provider/model with its prompt — no backing combo is created or kept in sync. `/v1/models` lists variants, and combo member failover is capped.
 - **Request reliability (P0 audit fixes)**: a generous, configurable total-request deadline; a dedicated mutex chain for round-robin/sticky selection; a fusion cap with cancellation; a shared attempt limiter capping every modality fallback loop; API key creation failures surfaced instead of silent; hot-path DB writes fail open; variant name safety (over-long names, alias collisions, and suffix budget rejected); combo failure status and message now come from the same member.
@@ -18,10 +23,6 @@ follows these releases.
 - **Smarter routing and policy (P3 audit fixes)**: scored auto-routing with named variants (`auto:coding`, `auto:fast`, `auto:cheap`, `auto:headroom`) on Pro health tiers with sticky selection; per-key policy (expiry, cost caps, scoped usage view); three-layer resilience (provider breaker, connection cooldown, model lockout) with distinct timers and dashboard states; a per-combo strategy selector with an optional account pin per member; and a Pro-only changelog section in the release banner plus dead-code cleanup.
 - **Removals, each deliberate**: the Testing Studio page is gone (it duplicated the Injection Tester side-by-side comparison); the FirstRunChecklist is gone from Endpoint (removed, not fixed); the Token Saver custom prompt is gone (it duplicated the global prompt-injection scope — the global scope is the single home for a global instruction).
 - **Untouched by this release**: owner-reserved fates (landing page, pricing page, shadow routes, imageToText visibility) are not decided here.
-
-### ADDITIONS FROM IMPLEMENTATION RUN — coordinator finalizes
-
-The coordinator fills this subsection after merging the other implementation tracks.
 
 ## v0.5.109-pro.14
 

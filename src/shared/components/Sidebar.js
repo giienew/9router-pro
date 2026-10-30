@@ -408,7 +408,7 @@ export default function Sidebar({ onClose }) {
 
             {/* Docs & Help */}
             <a
-              href="https://github.com/giienew/9router-pro"
+              href="https://github.com/giienew/9router-pro#-quick-start-pro"
               target="_blank"
               rel="noreferrer"
               onClick={onClose}
