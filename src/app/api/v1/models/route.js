@@ -10,6 +10,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
+import { AUTO_INTENTS } from "@/sse/services/autoRouting.js";
 import { getModelsListCache, setModelsListCache } from "@/sse/services/modelsListCache.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -329,7 +330,12 @@ export async function buildModelsList(kindFilter, options = {}) {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
   } catch (e) {
-    console.log("Could not fetch providers, returning all models");
+    // G2 honesty: a DB error must NOT silently fall through to the full
+    // static catalog. The GET handlers turn this into a 500, so a client
+    // during a DB outage sees an error — not hundreds of model ids that
+    // would all fail at request time.
+    console.log("Could not fetch providers for /v1/models:", e?.message || e);
+    throw new Error("Failed to load provider connections for /v1/models");
   }
 
   let combos = [];
@@ -440,40 +446,33 @@ export async function buildModelsList(kindFilter, options = {}) {
     }
   }
 
+  // G6 discoverability: `auto:<intent>` targets are routable model ids
+  // (see autoRouting.js AUTO_INTENTS and the chat handler's auto branch),
+  // but nothing in the model list ever named them, so no client or
+  // picker could discover auto-routing from the API. List them with
+  // owned_by "auto". This changes listing only — auto-routing scoring
+  // and expansion are untouched. Like combos/variants above, they are
+  // cleared by the zero-connections branch below, since auto-routing
+  // needs at least one stored connection to produce a candidate.
+  if (kindFilter.includes(LLM_KIND)) {
+    for (const intent of AUTO_INTENTS) {
+      models.push({ id: `auto:${intent}`, object: "model", owned_by: "auto" });
+    }
+  }
+
   if (connections.length === 0) {
-    // DB unavailable -> return static models, filtered by per-model kind
-    for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
-      const providerId = ALIAS_TO_PROVIDER_ID[alias] || alias;
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
-      for (const model of providerModels) {
-        if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id) || isDisabled(providerId, model.id)) continue;
-        models.push({
-          id: `${alias}/${model.id}`,
-          object: "model",
-          owned_by: alias,
-          capabilities: getCapabilitiesForModel(alias, model.id),
-        });
-      }
-    }
+    // G2 honesty: with no stored connections, the full static catalog
+    // was a lie — every listed id failed at request time. Drop the
+    // combos/variants pushed above too (their seats have no connection
+    // to serve through) and fall through to the provider loop below,
+    // which iterates only activeConnectionByProvider: with zero stored
+    // connections that map holds exactly the no-auth providers, which
+    // serve through a virtual connection (see auth.js) and are the
+    // only models that can honestly be listed here. A fleet with no
+    // no-auth providers therefore returns an empty list.
+    models.length = 0;
+  }
 
-    for (const customModel of customModels) {
-      if (!customModel?.id || (customModel.type && customModel.type !== "llm")) continue;
-      // Custom models without active connection are LLM-only by current schema
-      if (!kindFilter.includes(LLM_KIND)) continue;
-      const providerAlias = customModel.providerAlias;
-      if (!providerAlias) continue;
-
-      const modelId = String(customModel.id).trim();
-      if (!modelId) continue;
-
-      models.push({
-        id: `${providerAlias}/${modelId}`,
-        object: "model",
-        owned_by: providerAlias,
-      });
-    }
-  } else {
     // Live catalogs resolve concurrently under one shared budget: sequential
     // awaits summed every provider's latency into the /v1/models response.
     // Providers with explicit enabledModels keep their static list (as
@@ -684,7 +683,6 @@ export async function buildModelsList(kindFilter, options = {}) {
         });
       }
     }
-  }
 
   const dedupedModels = [];
   const seenModelIds = new Set();
