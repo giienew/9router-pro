@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -48,6 +48,7 @@ export default function Sidebar({ onClose }) {
   const [mediaOpen, setMediaOpen] = useState(true);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
+  const [versionCheckFailed, setVersionCheckFailed] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
@@ -64,16 +65,28 @@ export default function Sidebar({ onClose }) {
     });
   }, []);
 
+  // Version check (G12): re-polls on the API's 1h cache interval instead
+  // of running once, and surfaces a visible "check failed" state instead
+  // of failing silently. Release-only rule unchanged: /api/version only
+  // reports published GitHub releases, never bare pushes.
+  const checkVersion = useCallback(async () => {
+    try {
+      const res = await fetch("/api/version");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.hasUpdate) setUpdateInfo(data);
+      setVersionCheckFailed(false);
+    } catch {
+      setVersionCheckFailed(true);
+    }
+  }, []);
+
   // Lazy check for new npm version in background after initial render
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetch("/api/version")
-        .then(res => res.json())
-        .then(data => { if (data.hasUpdate) setUpdateInfo(data); })
-        .catch(() => {});
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
+    const timer = setTimeout(checkVersion, 2500);
+    const interval = setInterval(checkVersion, 3600000);
+    return () => { clearTimeout(timer); clearInterval(interval); };
+  }, [checkVersion]);
 
   const isActive = (href) => {
     if (href === "/dashboard") {
@@ -178,6 +191,17 @@ export default function Sidebar({ onClose }) {
                   </code>
                 </button>
               </div>
+            </div>
+          )}
+          {versionCheckFailed && !updateInfo && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-muted">Version check failed — will retry hourly.</span>
+              <button
+                onClick={checkVersion}
+                className="text-xs font-medium text-primary hover:underline cursor-pointer"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -409,7 +433,7 @@ export default function Sidebar({ onClose }) {
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleUpdate}
-        title="Update 9Router"
+        title="Update 9Router Pro"
         message={`Show install command for v${updateInfo?.latestVersion || ""}? You can copy it and shutdown to install manually.`}
         confirmText="Show Command"
         cancelText="Cancel"
@@ -460,7 +484,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
           <span className="material-symbols-outlined text-[24px]">content_copy</span>
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Update 9Router{latestVersion ? ` to v${latestVersion}` : ""}</h2>
+          <h2 className="text-lg font-semibold">Update 9Router Pro{latestVersion ? ` to v${latestVersion}` : ""}</h2>
           <p className="text-xs text-white/60">
             {isDisconnected
               ? "Server stopped. Paste the command into a terminal to install."
