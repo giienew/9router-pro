@@ -116,9 +116,41 @@ export function mergeWithDefaults(raw) {
   return merged;
 }
 
+// Short settings cache (same 3s tolerance as the inject snapshot): one chat
+// request re-reads settings at admission, quota, and per account attempt.
+// The cached RAW row is deep-cloned before merging, so callers mutating
+// their settings object (several routes do) can never corrupt the cache,
+// and every caller still gets its own fresh object. Concurrent in-flight
+// reads share one DB round-trip. Writes via updateSettings invalidate.
+const SETTINGS_CACHE_TTL_MS = 3000;
+let settingsCacheRaw = null;
+let settingsCacheAt = 0;
+let settingsCacheInflight = null;
+
+function clearSettingsCache() {
+  settingsCacheRaw = null;
+  settingsCacheAt = 0;
+}
+
 export async function getSettings() {
-  const raw = await readRaw();
-  return mergeWithDefaults(raw);
+  const now = Date.now();
+  if (settingsCacheRaw && now - settingsCacheAt < SETTINGS_CACHE_TTL_MS) {
+    return mergeWithDefaults(structuredClone(settingsCacheRaw));
+  }
+  if (settingsCacheInflight) {
+    const raw = await settingsCacheInflight;
+    return mergeWithDefaults(structuredClone(raw));
+  }
+  const pending = readRaw();
+  settingsCacheInflight = pending;
+  try {
+    const raw = await pending;
+    settingsCacheRaw = raw;
+    settingsCacheAt = Date.now();
+    return mergeWithDefaults(structuredClone(raw));
+  } finally {
+    if (settingsCacheInflight === pending) settingsCacheInflight = null;
+  }
 }
 
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
@@ -134,6 +166,7 @@ export async function updateSettings(updates) {
       [stringifyJson(next)],
     );
   });
+  clearSettingsCache();
   return mergeWithDefaults(next);
 }
 
