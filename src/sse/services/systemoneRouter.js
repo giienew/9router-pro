@@ -75,9 +75,16 @@ export async function resolveSmartChoice({
       },
     };
 
+    // D5: the timeout now ABORTS the upstream fetch instead of merely
+    // racing past it. Before, Promise.race settled on the timeout while
+    // the core fetch kept running (and paying upstream) to completion.
+    const controller = new AbortController();
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`System One router timed out after ${timeoutMs}ms`)), timeoutMs);
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`System One router timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
     });
 
     const corePromise = handleSystemoneCore({
@@ -86,7 +93,12 @@ export async function resolveSmartChoice({
       credentials: refreshedCredentials,
       log,
       onRequestSuccess: () => {},
+      signal: controller.signal,
     });
+    // The abort makes corePromise reject after the race already settled
+    // on the timeout — swallow that late rejection (it is the intended
+    // cancellation, not a new failure) so it never surfaces as unhandled.
+    corePromise.catch(() => {});
 
     let result;
     try {

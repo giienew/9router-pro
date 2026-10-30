@@ -5,7 +5,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { resolveComboMemberAttemptCap, createAttemptLimiter } from "../services/memberFailover.js";
+import { resolveComboMemberAttemptCap, createAttemptLimiter, accountExhaustedResponse } from "../services/memberFailover.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
@@ -14,6 +14,8 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
+import { recordModalityUsage } from "../services/modalityUsage.js";
+import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 
@@ -24,10 +26,12 @@ import { saveRequestUsage } from "@/lib/usageDb.js";
  * @param {Request} request
  */
 export async function handleSystemone(request) {
-  return withKeyAdmission(request, () => handleSystemoneImpl(request));
+  const requestId = requestIdFromRequest(request);
+  const response = await withKeyAdmission(request, () => handleSystemoneImpl(request, requestId));
+  return attachRequestId(response, requestId);
 }
 
-async function handleSystemoneImpl(request) {
+async function handleSystemoneImpl(request, requestId = null) {
   let body;
   try {
     body = await request.json();
@@ -100,25 +104,19 @@ async function handleSystemoneImpl(request) {
   // Bound the account-retry loop: without a cap, a campaign-wide failure
   // grinds the whole pool (chat has had this cap; the modality handlers
   // did not). Null cap = disabled, same as chat.
-  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings));
+  const attemptLimiter = createAttemptLimiter(resolveComboMemberAttemptCap(settings, provider, model));
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
-      if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        log.warn("SYSTEMONE", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
-      }
-      if (excludeConnectionIds.size === 0) {
-        log.error("AUTH", `No credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
-      }
-      log.warn("SYSTEMONE", "No more accounts available", { provider });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      return accountExhaustedResponse({
+        credentials, excludeSize: excludeConnectionIds.size, lastError, lastStatus,
+        scope: `${provider}/${model}`, provider,
+        noCredentialsMessage: `No credentials for provider: ${provider}`,
+        log, label: "SYSTEMONE", logNoCredentials: true,
+      });
     }
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
@@ -130,6 +128,9 @@ async function handleSystemoneImpl(request) {
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
+      // Client disconnect aborts the upstream fetch (same D5 signal
+      // plumbing as the router timeout), instead of leaving it running.
+      signal: request.signal,
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
       }
@@ -148,7 +149,17 @@ async function handleSystemoneImpl(request) {
             total_tokens: result.usage.prompt_tokens + result.usage.completion_tokens,
           },
           status: "success",
+          requestId: requestId || undefined,
+          meta: { accrual: "reported" },
         }).catch(() => {});
+      } else {
+        // G9: no reported usage — record a request-only row so the run is
+        // visible in usage history; it moves no quota (no figure to count).
+        recordModalityUsage({
+          provider, model, connectionId: credentials.connectionId, apiKey,
+          endpoint: url.pathname, requestId,
+          meta: { accrual: "request-only", reason: "provider reports no token usage" },
+        });
       }
       return result.response;
     }

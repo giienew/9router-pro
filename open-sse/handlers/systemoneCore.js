@@ -36,6 +36,13 @@ export async function handleSystemoneCore({
   credentials,
   log,
   onRequestSuccess,
+  // External abort signal (D5): the System One router timeout and the
+  // dashboard handler's client-disconnect signal both flow through here.
+  // Without it, a timed-out router evaluation kept its upstream fetch
+  // running to completion (Promise.race only settled the race, it never
+  // cancelled the work). Combined with the existing connect timeout so
+  // neither deadline is lost.
+  signal = null,
 }) {
   const { provider, model } = modelInfo;
   const cfg = PROVIDER_MEDIA[provider]?.systemoneConfig;
@@ -85,13 +92,19 @@ export async function handleSystemoneCore({
 
   let providerResponse;
   try {
+    const timeoutSignal = typeof AbortSignal?.timeout === "function"
+      ? AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS)
+      : null;
+    const fetchSignal = signal
+      ? (timeoutSignal && typeof AbortSignal?.any === "function"
+        ? AbortSignal.any([signal, timeoutSignal])
+        : signal)
+      : timeoutSignal;
     providerResponse = await fetch(targetUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
-      ...(typeof AbortSignal?.timeout === "function"
-        ? { signal: AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS) }
-        : {}),
+      ...(fetchSignal ? { signal: fetchSignal } : {}),
     });
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
