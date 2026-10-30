@@ -9,6 +9,7 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboStrategy } from "../services/pairStrategy.js";
+import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, checkKeyQuota, getKeyLimits, getKeyUsageInWindow, getInjectVariants } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -252,7 +253,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m)),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, topMemberInjectName(m), resolveComboMemberAttemptCap(settings)),
         adapterAdded,
         topVariantBacking
       ),
@@ -296,7 +297,7 @@ async function handleChatImpl(request, clientRawRequest = null) {
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, soloInjectName(m)),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, soloInjectName(m), resolveComboMemberAttemptCap(settings)),
         adapterAdded,
         soloVariantBacking
       ),
@@ -326,7 +327,24 @@ function withFlakyRetriesHeader(response, retries) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null) {
+  // Direct variant pick without a backing combo: a bare name that names a
+  // variant routes straight to its backing model, with the variant name
+  // carried so its prompt still fires. This covers both direct picks and
+  // combo members that name variants — no combo object is created per
+  // variant, so the Kombinasi page shows only combos the user made.
+  if (typeof modelStr === "string" && !modelStr.includes("/")) {
+    const directVariants = await getInjectVariants().catch(() => ({}));
+    const directVariant = directVariants[modelStr];
+    if (directVariant && typeof directVariant.model === "string" && directVariant.model.includes("/")) {
+      // A direct pick used to run through its single-member combo, so it
+      // inherited the member attempt cap; without it the pick grinds the
+      // whole pool (a dahl direct pick timed out at 150s). Resolve the
+      // cap here when the caller passed none (top-level picks pass null).
+      const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
+      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap);
+    }
+  }
   const modelInfo = await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle
@@ -335,8 +353,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (comboModels) {
       // Variant members of a combo must inject like a direct variant
       // pick: carry the member's bare name when it names a variant,
-      // otherwise keep the outer requested name (direct variant picks
-      // rely on it through their single-member combo).
+      // otherwise keep the outer requested name.
       const comboInjectVariants = await getInjectVariants().catch(() => ({}));
       const memberInjectName = (m) =>
         (typeof m === "string" && !m.includes("/") && comboInjectVariants[m]
@@ -387,7 +404,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         body,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m)),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), resolveComboMemberAttemptCap(chatSettings)),
           adapterAdded,
           nestedVariantBacking
         ),
@@ -430,6 +447,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // out before a clean answer shows up.
   let flakyAttempts = 0;
   let lastFlakyResult = null;
+  // Smart member failover: failed accounts for this member inside this one
+  // request. Once the cap is hit, the member gives up so the combo can move
+  // to its next member at once instead of grinding the whole pool.
+  let memberFallbackFailures = 0;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
@@ -591,6 +612,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       lastError = result.error;
       lastStatus = result.status;
       lastHeaders = upstreamResponseHeaders(result.response?.headers);
+      // Smart member failover: a lane whose accounts keep failing (e.g. a
+      // campaign-wide 429) stops here — the combo moves to its next member
+      // at once instead of grinding the rest of this pool.
+      memberFallbackFailures++;
+      if (comboMemberAttemptCap !== null && memberFallbackFailures >= comboMemberAttemptCap) {
+        log.warn("COMBO", `Member ${provider}/${model} failed ${memberFallbackFailures} accounts in this request — moving to next combo member`);
+        return result.response;
+      }
       continue;
     }
 

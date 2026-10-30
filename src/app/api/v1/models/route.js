@@ -7,7 +7,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -408,6 +408,35 @@ export async function buildModelsList(kindFilter, options = {}) {
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
     }
     models.push(entry);
+  }
+
+  // Variants are directly routable models too (no backing combo): list
+  // each variant name so pickers keep offering direct variant picks.
+  // A name that still has a backing combo is skipped (the combo entry
+  // above already lists it) so the transition never duplicates ids.
+  // Listed regardless of `enabled` — `enabled` only gates prompt
+  // injection, not routability (same as their backing combos were).
+  if (kindFilter.includes(LLM_KIND)) {
+    const variants = await getInjectVariants().catch(() => ({}));
+    for (const [name, entry] of Object.entries(variants)) {
+      if (combosByName.has(name)) continue;
+      if (typeof entry?.model !== "string" || !entry.model.includes("/")) continue;
+      const slash = entry.model.indexOf("/");
+      const alias = entry.model.slice(0, slash);
+      const modelId = entry.model.slice(slash + 1);
+      let capabilities;
+      try {
+        capabilities = getCapabilitiesForModel(alias, modelId) || undefined;
+      } catch {
+        capabilities = undefined;
+      }
+      models.push({
+        id: name,
+        object: "model",
+        owned_by: "variant",
+        ...(capabilities ? { capabilities } : {}),
+      });
+    }
   }
 
   if (connections.length === 0) {

@@ -1,9 +1,11 @@
 // 9Router Pro — Prompt Injection variant tests (vitest).
 // A variant is a custom-named model: picking the variant serves its
 // backing provider/model WITH the prompt; picking the raw model serves
-// it WITHOUT any prompt. Variants resolve through a single-member combo
-// of the same name, created and synced with the variant. Runs against a
-// throwaway DATA_DIR so the live database is never touched. Run from tests/:
+// it WITHOUT any prompt. Variant names route directly (dispatch checks
+// the variants map), so no combo object is created per variant — the
+// Kombinasi page shows only combos the user actually made. Runs against
+// a throwaway DATA_DIR so the live database is never touched. Run from
+// tests/:
 //   bun x vitest run pro/prompt-injection-variant.test.js
 import assert from "node:assert";
 import fs from "node:fs";
@@ -31,16 +33,14 @@ afterAll(() => {
 });
 
 describe("prompt injection variants", () => {
-  it("saves a variant and creates its single-member combo", async () => {
+  it("saves a variant and creates no combo", async () => {
     const saved = await repo.setInjectVariant("dahlunce", {
       model: MODEL_A, mode: "single", content: "hello",
     });
     assert.ok(saved);
     assert.equal(saved.model, MODEL_A);
-    assert.ok(saved.comboId);
-    const combo = await combosRepo.getComboById(saved.comboId);
-    assert.equal(combo.name, "dahlunce");
-    assert.deepEqual(combo.models, [MODEL_A]);
+    assert.equal(saved.comboId, null);
+    assert.equal(await combosRepo.getComboByName("dahlunce"), null);
     const map = await repo.getInjectVariants();
     assert.equal(map.dahlunce.model, MODEL_A);
   });
@@ -65,26 +65,22 @@ describe("prompt injection variants", () => {
     await combosRepo.deleteCombo((await combosRepo.getComboByName("taken")).id);
   });
 
-  it("changing the backing updates the same combo", async () => {
+  it("changing the backing updates the entry, still no combo", async () => {
     const before = await repo.setInjectVariant("dahlunce", {
       model: MODEL_B, mode: "single", content: "hello",
     });
-    const combo = await combosRepo.getComboById(before.comboId);
-    assert.deepEqual(combo.models, [MODEL_B]);
+    assert.equal(before.model, MODEL_B);
+    assert.equal(before.comboId, null);
+    assert.equal(await combosRepo.getComboByName("dahlunce"), null);
   });
 
-  it("deleting a variant deletes its combo, but never a combo the user renamed", async () => {
+  it("deleting a variant removes only the entry and leaves real combos alone", async () => {
+    await combosRepo.createCombo({ name: "real-combo", models: [MODEL_B] });
     await repo.setInjectVariant("todelete", { model: MODEL_A, mode: "single", content: "x" });
-    const comboId = (await repo.getInjectVariants()).todelete.comboId;
     assert.equal(await repo.deleteInjectVariant("todelete"), true);
-    assert.equal(await combosRepo.getComboById(comboId), null);
-
-    await repo.setInjectVariant("renamed", { model: MODEL_A, mode: "single", content: "x" });
-    const comboId2 = (await repo.getInjectVariants()).renamed.comboId;
-    await combosRepo.updateCombo(comboId2, { name: "user-renamed" });
-    assert.equal(await repo.deleteInjectVariant("renamed"), true);
-    assert.ok(await combosRepo.getComboById(comboId2));
-    await combosRepo.deleteCombo(comboId2);
+    assert.equal((await repo.getInjectVariants()).todelete, undefined);
+    assert.deepEqual((await combosRepo.getComboByName("real-combo")).models, [MODEL_B]);
+    await combosRepo.deleteCombo((await combosRepo.getComboByName("real-combo")).id);
   });
 
   it("a variant pick injects, a raw pick does not, and a variant suppresses the model entry", async () => {
@@ -133,11 +129,10 @@ describe("prompt injection variants", () => {
     const variants = await repo.getInjectVariants();
     assert.equal(variants["dahl depsek"].model, MODEL_A);
     assert.equal(variants["dahl depsek"].content, "migrated-a");
-    assert.ok(variants["dahl depsek"].comboId);
+    assert.equal(variants["dahl depsek"].comboId, null);
     assert.equal(variants["dahl-glm-5-3-flash"].model, MODEL_B);
     assert.equal(variants["dahl-glm-5-3-flash"].content, "migrated-b");
-    const combo = await combosRepo.getComboByName("dahl-glm-5-3-flash");
-    assert.deepEqual(combo.models, [MODEL_B]);
+    assert.equal(await combosRepo.getComboByName("dahl-glm-5-3-flash"), null);
     assert.deepEqual(await repo.getInjectModelPrompts(), {});
     // Idempotent: a second run migrates nothing.
     assert.equal(await repo.migrateModelPromptsToVariants(), 0);

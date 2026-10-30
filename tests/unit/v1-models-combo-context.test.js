@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   getCombos: vi.fn(),
   getCustomModels: vi.fn(async () => []),
   getModelAliases: vi.fn(async () => ({})),
+  getInjectVariants: vi.fn(async () => ({})),
 }));
 
 vi.mock("@/lib/localDb", () => db);
@@ -79,5 +80,28 @@ describe("/v1/models combo limits", () => {
       context_length: 200000,
       capabilities: { contextWindow: 200000 },
     });
+  });
+
+  it("lists a variant name as a model without a backing combo", async () => {
+    db.getInjectVariants.mockResolvedValue({
+      "my-variant": { model: "dahl/deepseek-ai/DeepSeek-V4-Flash-0731", enabled: true },
+    });
+    const models = await modelsWithCombo("dahl", "deepseek-ai/DeepSeek-V4-Flash-0731", []);
+    expect(models.find((model) => model.id === "my-variant")).toMatchObject({
+      object: "model",
+      owned_by: "variant",
+    });
+  });
+
+  it("skips a variant whose name still has a backing combo", async () => {
+    db.getInjectVariants.mockResolvedValue({
+      "dup-name": { model: "dahl/deepseek-ai/DeepSeek-V4-Flash-0731", enabled: true },
+    });
+    const models = await modelsWithCombo("dahl", "deepseek-ai/DeepSeek-V4-Flash-0731", [
+      { name: "dup-name", models: ["dahl/deepseek-ai/DeepSeek-V4-Flash-0731"] },
+    ]);
+    const dupes = models.filter((model) => model.id === "dup-name");
+    expect(dupes).toHaveLength(1);
+    expect(dupes[0].owned_by).toBe("combo");
   });
 });

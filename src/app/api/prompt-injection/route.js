@@ -86,8 +86,7 @@ export async function PUT(request) {
     const hasKey = typeof body.keyId === "string" && !!body.keyId;
     const hasModel = typeof body.model === "string" && !!body.model;
     // Variant: a custom name backed by one provider/model. The name is
-    // the identity — it must not collide with a combo the variant did
-    // not create (its own combo is found by the stored comboId).
+    // the identity — it must not collide with an existing combo.
     if (body.variant && typeof body.variant === "object") {
       const v = body.variant;
       const name = typeof v.name === "string" ? v.name.trim() : "";

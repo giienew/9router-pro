@@ -14,9 +14,10 @@
 // "dahlunce") backed by exactly one provider/model. Picking the variant
 // serves that model WITH the variant's prompt; picking the raw model
 // serves it WITHOUT any prompt — the original model name is never
-// disturbed by an injection. A variant resolves through a single-member
-// combo of the same name, created and synced with the variant (its id is
-// kept on the variant as comboId). Model-coordinate injections from the
+// disturbed by an injection. A variant name routes directly: dispatch
+// checks the variants map, so no combo object is created per variant
+// (comboId stays null; entries written before this change keep theirs
+// until re-saved or migrated). Model-coordinate injections from the
 // earlier concept no longer exist: any still stored are migrated to
 // variants on first read (name from the old label, else derived from the
 // model), so an existing install keeps its prompts as named variants.
@@ -49,7 +50,7 @@
 // on first read and treated as "single".
 
 import { makeKv } from "../helpers/kvStore.js";
-import { getCombos, getComboByName, getComboById, createCombo, updateCombo, deleteCombo } from "./combosRepo.js";
+import { getCombos, getComboByName, getComboById, deleteCombo } from "./combosRepo.js";
 import { getProviderNodes, resolveRoutableBacking } from "./nodesRepo.js";
 import { normalizePromptMap, normalizeKeyModelMap, buildProviderResolver } from "../normalizeInjections.js";
 
@@ -282,25 +283,6 @@ export async function getInjectVariants() {
   await ensureMigrated();
   return cleanVariantMap(await kv.get(VARIANTS_KEY, null));
 }
-
-// Sync the variant's single-member combo: create it on first save, keep
-// it on the same name and backing afterwards. Returns the combo id, or
-// null when a DIFFERENT combo already owns the name (the caller turns
-// that into a 400). A combo the user renamed by hand is left alone —
-// the variant then re-links to a fresh combo on its next save.
-async function syncVariantCombo(name, model, existingComboId) {
-  if (existingComboId) {
-    const combo = await getComboById(existingComboId).catch(() => null);
-    if (combo && combo.name === name) {
-      await updateCombo(combo.id, { models: [model] });
-      return combo.id;
-    }
-  }
-  if (await getComboByName(name).catch(() => null)) return null;
-  const combo = await createCombo({ name, models: [model] });
-  return combo.id;
-}
-
 export async function setInjectVariant(name, input = {}) {
   const cleanName = cleanVariantName(name);
   if (!cleanName) return null;
@@ -318,9 +300,14 @@ export async function setInjectVariant(name, input = {}) {
   const routedModel = resolveRoutableBacking(entry.model, nodes);
   if (routedModel === null) return null;
   const routedEntry = routedModel === entry.model ? entry : { ...entry, model: routedModel };
-  const comboId = await syncVariantCombo(cleanName, routedEntry.model, map[cleanName]?.comboId || null);
-  if (!comboId) return null;
-  map[cleanName] = { ...routedEntry, comboId };
+  // No backing combo: a variant name routes directly (dispatch checks the
+  // variants map), so saving a variant creates no combo object — the
+  // Kombinasi page shows only combos the user actually made.
+  // A new variant name must not shadow a real combo (dispatch checks
+  // combos first, so a colliding variant would be unreachable);
+  // re-saving an existing variant is always fine.
+  if (!(cleanName in map) && (await getComboByName(cleanName).catch(() => null))) return null;
+  map[cleanName] = { ...routedEntry, comboId: null };
   await kv.set(VARIANTS_KEY, map);
   invalidateInjectSnapshot();
   return map[cleanName];
@@ -380,8 +367,7 @@ export async function migrateModelPromptsToVariants() {
         let candidate = base;
         let n = 2;
         while (taken.has(candidate)) candidate = `${base}-${n++}`.slice(0, 80);
-        const combo = await createCombo({ name: candidate, models: [model] });
-        variants[candidate] = { ...entry, model, comboId: combo.id };
+        variants[candidate] = { ...entry, model, comboId: null };
         taken.add(candidate);
         migratedCount++;
       } catch {
