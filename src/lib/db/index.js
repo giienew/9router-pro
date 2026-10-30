@@ -58,7 +58,7 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, isKeyExpired,
 } from "./repos/apiKeysRepo.js";
 
 // Combos
@@ -87,7 +87,7 @@ export {
 // Key Quotas (9Router Pro)
 export {
   getKeyQuota, getAllKeyQuotas, setKeyQuota, deleteKeyQuota,
-  getKeyUsageInWindow, checkKeyQuota,
+  getKeyUsageInWindow, getKeyCostInWindow, checkKeyQuota,
 } from "./repos/keyQuotaRepo.js";
 
 // Key Limits (9Router Pro) — per-key RPM/TPM/RPH/RPD/concurrency config

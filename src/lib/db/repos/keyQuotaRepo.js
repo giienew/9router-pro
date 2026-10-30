@@ -3,7 +3,11 @@
 // brings it back lean: config in KV, usage summed from usageHistory.
 //
 //   scope "keyQuotas": key = api key id,
-//   value = { enabled, limit, windowHours }
+//   value = { enabled, limit, windowHours, costLimit? }
+//
+// costLimit (P3-26, optional, USD) caps the same window's spend, summed
+// from usageHistory.cost. Token and cost blocks are independent: hitting
+// either one blocks the request.
 //
 // Enforcement is a soft, per-request pre-check in the chat handler
 // (fail-open: a quota lookup error never blocks a chat).
@@ -20,7 +24,10 @@ export function cleanQuota(raw) {
   const limit = Math.floor(Number(raw.limit));
   if (!Number.isFinite(limit) || limit <= 0) return null;
   const windowHours = QUOTA_WINDOWS.includes(Number(raw.windowHours)) ? Number(raw.windowHours) : 24;
-  return { enabled: raw.enabled !== false, limit, windowHours };
+  const out = { enabled: raw.enabled !== false, limit, windowHours };
+  const costLimit = Number(raw.costLimit);
+  if (Number.isFinite(costLimit) && costLimit > 0) out.costLimit = costLimit;
+  return out;
 }
 
 export async function getKeyQuota(keyId) {
@@ -66,6 +73,19 @@ export async function getKeyUsageInWindow(rawKey, windowHours) {
   return Number(row?.used) || 0;
 }
 
+// Total USD spend a raw key value burned inside the rolling window.
+export async function getKeyCostInWindow(rawKey, windowHours) {
+  if (!rawKey) return 0;
+  const cutoff = new Date(Date.now() - windowHours * 3600 * 1000).toISOString();
+  const db = await getAdapter();
+  const row = db.get(
+    `SELECT COALESCE(SUM(COALESCE(cost, 0)), 0) AS spent
+     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
+    [rawKey, cutoff]
+  );
+  return Number(row?.spent) || 0;
+}
+
 // Decision used by the chat handler; never throws.
 export async function checkKeyQuota(keyId, rawKey) {
   try {
@@ -73,6 +93,13 @@ export async function checkKeyQuota(keyId, rawKey) {
     if (!quota || !quota.enabled) return { blocked: false };
     const used = await getKeyUsageInWindow(rawKey, quota.windowHours);
     if (used >= quota.limit) return { blocked: true, quota, used };
+    if (quota.costLimit) {
+      const costUsed = await getKeyCostInWindow(rawKey, quota.windowHours);
+      if (costUsed >= quota.costLimit) {
+        return { blocked: true, costBlocked: true, quota, used, costUsed };
+      }
+      return { blocked: false, quota, used, costUsed };
+    }
     return { blocked: false, quota, used };
   } catch {
     return { blocked: false };

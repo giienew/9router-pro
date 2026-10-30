@@ -71,7 +71,7 @@ function Chip({ icon, children, tone = "muted" }) {
 
 Chip.propTypes = { icon: PropTypes.string, children: PropTypes.node, tone: PropTypes.string };
 
-export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict, onQuotaChange, onLimitsChange }) {
+export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict, onQuotaChange, onLimitsChange, onExpiryChange }) {
   const access = apiKey.access || { restricted: false, allow: [] };
   const quota = apiKey.quota || null;
   const quotaUsed = apiKey.quotaUsed || 0;
@@ -248,6 +248,26 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
                     style={{ width: `${Math.min(100, quota.limit ? (quotaUsed / quota.limit) * 100 : 0)}%` }}
                   />
                 </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-muted">Max spend $</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    className="w-24 rounded-lg border border-border bg-bg px-2.5 py-1.5 font-mono text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                    defaultValue={quota.costLimit ?? ""}
+                    placeholder="No cap"
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (e.target.value === "") {
+                        if (quota.costLimit !== undefined) onQuotaChange?.({ ...quota, costLimit: null });
+                      } else if (Number.isFinite(v) && v > 0 && v !== quota.costLimit) {
+                        onQuotaChange?.({ ...quota, costLimit: v });
+                      }
+                    }}
+                  />
+                  <span className="text-xs text-text-muted">USD per same window (empty = no spend cap)</span>
+                </div>
               </div>
             )}
           </div>
@@ -294,6 +314,43 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
                 {" · "}{limitsUsage.inFlight || 0} in flight
               </p>
             )}
+          </div>
+
+          {/* Expiry (P3-26): date-only input; stored as end of that day (UTC) */}
+          <div className="mt-4 border-t border-border-subtle pt-4">
+            <GroupLabel
+              optional
+              right={
+                apiKey.expiresAt ? (
+                  <button
+                    onClick={() => onExpiryChange?.(null)}
+                    className="text-xs font-normal normal-case tracking-normal text-text-muted transition-colors hover:text-red-500"
+                  >
+                    Clear
+                  </button>
+                ) : null
+              }
+            >
+              Expiry
+            </GroupLabel>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                className="rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                value={apiKey.expiresAt ? apiKey.expiresAt.slice(0, 10) : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onExpiryChange?.(v ? `${v}T23:59:59.999Z` : null);
+                }}
+              />
+              <span className="text-xs text-text-muted">
+                {apiKey.expiresAt
+                  ? (new Date(apiKey.expiresAt).getTime() <= Date.now()
+                    ? "Expired — this key is rejected on every endpoint."
+                    : "After this date the key is rejected on every endpoint.")
+                  : "Empty = never expires."}
+              </span>
+            </div>
           </div>
         </div>
       )}

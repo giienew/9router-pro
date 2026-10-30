@@ -14,7 +14,7 @@
 // the budget their recorded spend has already consumed, but their own
 // spend does not accrue toward it. Rate limits (rpm/rph/rpd/concurrency)
 // are in-memory and apply to every modality regardless.
-import { getApiKeyByKey, checkKeyQuota, getKeyLimits, getKeyUsageInWindow } from "@/lib/localDb";
+import { getApiKeyByKey, checkKeyQuota, getKeyLimits, getKeyUsageInWindow, isKeyExpired } from "@/lib/localDb";
 import { peekKeyLimits, admitKeyRequest } from "@/lib/keyRateLimiter.js";
 import { extractApiKey } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -37,6 +37,13 @@ export async function admitKey(request) {
     if (!rawKey) return null;
     const keyRecord = await getApiKeyByKey(rawKey);
     if (!keyRecord) return null;
+    // Per-key policy (P3-26): expiry is fail-CLOSED, unlike quota/limit
+    // lookups. An expired key gets a 401 here, before any limit or quota
+    // check, on every modality (all handlers enter through this function).
+    if (isKeyExpired(keyRecord.expiresAt)) {
+      log.warn("AUTH", `Key "${keyRecord.name}" expired at ${keyRecord.expiresAt}`);
+      return { response: errorResponse(401, "API key expired") };
+    }
     let release = null;
     const limits = await getKeyLimits(keyRecord.id);
     if (limits) {
@@ -57,6 +64,10 @@ export async function admitKey(request) {
     const quota = await checkKeyQuota(keyRecord.id, rawKey);
     if (quota.blocked) {
       if (release) release();
+      if (quota.costBlocked) {
+        log.warn("QUOTA", `Key "${keyRecord.name}" over cost quota ($${quota.costUsed}/${quota.quota.costLimit} in the last ${quota.quota.windowHours}h)`);
+        return { response: errorResponse(429, `API key cost quota exceeded ($${quota.costUsed}/$${quota.quota.costLimit} in the last ${quota.quota.windowHours}h)`) };
+      }
       log.warn("QUOTA", `Key "${keyRecord.name}" over quota (${quota.used}/${quota.quota.limit})`);
       return { response: errorResponse(429, `API key token quota exceeded (${quota.used}/${quota.quota.limit} tokens in the last ${quota.quota.windowHours}h)`) };
     }

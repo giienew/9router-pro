@@ -110,6 +110,8 @@ export default function APIPageClient({ machineId }) {
     quotaEnabled: false,
     quotaLimit: "100000",
     quotaWindow: 24,
+    quotaCostLimit: "",
+    expiresAt: "",
     limits: { rpm: "", tpm: "", rph: "", rpd: "", maxConcurrent: "" },
   });
   const [newKeyDraft, setNewKeyDraft] = useState(emptyKeyDraft);
@@ -747,8 +749,15 @@ export default function APIPageClient({ machineId }) {
           if (newKeyDraft.quotaEnabled) {
             const limit = parseInt(newKeyDraft.quotaLimit, 10);
             if (limit > 0) {
-              await handleUpdateKeyQuota(id, { enabled: true, limit, windowHours: newKeyDraft.quotaWindow });
+              const costLimit = parseFloat(newKeyDraft.quotaCostLimit);
+              await handleUpdateKeyQuota(id, {
+                enabled: true, limit, windowHours: newKeyDraft.quotaWindow,
+                ...(Number.isFinite(costLimit) && costLimit > 0 ? { costLimit } : {}),
+              });
             }
+          }
+          if (newKeyDraft.expiresAt) {
+            await handleUpdateKeyExpiry(id, `${newKeyDraft.expiresAt}T23:59:59.999Z`);
           }
           const limits = {};
           let hasLimits = false;
@@ -844,6 +853,25 @@ export default function APIPageClient({ machineId }) {
       }
     } catch (error) {
       console.log("Error updating key limits:", error);
+    }
+  };
+
+  // 9Router Pro: save a key's expiry (null clears it).
+  const handleUpdateKeyExpiry = async (id, expiresAt) => {
+    try {
+      const res = await fetch(`/api/keys/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresAt }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.key) {
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, expiresAt: data.key.expiresAt } : k));
+      } else {
+        notify.error(data.error || "Failed to update key expiry");
+      }
+    } catch (error) {
+      console.log("Error updating key expiry:", error);
     }
   };
 
@@ -1227,12 +1255,20 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
+                  {key.expiresAt && (
+                    <p className={`text-xs mt-1 ${new Date(key.expiresAt).getTime() <= Date.now() ? "text-red-500 font-medium" : "text-text-muted"}`}>
+                      {new Date(key.expiresAt).getTime() <= Date.now()
+                        ? `Expired ${new Date(key.expiresAt).toLocaleDateString()}`
+                        : `Expires ${new Date(key.expiresAt).toLocaleDateString()}`}
+                    </p>
+                  )}
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
                   <KeyAccessControls
                     apiKey={key}
                     onChange={(access) => handleUpdateKeyAccess(key.id, access)}
+                    onExpiryChange={(expiresAt) => handleUpdateKeyExpiry(key.id, expiresAt)}
                     onQuotaChange={(quota) => handleUpdateKeyQuota(key.id, quota)}
                     onLimitsChange={(limits) => handleUpdateKeyLimits(key.id, limits)}
                     onRequestRestrict={() => setConfirmState({
@@ -1378,8 +1414,33 @@ export default function APIPageClient({ machineId }) {
                   value is ignored and the key is created without a quota.
                 </p>
               )}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-text-muted">Max spend $</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  className="w-24 rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                  value={newKeyDraft.quotaCostLimit}
+                  onChange={(e) => setNewKeyDraft((d) => ({ ...d, quotaCostLimit: e.target.value }))}
+                  placeholder="No cap"
+                />
+                <span className="text-xs text-text-muted">USD per same window</span>
+              </div>
               </>
             )}
+
+            {/* Expiry */}
+            <div className="mt-4 border-t border-border-subtle pt-3">
+              <span className="text-sm text-text-main">Expiry</span>
+              <span className="mt-0.5 block text-[11px] text-text-muted">Empty = never expires. After this date the key is rejected everywhere.</span>
+              <input
+                type="date"
+                className="mt-2 rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-text-main outline-none transition-colors focus:border-brand-500"
+                value={newKeyDraft.expiresAt}
+                onChange={(e) => setNewKeyDraft((d) => ({ ...d, expiresAt: e.target.value }))}
+              />
+            </div>
 
             {/* Key limits */}
             <div className="mt-4 border-t border-border-subtle pt-3">

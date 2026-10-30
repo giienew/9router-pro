@@ -359,6 +359,45 @@ export async function getUsageHistory(filter = {}) {
   }));
 }
 
+// Scoped usage view (P3-26): one key holder sees ONLY their own rows.
+// Rows are matched on the raw key value (usageHistory.apiKey stores it),
+// newest first; the key value itself is never echoed back.
+export async function getKeyUsagePage(rawKey, { limit = 50, offset = 0 } = {}) {
+  const db = await getAdapter();
+  const lim = Math.min(200, Math.max(1, Math.floor(Number(limit)) || 50));
+  const off = Math.max(0, Math.floor(Number(offset)) || 0);
+  const totals = db.get(
+    `SELECT COUNT(*) AS count,
+       COALESCE(SUM(COALESCE(promptTokens, 0)), 0) AS promptTokens,
+       COALESCE(SUM(COALESCE(completionTokens, 0)), 0) AS completionTokens,
+       COALESCE(SUM(COALESCE(cost, 0)), 0) AS cost
+     FROM usageHistory WHERE apiKey = ?`,
+    [rawKey]
+  );
+  const rows = db.all(
+    `SELECT timestamp, provider, model, connectionId, endpoint,
+       promptTokens, completionTokens, cost, status
+     FROM usageHistory WHERE apiKey = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+    [rawKey, lim, off]
+  );
+  return {
+    totals: {
+      count: Number(totals?.count) || 0,
+      promptTokens: Number(totals?.promptTokens) || 0,
+      completionTokens: Number(totals?.completionTokens) || 0,
+      cost: Number(totals?.cost) || 0,
+    },
+    rows: rows.map((r) => ({
+      timestamp: r.timestamp, provider: r.provider, model: r.model,
+      connectionId: r.connectionId, endpoint: r.endpoint,
+      promptTokens: r.promptTokens || 0, completionTokens: r.completionTokens || 0,
+      cost: r.cost || 0, status: r.status,
+    })),
+    limit: lim,
+    offset: off,
+  };
+}
+
 function loadDaysInRange(adapter, maxDays) {
   if (maxDays == null) {
     return adapter.all(`SELECT dateKey, data FROM usageDaily ORDER BY dateKey ASC`);
