@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApiKeys, createApiKey, getAllKeyQuotas, getKeyUsageInWindow, getAllKeyLimits } from "@/lib/localDb";
+import { getAdapter } from "@/lib/db/driver.js";
+import { recordQuotaPressure } from "@/lib/trustEvents.js";
 import { getKeyLimitUsage } from "@/lib/keyRateLimiter.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
@@ -16,6 +18,13 @@ export async function GET() {
         const quota = quotas[key.id] || null;
         key.quota = quota;
         key.quotaUsed = quota ? await getKeyUsageInWindow(key.key, quota.windowHours) : 0;
+        // R2 quota-pressure: deduped in recordQuotaPressure, and cleared
+        // (re-arming) when usage drops below 90% — fire-and-forget.
+        if (quota && Number(quota.limit) > 0) {
+          getAdapter()
+            .then((db) => recordQuotaPressure(db, key.name || key.id, key.quotaUsed, quota.limit, quota.unit || "tokens"))
+            .catch(() => {});
+        }
         const limits = allLimits[key.id] || null;
         key.limits = limits;
         key.limitsUsage = {

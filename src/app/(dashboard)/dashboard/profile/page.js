@@ -2191,6 +2191,46 @@ export default function ProfilePage() {
           </p>
         )}
       </Modal>
+      {/* R3 security audit log — appended section only; the Profile page
+          split shape is owner-reserved and is NOT restructured here. */}
+      <SecurityLogSection />
+    </div>
+  );
+}
+
+function SecurityLogSection() {
+  const [events, setEvents] = useState([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/security-log")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.status === 401 ? "Sign in to view the security log." : "Failed to load security log."))))
+      .then((data) => setEvents(data.events || []))
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <h2 className="text-base font-semibold">Security log</h2>
+      <p className="text-xs text-text-muted mt-1">
+        Sign-ins, sign-outs and authenticator events with IP and user agent where available. Repeated failed sign-ins from one IP are flagged.
+      </p>
+      {error ? (
+        <p className="text-sm text-text-muted mt-3">{error}</p>
+      ) : events.length === 0 ? (
+        <p className="text-sm text-text-muted mt-3">No security events recorded yet.</p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {events.slice(0, 50).map((ev) => (
+            <div key={ev.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
+              <span className="text-text-muted text-xs">{ev.createdAt ? new Date(ev.createdAt).toLocaleString() : ""}</span>
+              <span className="font-medium">{ev.event}</span>
+              {ev.breach ? <span className="text-xs font-semibold text-red-600 dark:text-red-400">Breach flag</span> : null}
+              {ev.ip && <span className="text-xs text-text-muted">{ev.ip}</span>}
+              {ev.detail && <span className="text-xs text-text-muted">{ev.detail}</span>}
+              {ev.userAgent && <span className="text-xs text-text-muted truncate max-w-full" title={ev.userAgent}>{ev.userAgent}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

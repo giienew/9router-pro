@@ -8,6 +8,8 @@ import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isTotpEnabled, verifyTotp, consumeBackupCode, getTotpConfig } from "@/lib/auth/totp.js";
 import { isLocalRequest } from "@/dashboardGuard";
+import { getAdapter } from "@/lib/db/driver.js";
+import { recordSecurityEvent } from "@/lib/trustEvents.js";
 
 const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -22,6 +24,12 @@ function isTunnelRequest(request, settings) {
 export async function POST(request) {
   try {
     const ip = getClientIp(request);
+    // R3: security audit log (fire-and-forget, never blocks sign-in).
+    const audit = (event, detail) => {
+      getAdapter()
+        .then((db) => recordSecurityEvent(db, { event, ip, userAgent: request.headers.get("user-agent") || null, detail }))
+        .catch(() => {});
+    };
     const lock = checkLock(ip);
     if (lock.locked) {
       return NextResponse.json(
@@ -75,6 +83,7 @@ export async function POST(request) {
         }
         if (!totpOk) {
           const { remainingBeforeLock } = recordFail(ip);
+          audit("login-failed", "TOTP code rejected");
           return NextResponse.json(
             { error: `Invalid authenticator code. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock, totpRequired: true },
             { status: 401, headers: NO_STORE_HEADERS }
@@ -111,6 +120,7 @@ export async function POST(request) {
 
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
+      audit("login", await isTotpEnabled() ? "Password + TOTP verified" : "Password verified");
 
       return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
     }
@@ -123,6 +133,7 @@ export async function POST(request) {
         { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
       );
     }
+    audit("login-failed", "Password rejected");
     return NextResponse.json(
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }

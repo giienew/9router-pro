@@ -12,6 +12,7 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
 import { resolveProviderId, AI_PROVIDERS } from "@/shared/constants/providers";
+import { FreeStackAdvisor, ComboAdvisorSection } from "./AdvisorSections";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -420,6 +421,11 @@ export default function CombosPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {/* R1 + R4 advisor sections (drafts only; creation needs Apply) */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FreeStackAdvisor />
+        <ComboAdvisorSection />
+      </div>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">

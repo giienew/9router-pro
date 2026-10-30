@@ -113,6 +113,11 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
   }
 
+  // R1 free-stack watchdog: boot-armed, draft-only refresh (see module).
+  import("@/lib/freeStackWatchdog.js")
+    .then(({ startFreeStackWatchdog }) => startFreeStackWatchdog())
+    .catch((e) => console.log("[FreeStackWatchdog] scheduler start failed:", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")

@@ -6,6 +6,7 @@ import Link from "next/link";
 import PropTypes from "prop-types";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
+import TrustInboxBell from "@/shared/components/TrustInboxBell";
 import DonateModal from "@/shared/components/DonateModal";
 import { Modal, Input, Button } from "@/shared/components";
 import { getNameFontStyle, DEFAULT_NAME } from "@/shared/constants/nameStyles";
@@ -413,6 +414,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         >
           {profileName}
         </button>
+        <TrustInboxBell />
         <HeaderMenu onLogout={handleLogout} />
       </div>
       <DonateModal isOpen={donateOpen} onClose={() => setDonateOpen(false)} />

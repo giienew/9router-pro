@@ -62,6 +62,16 @@ export async function POST(request) {
 
   const res = await handleChat(request);
 
+  // R2 failed-request events: server errors only, fire-and-forget.
+  if (!res.ok && res.status >= 500) {
+    getAdapter()
+      .then(async (db) => {
+        const { recordTrustEvent } = await import("@/lib/trustEvents.js");
+        recordTrustEvent(db, { kind: "failed-request", level: "warn", subject: "chat", title: `Chat request failed (${res.status})`, detail: "A request through /v1/chat/completions returned a server error." });
+      })
+      .catch(() => {});
+  }
+
   if (cacheKey && cacheCfg?.enabled && res.ok) {
     try {
       const ct = res.headers.get("content-type") || "";
