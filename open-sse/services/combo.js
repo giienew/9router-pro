@@ -611,7 +611,11 @@ export async function handleComboChat({
       if (requestScoped) {
         log.warn("COMBO", `Model ${modelStr} rejected the request (${result.status}${log.describeStatus?.(result.status) ? ` ${log.describeStatus(result.status)}` : ""}), trying next`);
         lastError = errorText || String(result.status);
-        if (!lastStatus) lastStatus = result.status;
+        // Status and message must come from the SAME (latest) member: the
+        // old `if (!lastStatus)` guard kept the first member's status while
+        // lastError kept being overwritten, pairing e.g. a 400 status with
+        // a 429 message and misfiring status-keyed retries.
+        lastStatus = result.status;
         if (!requestScopedResult) requestScopedResult = result;
         continue;
       }
@@ -627,7 +631,7 @@ export async function handleComboChat({
 
       // Fallback to next model
       lastError = errorText || String(result.status);
-      if (!lastStatus) lastStatus = result.status;
+      lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed (${result.status}${log.describeStatus?.(result.status) ? ` ${log.describeStatus(result.status)}` : ""}), trying next`);
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
@@ -635,7 +639,7 @@ export async function handleComboChat({
         clearStickyComboSession(comboName, sessionId);
       }
       lastError = error.message || String(error);
-      if (!lastStatus) lastStatus = 500;
+      lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
   }
