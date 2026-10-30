@@ -10,7 +10,9 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboStrategy } from "../services/pairStrategy.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
+import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { parseAutoTarget, buildAutoCandidates } from "../services/autoRouting.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -100,12 +102,16 @@ async function handleChatImpl(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
-  // Per-key access control: a restricted key may call only its listed combos and
-  // models. Checked once on the requested target, before bypass, combo expansion
-  // and any credential lookup; an allowed combo grants the members it routes to.
+  // Scored auto-routing (P3-25): `auto:<intent>` is not a real model, so the
+  // literal target skips the per-key target gate — the RESOLVED candidates
+  // are gated instead (filterAdapterModels below), so a restricted key only
+  // ever routes to models its allow-list names.
+  const autoIntent = parseAutoTarget(modelStr);
   const keyAccess = await getKeyAccessContext(request);
-  const keyAccessDenied = await enforceKeyAccess(keyAccess, modelStr);
-  if (keyAccessDenied) return keyAccessDenied;
+  if (!autoIntent) {
+    const keyAccessDenied = await enforceKeyAccess(keyAccess, modelStr);
+    if (keyAccessDenied) return keyAccessDenied;
+  }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -113,6 +119,35 @@ async function handleChatImpl(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   const requiredCapabilities = detectRequiredCapabilities(body);
+
+  // Auto-routing resolves to a ranked candidate list and falls back through
+  // it in order, like a combo with strategy "fallback" (same member cap).
+  if (autoIntent) {
+    const connections = await getProviderConnections().catch(() => []);
+    const disabled = await getDisabledModels().catch(() => ({}));
+    let candidates = buildAutoCandidates({ intent: autoIntent, connections, disabled });
+    candidates = await filterAdapterModels(keyAccess, candidates, []);
+    if (candidates.length === 0) {
+      log.warn("CHAT", `Auto-routing "${modelStr}" found no routable model`);
+      return errorResponse(
+        HTTP_STATUS.NOT_FOUND,
+        keyAccess
+          ? `No model allowed for this key matches auto:${autoIntent}`
+          : `No connected provider offers a model for auto:${autoIntent} — connect a provider first`,
+      );
+    }
+    log.info("CHAT", `Auto-routing "${modelStr}" → [${candidates.join(", ")}]`);
+    return handleComboChat({
+      body,
+      models: candidates,
+      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, modelStr, resolveComboMemberAttemptCap(settings)),
+      log,
+      comboName: modelStr,
+      comboStrategy: "fallback",
+      comboStickyLimit: settings.comboStickyRoundRobinLimit,
+      sessionId,
+    });
+  }
 
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
