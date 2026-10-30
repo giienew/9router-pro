@@ -10,7 +10,7 @@ import DonateModal from "@/shared/components/DonateModal";
 import { Modal, Input, Button } from "@/shared/components";
 import { getNameFontStyle, DEFAULT_NAME } from "@/shared/constants/nameStyles";
 import { cn } from "@/shared/utils/cn";
-import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { useHeaderSearchStore, isHeaderSearchPath } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
@@ -425,11 +425,15 @@ function HeaderSearch() {
   const query = useHeaderSearchStore((s) => s.query);
   const placeholder = useHeaderSearchStore((s) => s.placeholder);
   const setQuery = useHeaderSearchStore((s) => s.setQuery);
+  const pathname = usePathname();
   // On mobile the field collapses to an icon so the page title keeps its
   // room; tapping the icon expands the field (and the X collapses it back).
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  if (!visible) return null;
+  // Scoped to Providers (P2-19): the query is consumed only there, so the
+  // box must never render on Combos/Usage/Proxy Pools/etc. even if a stale
+  // registration leaves `visible` true across a navigation.
+  if (!visible || !isHeaderSearchPath(pathname)) return null;
 
   return (
     <>
@@ -453,6 +457,8 @@ function HeaderSearch() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
+          aria-label="Search providers"
+          title="Searches providers only"
           autoFocus={mobileOpen}
           className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
         />
