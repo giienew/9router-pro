@@ -20,6 +20,7 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import SecurityWarning from "./components/SecurityWarning";
 import KeyAccessControls from "./components/KeyAccessControls";
+import FirstRequestSnippet from "./components/FirstRequestSnippet";
 
 
 export default function APIPageClient({ machineId }) {
@@ -46,6 +47,7 @@ export default function APIPageClient({ machineId }) {
   const [createPickerProviders, setCreatePickerProviders] = useState([]);
   const [createPickerAliases, setCreatePickerAliases] = useState({});
   const [createdKey, setCreatedKey] = useState(null);
+  const [createdKeyName, setCreatedKeyName] = useState("");
   const [confirmState, setConfirmState] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
@@ -696,6 +698,7 @@ export default function APIPageClient({ machineId }) {
           if (hasLimits) await handleUpdateKeyLimits(id, limits);
         }
         setCreatedKey(data.key);
+        setCreatedKeyName(newKeyName);
         await fetchData();
         closeAddModal();
       } else {
@@ -1239,6 +1242,11 @@ export default function APIPageClient({ machineId }) {
             ))}
           </div>
         )}
+        {keys.length > 0 && (
+          <div className="mt-4">
+            <FirstRequestSnippet baseUrl={currentEndpoint} keyName={keys[0]?.name} />
+          </div>
+        )}
       </Card>
 
       {/* Add Key Modal */}
@@ -1433,7 +1441,7 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={!!createdKey}
         title="API Key Created"
-        onClose={() => setCreatedKey(null)}
+        onClose={() => { setCreatedKey(null); setCreatedKeyName(""); }}
       >
         <div className="flex flex-col gap-4">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -1458,7 +1466,8 @@ export default function APIPageClient({ machineId }) {
               {copied === "created_key" ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <Button onClick={() => setCreatedKey(null)} fullWidth>
+          <FirstRequestSnippet baseUrl={currentEndpoint} keyName={createdKeyName} />
+          <Button onClick={() => { setCreatedKey(null); setCreatedKeyName(""); }} fullWidth>
             Done
           </Button>
         </div>
