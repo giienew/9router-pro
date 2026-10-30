@@ -1562,8 +1562,9 @@ export default function ProviderDetailPage() {
             )}
           </div>
           <div className="min-w-0">
+            {/* Provider name already renders as the Header breadcrumb title
+                (G13) — no second large title here; keep the key link + count. */}
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
               {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
                 <a
                   href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}

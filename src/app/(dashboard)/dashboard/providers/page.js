@@ -54,6 +54,34 @@ function explainErrorCode(errorCode) {
   return null;
 }
 
+// Tap-to-expand error explanation (G13/G20): the old hover-only `title`
+// tooltip never fires on touch devices, so the badge is now a button that
+// expands the plain-language explanation inline. Desktop hover still shows
+// the same text via `title`.
+function ErrorBadgeWithExplanation({ errText, explanation }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        title={explanation}
+        aria-expanded={expanded}
+        className="cursor-pointer"
+      >
+        <Badge variant="error" size="sm" dot>
+          {errText}
+        </Badge>
+      </button>
+      {expanded && (
+        <span className="max-w-[260px] text-xs leading-relaxed text-text-muted">
+          {explanation}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
   if (connected > 0) {
@@ -70,11 +98,7 @@ function getStatusDisplay(connected, error, errorCode) {
     const explanation = explainErrorCode(errorCode);
     parts.push(
       explanation ? (
-        <span key="error" title={explanation}>
-          <Badge variant="error" size="sm" dot>
-            {errText}
-          </Badge>
-        </span>
+        <ErrorBadgeWithExplanation key="error" errText={errText} explanation={explanation} />
       ) : (
         <Badge key="error" variant="error" size="sm" dot>
           {errText}

@@ -87,7 +87,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/usage"))
     return {
-      title: "Usage & Analytics",
+      title: "Usage",
       description:
         "Monitor your API usage, token consumption, and request logs",
       icon: "bar_chart",
@@ -144,7 +144,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/skills"))
     return {
-      title: "Agent Skills",
+      title: "Skills",
       description: "Copy a link and paste to your AI to use 9Router — no install needed",
       icon: "extension",
       breadcrumbs: [],
@@ -165,7 +165,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/translator"))
     return {
-      title: "Translator",
+      title: "Translator (debug)",
       description: "Debug translation flow between formats",
       icon: "translate",
       breadcrumbs: [],
@@ -175,6 +175,27 @@ const getPageInfo = (pathname) => {
       title: "Console Log",
       description: "Live server console output",
       icon: "monitor",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/automation"))
+    return {
+      title: "Automation",
+      description: "Notifications, response cache, two-factor authentication, and database maintenance",
+      icon: "tune",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/basic-chat"))
+    return {
+      title: "Basic Chat",
+      description: "Chat directly through the router",
+      icon: "chat",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/pxpipe"))
+    return {
+      title: "PxPipe",
+      description: "Prompt compression dashboard and savings",
+      icon: "image",
       breadcrumbs: [],
     };
 
