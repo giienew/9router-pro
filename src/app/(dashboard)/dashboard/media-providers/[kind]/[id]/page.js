@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard, ConfirmModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, OAUTH_PROVIDERS, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, WEB_KIND_CONFIGS, AI_PROVIDERS, OAUTH_PROVIDERS, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import { WEB_LOGIN_PROVIDERS } from "@/app/(dashboard)/dashboard/providers/components/WebLoginButton";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
@@ -19,7 +19,8 @@ import { SttExampleCard } from "./components/SttExampleCard";
 export default function MediaProviderDetailPage() {
   const { kind, id } = useParams();
   const router = useRouter();
-  const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
+  // Detail pages for the combined /web kinds keep working via fallback (G17).
+  const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind) || WEB_KIND_CONFIGS[kind];
   const isCustom = isCustomEmbeddingProvider(id) && kind === "embedding";
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

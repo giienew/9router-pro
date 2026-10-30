@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, notFound, useRouter } from "next/navigation";
+import { useParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
@@ -9,7 +9,8 @@ import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 
-// webSearch/webFetch handled by /web page.
+// webSearch/webFetch list pages do not exist: they 404 via notFound()
+// below (G17). The combined page is /dashboard/media-providers/web.
 
 // 9Router Pro: per-connection status math moved server-side (?summary=1).
 
@@ -90,18 +91,12 @@ function MediaProviderCard({ provider, kind, stats, isCustom, onToggle }) {
 export default function MediaProviderKindPage() {
   const notify = useNotificationStore();
   const { kind } = useParams();
-  const router = useRouter();
   const { statsMap, setStatsMap } = useProviderSummary();
   const [customNodes, setCustomNodes] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
 
-  // webSearch/webFetch listing pages are merged into /web
-  useEffect(() => {
-    if (kind === "webSearch" || kind === "webFetch") {
-      router.replace("/dashboard/media-providers/web");
-    }
-  }, [kind, router]);
-
+  // webSearch/webFetch listing pages are gone (G17): kindConfig is
+  // undefined for them, so the notFound() below serves a 404.
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
   const isEmbedding = kind === "embedding";
 

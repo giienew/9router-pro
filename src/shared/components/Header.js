@@ -12,7 +12,7 @@ import { getNameFontStyle, DEFAULT_NAME } from "@/shared/constants/nameStyles";
 import { cn } from "@/shared/utils/cn";
 import { useHeaderSearchStore, isHeaderSearchPath } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, WEB_KIND_CONFIGS, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import { translate } from "@/i18n/runtime";
 
@@ -24,7 +24,7 @@ const getPageInfo = (pathname) => {
   if (mediaDetailMatch) {
     const kindId = mediaDetailMatch[1];
     const providerId = mediaDetailMatch[2];
-    const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kindId);
+    const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kindId) || WEB_KIND_CONFIGS[kindId];
     const provider = AI_PROVIDERS[providerId];
     return {
       title: provider?.name || providerId,
@@ -41,7 +41,7 @@ const getPageInfo = (pathname) => {
   const mediaKindMatch = pathname.match(/\/media-providers\/([^/]+)$/);
   if (mediaKindMatch) {
     const kindId = mediaKindMatch[1];
-    const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kindId);
+    const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kindId) || WEB_KIND_CONFIGS[kindId];
     return {
       title: kindConfig?.label || kindId,
       description: `Manage your ${kindConfig?.label || kindId} providers`,

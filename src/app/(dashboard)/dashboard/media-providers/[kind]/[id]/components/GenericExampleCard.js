@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card } from "@/shared/components";
-import { MEDIA_PROVIDER_KINDS, getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, WEB_KIND_CONFIGS, getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row, KIND_EXAMPLE_CONFIG } from "./exampleShared";
@@ -38,7 +38,7 @@ export function GenericExampleCard({ providerId, kind }) {
   const providerAlias = getProviderAlias(providerId);
   const resolvedId = resolveProviderId(providerAlias);
   const safeProviderAlias = resolvedId === providerId ? providerAlias : providerId;
-  const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
+  const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind) || WEB_KIND_CONFIGS[kind];
   const exConfig = KIND_EXAMPLE_CONFIG[kind];
   const safeExConfig = exConfig || {};
 
