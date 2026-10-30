@@ -103,7 +103,6 @@ export default function ChangelogModal({ isOpen, onClose }) {
               <div>
                 <p className="font-medium">Dashboard</p>
                 <ul className="list-disc pl-5 text-text-muted">
-                  <li>Testing Studio — two models or combos compared side by side through the router itself.</li>
                   <li>Per-provider model lists are cached and resolved concurrently instead of one slow pass.</li>
                 </ul>
               </div>
