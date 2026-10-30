@@ -475,7 +475,7 @@ export default function TokenSaverClient() {
       : "bg-warning/15 text-warning";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">

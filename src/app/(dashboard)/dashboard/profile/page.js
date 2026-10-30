@@ -1025,6 +1025,8 @@ export default function ProfilePage() {
   };
 
   return (
+    // Intentional width (G21): settings forms read best in a narrow
+    // column, unlike the full-width data pages.
     <div className="max-w-2xl mx-auto px-4 sm:px-0">
       <div className="flex flex-col gap-6">
         {/* Local Mode Info */}

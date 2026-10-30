@@ -149,7 +149,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
       </div>
 
       {open && (
-        <div className="mt-3 rounded-2xl border border-border-subtle bg-black/[0.02] p-4 dark:bg-white/[0.02]">
+        <div className="mt-3 rounded-[14px] border border-border-subtle bg-black/[0.02] p-4 dark:bg-white/[0.02]">
           {/* Access */}
           <GroupLabel
             right={

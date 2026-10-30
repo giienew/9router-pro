@@ -220,7 +220,7 @@ export default function TranslatorPage() {
   };
 
   return (
-    <div className="p-8 space-y-3">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div>

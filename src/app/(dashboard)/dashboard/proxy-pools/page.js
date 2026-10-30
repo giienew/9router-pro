@@ -709,6 +709,8 @@ export default function ProxyPoolsPage() {
   }
 
   return (
+    // Intentional width (G21): proxy-pool tables + relay controls stay
+    // narrower than the default max-w-7xl dashboard width for readability.
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">

@@ -194,7 +194,7 @@ export default function Sidebar({ onClose }) {
               </span>
               <span className="text-[13px] font-medium">{item.label}</span>
               {item.badge && (
-                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-blue-500/15 text-blue-400">
+                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
                   {item.badge}
                 </span>
               )}
@@ -325,7 +325,7 @@ export default function Sidebar({ onClose }) {
                 computer
               </span>
               <span className="text-[13px] font-medium">9Remote</span>
-              <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-orange-500/15 text-orange-400">
+              <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400">
                 HOT
               </span>
             </a>

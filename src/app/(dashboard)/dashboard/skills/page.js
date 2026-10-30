@@ -73,6 +73,8 @@ function SkillRow({ skill }) {
 }
 
 export default function SkillsPage() {
+  // Intentional width (G21): a reading-width column for the skill link
+  // list, narrower than the default max-w-7xl dashboard width.
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <Card padding="md">

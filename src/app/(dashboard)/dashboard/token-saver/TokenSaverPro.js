@@ -409,7 +409,7 @@ function AntiFlakyCard() {
 
 export default function TokenSaverPro() {
   return (
-    <div className="space-y-6 px-6 pb-6">
+    <div className="space-y-6">
       <SavingsPanel />
       <BriefMode />
       <TestBench />
