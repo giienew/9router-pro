@@ -88,7 +88,7 @@ const DEFAULT_SETTINGS = {
   // Response cache (chat completions, non-streaming only): exact replays of
   // an identical request body. Off by default — a replay is only correct
   // when the caller wants determinism over freshness.
-  responseCache: { enabled: false, ttlSeconds: 3600, maxEntries: 1000 },
+  responseCache: { enabled: false, ttlSeconds: 3600, maxEntries: 1000, semantic: { enabled: false, threshold: 0.8, ttlSeconds: 3600 } },
   // Scheduled DB maintenance: prune old history + expired cache rows.
   dbMaintenance: { enabled: true, retentionDays: 90, lastRunAt: null, lastResult: null },
 };

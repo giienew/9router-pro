@@ -17,10 +17,19 @@
 //     selection): clean = 100, suspect = 0. Suspects still serve — they
 //     just sort last, so a fully-suspect fleet still routes.
 //   * capabilities (getCapabilitiesForModel): tools / reasoning /
-//     contextWindow. "fast" has no latency history to score from
-//     (usageHistory records no latency), so it uses small context as a
-//     proxy — documented here, not hidden: swap in measured p50 latency
-//     when a latency column exists.
+//     contextWindow. R9: when the caller supplies measured latency
+//     (latencyByProvider, p50 total ms from /api/usage/latency, which reads
+//     requestDetails latency.total), "fast" scores on it instead of the
+//     small-context proxy; other intents get a small latency bonus. With
+//     no latency data the old proxy stands (documented fallback, not a
+//     hidden guess). Reset-awareness is NOT here: no per-provider reset
+//     window exists in routing inputs (quota resetAt only lives on the
+//     ProviderLimits UI from live quota endpoints, and antigravity's
+//     resetAt is fetched live on 409/429) — see the report.
+//   * exploration: a small share (default 5%) deterministically promotes
+//     a lower-ranked candidate to the front (seeded per intent+day, so
+//     one day's exploration is stable instead of flipping per request).
+//     Health tiers and sticky behaviour are untouched by both terms.
 //   * free-ness: FREE_PROVIDERS ids, or a `:free` model-id suffix
 //     (tokenharbor campaign convention).
 // Ties break alphabetically so the ranking is deterministic per fleet.
@@ -33,6 +42,7 @@ import { FREE_PROVIDERS } from "@/shared/constants/providers.js";
 
 export const AUTO_INTENTS = ["coding", "fast", "cheap", "headroom"];
 export const AUTO_CANDIDATE_LIMIT = 8;
+export const AUTO_EXPLORATION_SHARE = 0.05;
 // At most this many candidates per provider in the final list, so failover
 // spans providers instead of collapsing to one provider's catalogue when
 // that provider's seeds all outscore everyone else's.
@@ -70,20 +80,64 @@ function enabledMatches(seedId, entries, providerId) {
   });
 }
 
-function scoreCandidate(intent, caps, health, free) {
+function latencyBonus(p50) {
+  if (p50 == null || !Number.isFinite(p50) || p50 < 0) return 0;
+  return clamp(Math.round(10 - p50 / 500), 0, 10);
+}
+
+function fastLatencyScore(p50) {
+  if (p50 == null || !Number.isFinite(p50) || p50 < 0) return null;
+  return clamp(Math.round(40 - p50 / 100), 0, 40);
+}
+
+function scoreCandidate(intent, caps, health, free, latencyMs = null) {
   const ctx = ctxScore(caps.contextWindow);
+  const bonus = latencyBonus(latencyMs);
   switch (intent) {
     case "coding":
-      return health + (caps.tools ? 30 : 0) + (caps.reasoning ? 20 : 0) + ctx;
-    case "fast":
-      return health + (40 - ctx);
+      return health + (caps.tools ? 30 : 0) + (caps.reasoning ? 20 : 0) + ctx + bonus;
+    case "fast": {
+      const measured = fastLatencyScore(latencyMs);
+      // Measured latency replaces the context proxy when available.
+      return health + (measured != null ? measured : 40 - ctx);
+    }
     case "cheap":
-      return health + (free ? 60 : 0) + Math.round((20 - ctx / 2));
+      return health + (free ? 60 : 0) + Math.round((20 - ctx / 2)) + bonus;
     case "headroom":
-      return health + ctx * 2;
+      return health + ctx * 2 + bonus;
     default:
       return health;
   }
+}
+
+// Deterministic exploration: with probability `share`, promote one
+// lower-ranked candidate to the front. Pure + testable.
+export function applyExploration(ranked, { share = AUTO_EXPLORATION_SHARE, seed = "" } = {}) {
+  if (!Array.isArray(ranked) || ranked.length < 2 || !(share > 0)) return ranked;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < String(seed).length; i++) { h ^= String(seed).charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  if ((h % 1000) / 1000 >= share) return ranked;
+  const idx = 1 + (h % (ranked.length - 1));
+  return [ranked[idx], ...ranked.slice(0, idx), ...ranked.slice(idx + 1)];
+}
+
+let latencyCache = null;
+let latencyCacheAt = 0;
+// Measured p50 per provider, cached 60s in-process (the stats query scans
+// up to 5000 request-detail rows — never per auto request uncached).
+export async function getLatencyByProviderCached() {
+  if (latencyCache && Date.now() - latencyCacheAt < 60000) return latencyCache;
+  const { getAdapter } = await import("@/lib/db/driver.js");
+  const { getLatencyStats } = await import("@/lib/latencyStats.js");
+  const db = await getAdapter();
+  const stats = await getLatencyStats(db, new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString());
+  const out = {};
+  for (const [p, v] of Object.entries(stats.byProvider || {})) {
+    if (v.totalP50 != null) out[p] = v.totalP50;
+  }
+  latencyCache = out;
+  latencyCacheAt = Date.now();
+  return out;
 }
 
 const providerOf = (candidate) => candidate.slice(0, candidate.indexOf("/"));
@@ -97,7 +151,7 @@ const providerOf = (candidate) => candidate.slice(0, candidate.indexOf("/"));
  * @param {number} [opts.now] - ms epoch (test seam)
  * @returns {string[]} ranked `provider/modelId` strings, capped.
  */
-export function buildAutoCandidates({ intent, connections = [], disabled = {}, now = Date.now() }) {
+export function buildAutoCandidates({ intent, connections = [], disabled = {}, now = Date.now(), latencyByProvider = {}, explorationShare = 0, explorationSeed = null }) {
   if (!AUTO_INTENTS.includes(intent)) return [];
   const byProvider = new Map();
   for (const conn of connections) {
@@ -129,7 +183,7 @@ export function buildAutoCandidates({ intent, connections = [], disabled = {}, n
       if (disabledIds.has(candidate)) continue;
       const caps = getCapabilitiesForModel(reg.id, seed.id);
       const free = isFree(reg.id, seed.id);
-      scored.push({ candidate, score: scoreCandidate(intent, caps, health, free) });
+      scored.push({ candidate, score: scoreCandidate(intent, caps, health, free, latencyByProvider[reg.id] ?? null) });
     }
   }
 
@@ -168,5 +222,8 @@ export function buildAutoCandidates({ intent, connections = [], disabled = {}, n
     }
     round += 1;
   }
-  return out;
+  // Exploration last, after diversity interleave, so it only ever swaps
+  // the serving order — never the candidate set or the health tiers.
+  const seed = explorationSeed ?? `${intent}|${new Date(now).toISOString().slice(0, 10)}`;
+  return applyExploration(out, { share: explorationShare, seed });
 }

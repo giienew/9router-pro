@@ -271,11 +271,52 @@ function cleanVariantEntry(raw) {
   if (!backing.includes("/")) return null;
   const entry = cleanEntry(raw);
   if (!entry) return null;
-  return {
+  const out = {
     ...entry,
     model: backing,
     comboId: typeof raw.comboId === "string" && raw.comboId ? raw.comboId : null,
   };
+  // R7 locked sampling params: numbers only, validated ranges; prompt
+  // text is never touched by this path. Absent = client default.
+  const sampling = cleanSamplingParams(raw.sampling);
+  if (sampling) out.sampling = sampling;
+  return out;
+}
+
+// R7: validate locked sampling params. temperature 0–2, top_p (0,1],
+// max_tokens positive int. Anything else is dropped, never clamped
+// silently into a different behaviour the user did not ask for.
+export function cleanSamplingParams(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const out = {};
+  const t = Number(raw.temperature);
+  if (Number.isFinite(t) && t >= 0 && t <= 2) out.temperature = t;
+  const p = Number(raw.top_p);
+  if (Number.isFinite(p) && p > 0 && p <= 1) out.top_p = p;
+  const m = Number(raw.max_tokens);
+  if (Number.isFinite(m) && Number.isInteger(m) && m >= 1 && m <= 1000000) out.max_tokens = m;
+  return Object.keys(out).length ? out : null;
+}
+
+// R7: pure dispatch override — variant sampling wins over client defaults,
+// for that variant only. Returns a new body; the input is untouched.
+export function applyVariantSampling(body, sampling) {
+  if (!body || typeof body !== "object" || !sampling) return body;
+  const out = { ...body };
+  if (sampling.temperature !== undefined) out.temperature = sampling.temperature;
+  if (sampling.top_p !== undefined) out.top_p = sampling.top_p;
+  if (sampling.max_tokens !== undefined) out.max_tokens = sampling.max_tokens;
+  return out;
+}
+
+// R7: sampling for a direct variant pick (bare name, no "/"), else null.
+export async function resolveVariantSampling(requestedModel) {
+  if (typeof requestedModel !== "string" || !requestedModel || requestedModel.includes("/")) return null;
+  try {
+    const variants = await getInjectVariants();
+    const entry = variants[requestedModel];
+    return entry?.sampling ? cleanSamplingParams(entry.sampling) : null;
+  } catch { return null; }
 }
 
 function cleanVariantMap(raw) {

@@ -10,9 +10,9 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { dispatchCombo, createVariantHelpers, withBreakerSuccess } from "../services/comboDispatch.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
-import { parseAutoTarget, buildAutoCandidates } from "../services/autoRouting.js";
+import { parseAutoTarget, buildAutoCandidates, getLatencyByProviderCached, AUTO_EXPLORATION_SHARE } from "../services/autoRouting.js";
 import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
 import { recordProviderSuccess } from "../services/providerBreaker.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -157,7 +157,8 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
   if (autoIntent) {
     const connections = await getProviderConnections().catch(() => []);
     const disabled = await getDisabledModels().catch(() => ({}));
-    let candidates = buildAutoCandidates({ intent: autoIntent, connections, disabled });
+    const latencyByProvider = await getLatencyByProviderCached().catch(() => ({}));
+    let candidates = buildAutoCandidates({ intent: autoIntent, connections, disabled, latencyByProvider, explorationShare: AUTO_EXPLORATION_SHARE });
     candidates = await filterAdapterModels(keyAccess, candidates, []);
     if (candidates.length === 0) {
       log.warn("CHAT", `Auto-routing "${modelStr}" found no routable model`);
@@ -405,6 +406,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       resolvedModel: `${provider}/${model}`,
       bareModel: model,
     });
+    // R7 locked sampling: a direct variant pick (or a combo member naming
+    // a variant) carries that variant's sampling params, overriding the
+    // client's defaults for this request only. Prompt text untouched.
+    const variantSampling = await resolveVariantSampling(injectModelName || requestedModel || modelStr).catch(() => null);
     // Brief Mode (9Router Pro): per-scope terseness level, same context.
     const briefLevel = await resolveBriefLevel({
       apiKeyId: injectKeyRecord?.id || null,
@@ -413,7 +418,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       bareModel: model,
     });
     const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
+      body: applyVariantSampling({ ...body, model: `${provider}/${model}` }, variantSampling),
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,

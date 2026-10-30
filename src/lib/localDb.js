@@ -21,7 +21,7 @@ export {
   getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt,
   getInjectKeyModelPrompts, setInjectKeyModelPrompt, deleteInjectKeyModelPrompt,
   getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants,
-  getInjectGlobal, setInjectGlobal, resolvePromptInjections,
+  getInjectGlobal, setInjectGlobal, resolvePromptInjections, resolveVariantSampling, applyVariantSampling,
   getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
   getBriefModes, getBriefGlobal, getBriefByKey, getBriefByModel,
   setBriefGlobal, setBriefForKey, setBriefForModel, resolveBriefLevel,
