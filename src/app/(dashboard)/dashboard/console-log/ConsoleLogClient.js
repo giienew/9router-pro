@@ -42,6 +42,8 @@ function LogRow({ line }) {
 export default function ConsoleLogClient() {
   const [logs, setLogs] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [retries, setRetries] = useState(0);
+  const [connectKey, setConnectKey] = useState(0);
   const logRef = useRef(null);
 
   const handleClear = async () => {
@@ -56,7 +58,10 @@ export default function ConsoleLogClient() {
   useEffect(() => {
     const es = new EventSource("/api/translator/console-logs/stream");
 
-    es.onopen = () => setConnected(true);
+    es.onopen = () => {
+      setConnected(true);
+      setRetries(0);
+    };
 
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -77,10 +82,17 @@ export default function ConsoleLogClient() {
       }
     };
 
-    es.onerror = () => setConnected(false);
+    // EventSource retries on its own, but the UI previously showed only a
+    // static "Connecting…" with no attempt count and no way to force a fresh
+    // stream. Count failures for the status line; the Reconnect button below
+    // tears this stream down (via cleanup) and opens a new one.
+    es.onerror = () => {
+      setConnected(false);
+      setRetries((r) => r + 1);
+    };
 
     return () => es.close();
-  }, []);
+  }, [connectKey]);
 
   // Auto-scroll to bottom on new logs
   useEffect(() => {
@@ -94,18 +106,37 @@ export default function ConsoleLogClient() {
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <span className="flex items-center gap-1.5 text-xs text-text-muted">
             <span className={`h-[7px] w-[7px] rounded-full ${connected ? "bg-emerald-400" : "bg-zinc-500"}`} />
-            {connected ? "Live" : "Connecting…"}
+            {connected
+              ? "Live"
+              : retries > 0
+                ? `Reconnecting… (attempt ${retries})`
+                : "Connecting…"}
           </span>
-          <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
-            Clear
-          </Button>
+          <div className="flex items-center gap-2">
+            {!connected && (
+              <Button size="sm" variant="outline" icon="refresh" onClick={() => setConnectKey((k) => k + 1)}>
+                Reconnect
+              </Button>
+            )}
+            <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
+              Clear
+            </Button>
+          </div>
         </div>
         <div
           ref={logRef}
           className="bg-black rounded-b-lg px-3 py-2 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
         >
           {logs.length === 0 ? (
-            <span className="text-text-muted">No console logs yet.</span>
+            <div className="text-text-muted space-y-1">
+              <p>No console logs yet.</p>
+              <p>
+                Logs stream here live while the server runs — send a request
+                through the router and entries appear. If this stays empty
+                after traffic, the stream may have dropped: use Reconnect
+                above, or refresh the page.
+              </p>
+            </div>
           ) : (
             <div>
               {logs.map((line, i) => (
