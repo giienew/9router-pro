@@ -499,7 +499,7 @@ export default function TokenSaverClient() {
               </a>
             </p>
             <p className="text-sm text-text-muted">
-              git/grep/ls/tree/logs → 60-90% fewer input tokens
+              RTK rewrites long tool output into fewer tokens: git/grep/ls/tree/logs → 60-90% fewer input tokens
             </p>
           </div>
           <Toggle
@@ -535,7 +535,7 @@ export default function TokenSaverClient() {
               </button>
             </div>
             <p className="text-sm text-text-muted mt-1">
-              Compress prompts via /v1/compress before routing to the model
+              Headroom is a separate service that compresses prompts via /v1/compress before routing to the model
             </p>
           </div>
           <Toggle

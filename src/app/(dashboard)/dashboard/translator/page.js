@@ -234,6 +234,12 @@ export default function TranslatorPage() {
         )}
       </div>
 
+      <p className="text-xs text-text-muted">
+        Note: this page appears in the sidebar only when the server was started with the{" "}
+        <code className="font-mono">ENABLE_TRANSLATOR</code> environment flag set to{" "}
+        <code className="font-mono">true</code> — there is no in-app toggle for it.
+      </p>
+
       {STEPS.map((step) => {
         const action = getAction(step.id);
         const isExpanded = !!expanded[step.id];

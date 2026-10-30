@@ -67,6 +67,9 @@ function SavingsPanel() {
         </h2>
         <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
       </div>
+      <p className="mb-3 text-xs text-text-muted">
+        RTK is the compressor that rewrites long tool output (logs, diffs, build output) into fewer tokens before it reaches the model.
+      </p>
       {!stats ? (
         <p className="text-sm text-text-muted">Loading…</p>
       ) : t.requests === 0 ? (

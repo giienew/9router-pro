@@ -118,6 +118,10 @@ export default function PxpipeClient() {
         </div>
       </div>
 
+      <p className="text-sm text-text-muted">
+        PXPIPE turns large text prompts into compact images the model reads, so long context costs fewer tokens.
+      </p>
+
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <SummaryCard
           label="Status"
