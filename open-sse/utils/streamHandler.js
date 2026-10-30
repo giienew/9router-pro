@@ -1,5 +1,5 @@
 // Stream handler with disconnect detection - shared for all providers
-import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { STREAM_STALL_TIMEOUT_MS, TOTAL_REQUEST_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
 // Get HH:MM:SS timestamp
@@ -192,8 +192,9 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, totalTimeoutMs = TOTAL_REQUEST_TIMEOUT_MS) {
   let stallTimer = null;
+  let totalTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
   let lastChunkAt = Date.now();
@@ -203,32 +204,54 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   const clearStall = () => {
     if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
   };
+  const clearTotal = () => {
+    if (totalTimer) { clearTimeout(totalTimer); totalTimer = null; }
+  };
+  const clearTimers = () => { clearStall(); clearTotal(); };
+
+  // Wrap controller so every termination path clears both timers.
+  // Without this, abort/cancel/downstream-error paths leave a timer armed
+  // and a stale abort could fire after the request has already ended.
+  const wrappedController = {
+    signal: streamController.signal,
+    startTime: streamController.startTime,
+    isConnected: () => streamController.isConnected(),
+    handleComplete: () => { dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearTimers(); streamController.handleComplete(); },
+    handleError: (e) => { dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearTimers(); streamController.handleError(e); },
+    handleDisconnect: (r) => { dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearTimers(); streamController.handleDisconnect(r); },
+    abort: () => { clearTimers(); streamController.abort(); }
+  };
+
   const armStall = () => {
     clearStall();
     stallTimer = setTimeout(() => {
       stallTimer = null;
       abortMessage = "stream stall timeout";
       dbg(tag, `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
-      streamController.handleError?.(new Error("stream stall timeout"));
-      streamController.abort?.();
+      wrappedController.handleError(new Error("stream stall timeout"));
+      wrappedController.abort();
     }, stallTimeoutMs);
   };
 
-  // Wrap controller so every termination path clears the stall timer.
-  // Without this, abort/cancel/downstream-error paths leave the timer armed
-  // and a stale abort could fire after the request has already ended.
-  const wrappedController = {
-    signal: streamController.signal,
-    startTime: streamController.startTime,
-    isConnected: () => streamController.isConnected(),
-    handleComplete: () => { dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleComplete(); },
-    handleError: (e) => { dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleError(e); },
-    handleDisconnect: (r) => { dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleDisconnect(r); },
-    abort: () => { clearStall(); streamController.abort(); }
+  // Total request deadline: unlike the stall timer, trickling bytes do NOT
+  // reset this one. When it fires the stream ends with a 504 terminal frame
+  // (via onAbortTerminal) instead of hanging forever. A non-positive budget
+  // disables it; callers pass the remaining budget from request start.
+  const armTotal = () => {
+    clearTotal();
+    if (!(totalTimeoutMs > 0)) return;
+    totalTimer = setTimeout(() => {
+      totalTimer = null;
+      abortMessage = "total request timeout";
+      dbg(tag, `TOTAL TIMEOUT ${totalTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes}`);
+      wrappedController.handleError(new Error("total request timeout"));
+      wrappedController.abort();
+    }, totalTimeoutMs);
   };
 
   armStall();
-  dbg(tag, `pipe start | stallTimeout=${stallTimeoutMs}ms`);
+  armTotal();
+  dbg(tag, `pipe start | stallTimeout=${stallTimeoutMs}ms | totalTimeout=${totalTimeoutMs}ms`);
 
   const upstreamTap = new TransformStream({
     transform(chunk, controller) {
@@ -244,7 +267,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
       armStall();
       controller.enqueue(chunk);
     },
-    flush() { dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); }
+    flush() { dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearTimers(); }
   });
 
   const transformedBody = providerResponse.body

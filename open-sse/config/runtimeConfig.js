@@ -63,6 +63,14 @@ export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000)
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 
+// Total request deadline (headers + body, streaming and non-streaming).
+// Generous on purpose: slow reasoning models legitimately stream for many
+// minutes, so this must stay well above any real generation — it exists to
+// bound hung requests, not to cut long ones short. Distinct from the stall
+// timer (which resets on every upstream byte) and the connect timeout
+// (headers only). Env: TOTAL_REQUEST_TIMEOUT_MS.
+export const TOTAL_REQUEST_TIMEOUT_MS = envMs("TOTAL_REQUEST_TIMEOUT_MS", 30 * 60 * 1000);
+
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
 export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = envMs("GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS", 45 * 1000);
 

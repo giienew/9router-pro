@@ -12,6 +12,9 @@ const SLOT_TTL_MS = 15 * MIN_MS; // safety net so a leaked slot frees itself
 const MAX_TIMES = 200000; // pathological-memory guard for the timestamp ring
 
 const state = new Map(); // keyId -> { times: number[], inFlight: number }
+// Single-process assumption: this state is per process. Under multi-process,
+// per-key limits are enforced per process, not globally — move to SQLite for
+// global enforcement.
 
 function entry(keyId) {
   let e = state.get(keyId);

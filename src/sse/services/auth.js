@@ -18,6 +18,8 @@ import * as log from "../utils/logger.js";
 // key locks, so the next pick re-rolls instead of re-sticking to a stale
 // key. Recency alone cannot serve as the signal: after the current key
 // dies, the most-recently-used available key is a stale one.
+// Single-process assumption: sticky routing state lives here per process;
+// under multi-process, rotation/stickiness diverge per process.
 const stickyCurrentByRoute = new Map();
 function stickyRouteKey(providerId, model) {
   return `${providerId}:${model || ""}`;

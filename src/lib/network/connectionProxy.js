@@ -8,6 +8,8 @@ function normalizeString(value) {
 
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
 const rotateState = new Map(); // providerId → { index }
+// Single-process assumption: rotation indexes are per process; under
+// multi-process, pools rotate independently per process.
 
 /**
  * Pick one proxy pool ID from a list based on strategy.
