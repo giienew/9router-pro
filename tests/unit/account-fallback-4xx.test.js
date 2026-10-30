@@ -24,9 +24,19 @@ describe("checkFallbackError — request-scoped vs account-scoped failures", () 
     }
   });
 
-  it("still honours rate-limit / quota wording on any 4xx", () => {
-    expect(checkFallbackError(400, "rate limit reached").shouldFallback).toBe(true);
-    expect(checkFallbackError(422, "quota exceeded").shouldFallback).toBe(true);
+  // P1-16 (A-m4): request-scoped 4xx short-circuit BEFORE generic text
+  // rules. A 400 validation error whose body merely mentions "rate
+  // limit" used to earn the account a backoff lock, while a plain 400
+  // was correctly request-scoped. The status now dominates for 4xx
+  // without their own rule; 402 keeps the payment rule for broke
+  // accounts, and 429 keeps the rate-limit rule.
+  it("no longer cools the account for rate-limit / quota wording on a request-scoped 4xx", () => {
+    expect(checkFallbackError(400, "rate limit reached")).toEqual({
+      shouldFallback: false, cooldownMs: 0, requestScoped: true,
+    });
+    expect(checkFallbackError(422, "quota exceeded")).toEqual({
+      shouldFallback: false, cooldownMs: 0, requestScoped: true,
+    });
   });
 
   it.each([
@@ -35,13 +45,32 @@ describe("checkFallbackError — request-scoped vs account-scoped failures", () 
     "Insufficient credit balance",
     "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
     "CREDIT BALANCE IS TOO LOW",
-  ])("falls back with backoff for a 400 credit error: %s", (message) => {
+  ])("credit wording on a 400 is request-scoped now (402 keeps the payment rule): %s", (message) => {
     expect(checkFallbackError(400, message)).toEqual({
+      shouldFallback: false, cooldownMs: 0, requestScoped: true,
+    });
+  });
+
+  it("still falls back with backoff for a 402 credit error", () => {
+    // The credit text rule fires before the 402 status rule, as before.
+    expect(checkFallbackError(402, "insufficient credits")).toEqual({
       shouldFallback: true, cooldownMs: 2000, newBackoffLevel: 1,
     });
-    expect(checkFallbackError(400, message, 1)).toEqual({
-      shouldFallback: true, cooldownMs: 4000, newBackoffLevel: 2,
+  });
+
+  it("provider-specific text rules still win over the short-circuit", () => {
+    expect(checkFallbackError(400, "request illegal", 0, "codebuddy-intl")).toEqual({
+      shouldFallback: true, cooldownMs: 2000, newBackoffLevel: 1,
     });
+    // Same wording from another provider is not a provider rule.
+    expect(checkFallbackError(400, "request illegal", 0, "dahl")).toEqual({
+      shouldFallback: false, cooldownMs: 0, requestScoped: true,
+    });
+  });
+
+  it("status-rule 4xx keep their rules even with rate-limit wording", () => {
+    expect(checkFallbackError(404, "rate limit reached").shouldFallback).toBe(true);
+    expect(checkFallbackError(429, "whatever").shouldFallback).toBe(true);
   });
 
   it("does not fall back for an ordinary bad request", () => {

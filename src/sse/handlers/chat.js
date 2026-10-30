@@ -490,6 +490,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           lastFlakyResult = result;
           if (flakyAttempts < afConfig.maxRetries) {
             flakyAttempts++;
+            // A flaky retry spends an account attempt too (the account
+            // did serve, just garbage), so it counts toward the member
+            // cap — otherwise a member could burn its cap on hard
+            // failures plus up to maxRetries extra flaky retries. When
+            // the cap is hit the member gives up and the last flaky
+            // response is rescued, the same way it is when the pool
+            // runs out.
+            memberFallbackFailures++;
+            if (comboMemberAttemptCap !== null && memberFallbackFailures >= comboMemberAttemptCap) {
+              log.warn("COMBO", `Member ${provider}/${model} failed ${memberFallbackFailures} accounts in this request — moving to next combo member`);
+              return withFlakyRetriesHeader(result.response, flakyAttempts);
+            }
             log.warn("FLAKY", `[${provider}/${model}] ${verdict.reason} response from ${credentials.connectionName || credentials.connectionId} — retry ${flakyAttempts}/${afConfig.maxRetries} on another account`);
             excludeConnectionIds.add(credentials.connectionId);
             lastError = `Flaky (${verdict.reason}) response`;

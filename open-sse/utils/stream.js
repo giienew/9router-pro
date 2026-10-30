@@ -148,7 +148,13 @@ export function createSSEStream(options = {}) {
     finalizeStream();
   };
 
-  return new TransformStream({
+  // Abort hook: finalizeStream is idempotent (guarded by `finalized`), so
+  // an abort path may call it to write usage for the tokens observed so
+  // far. Without this, a stream aborted mid-flight (client disconnect,
+  // stall/total timeout) never ran flush() and left no usage row while
+  // still having consumed upstream tokens. Attached to the stream object
+  // so pipeWithDisconnect can hand it to the disconnect wrapper.
+  const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
       const text = decoder.decode(chunk, { stream: true });
@@ -580,6 +586,8 @@ export function createSSEStream(options = {}) {
       }
     }
   });
+  transformStream.finalizeStream = finalizeStream;
+  return transformStream;
 }
 
 export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, credentials = null) {

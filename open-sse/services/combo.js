@@ -108,6 +108,11 @@ export function reorderByCapabilities(models, required) {
 /**
  * Track rotation state per combo (for round-robin strategy)
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
+ *
+ * Single-process assumption: this state lives here per process, like the
+ * sticky/rate-limit/proxy rotation state elsewhere. Under multi-process
+ * deployments rotation diverges per process and restarts reset it; the
+ * live deploy is single-process, so that is the documented contract.
  */
 const comboRotationState = new Map();
 

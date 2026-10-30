@@ -184,7 +184,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
-    let availableConnections = connections.filter(c => {
+    // Named so the small-fleet rescue below can re-derive availability
+    // after waiting out a lock, with exactly the same predicate.
+    const isAvailable = (c) => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
       // Kiro: an account whose profileArn could not be resolved (refresh
@@ -216,7 +218,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         }
       }
       return true;
-    });
+    };
+    let availableConnections = connections.filter(isAvailable);
 
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach(c => {
@@ -240,22 +243,32 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
         });
       }
-      const earliest = expiries.sort()[0] || null;
+      let earliest = expiries.sort()[0] || null;
       // Small-fleet rescue (9Router Pro): every connection is locked, but
-      // the fleet is tiny and the earliest lock lifts soon — retry that
-      // account instead of failing the request. A lock is a heuristic (a
-      // quota window, a transient error); for a 1–8 account provider one
-      // window must not read as a total outage. Never rescues an account
-      // this request already tried, and never Antigravity, whose quota
-      // cache is authoritative rather than a heuristic.
+      // the fleet is tiny and the earliest lock lifts soon — wait for it
+      // instead of failing the request. A lock is a heuristic (a quota
+      // window, a transient error); for a 1–8 account provider one window
+      // must not read as a total outage. Retrying at once used to re-hit
+      // the same quota error immediately; waiting (a timer, so other
+      // requests are unaffected) and re-deriving availability from the
+      // same snapshot — lock checks are time-based — retries only once
+      // the window has actually lifted. Never rescues an account this
+      // request already tried, and never Antigravity, whose quota cache
+      // is authoritative rather than a heuristic.
       if (!isAntigravity && earliest && connections.length <= SMALL_FLEET_RESCUE_MAX_CONNECTIONS) {
         const waitMs = new Date(earliest).getTime() - Date.now();
-        const rescued = lockedConns
-          .filter(c => !excludeSet.has(c.id))
-          .sort((a, b) => new Date(getEarliestModelLockUntil(a)) - new Date(getEarliestModelLockUntil(b)))[0];
-        if (rescued && waitMs <= SMALL_FLEET_RESCUE_MAX_WAIT_MS) {
-          log.warn("AUTH", `${provider} | small-fleet rescue: retrying ${rescued.id?.slice(0, 8)} despite lock (${formatRetryAfter(earliest)})`);
-          availableConnections = [rescued];
+        if (waitMs <= SMALL_FLEET_RESCUE_MAX_WAIT_MS) {
+          if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+          availableConnections = connections.filter(isAvailable);
+          if (availableConnections.length > 0) {
+            log.warn("AUTH", `${provider} | small-fleet rescue: waited ${Math.max(0, waitMs)}ms for lock, ${availableConnections.length} account(s) free`);
+          } else {
+            // The wait freed nothing this request can still use (the
+            // freed accounts are all already tried). Drop the now-stale
+            // retryAfter so the fallthrough below reports plain
+            // unavailability instead of a lock that has already lifted.
+            earliest = null;
+          }
         }
       }
       if (availableConnections.length === 0 && earliest) {

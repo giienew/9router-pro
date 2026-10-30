@@ -26,29 +26,49 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * validation 400 means the credential is healthy but this member cannot serve
  * this request, so combo rotation must still try the next member.
  */
+// Statuses with their own rule keep rule order; every other 4xx is
+// request-scoped (see the short-circuit in checkFallbackError).
+const STATUS_RULE_STATUSES = new Set(ERROR_RULES.filter((r) => r.status).map((r) => r.status));
+
+function applyRule(rule, backoffLevel) {
+  if (rule.backoff) {
+    const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
+    return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+  }
+  return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+}
+
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null) {
   const lowerError = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
+  // Provider-specific text rules keep priority: they describe account/IP
+  // blocks (e.g. an intl gateway block), not request problems.
+  for (const rule of ERROR_RULES) {
+    if (!rule.provider || rule.provider !== provider) continue;
+    if (rule.text && lowerError && lowerError.includes(rule.text)) return applyRule(rule, backoffLevel);
+  }
+
+  // Request-scoped 4xx short-circuit BEFORE generic text rules: a 400
+  // validation error whose body merely mentions "rate limit" says
+  // nothing about the credential, and must not earn the account a
+  // backoff lock the way a plain 400 already avoids one. Statuses with
+  // their own rule (401/402/403/404/429) keep rule order below.
+  if (status >= 400 && status < 500 && !STATUS_RULE_STATUSES.has(status)) {
+    return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
+  }
+
   for (const rule of ERROR_RULES) {
     if (rule.provider && rule.provider !== provider) continue;
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
-      if (rule.backoff) {
-        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
-        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
-      }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return applyRule(rule, backoffLevel);
     }
 
     // Status-based rule: match HTTP status code
     if (rule.status && rule.status === status) {
-      if (rule.backoff) {
-        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
-        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
-      }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return applyRule(rule, backoffLevel);
     }
   }
 

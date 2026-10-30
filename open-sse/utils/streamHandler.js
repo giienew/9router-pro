@@ -98,11 +98,21 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
  *
  * @param {function} [onAbortTerminal] - Receives a human-readable abort
  * message and returns terminal SSE bytes to emit downstream.
+ * @param {function} [onAborted] - Abnormal-termination hook (client
+ * disconnect, upstream error, controller abort): runs usage finalization
+ * for the tokens observed so far, which flush() never reaches on these
+ * paths. Not called on clean EOF — flush() already finalized there.
+ * Must be idempotent; every call site is guarded.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, onAborted = null) {
   const reader = transformStream.readable.getReader();
   const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
+
+  const runAbortedHook = () => {
+    if (!onAborted) return;
+    try { onAborted(); } catch { /* usage finalization must never break the stream */ }
+  };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -117,6 +127,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   return new ReadableStream({
     async pull(controller) {
       if (!streamController.isConnected()) {
+        runAbortedHook();
         emitTerminal(controller);
         controller.close();
         return;
@@ -139,6 +150,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         if (!isControllerClosed) streamController.handleError(error);
         reader.cancel().catch(() => {});
         writer.abort().catch(() => {});
+        runAbortedHook();
 
         // Treat network resets / socket hang up / abort as graceful close
         const msg = error?.message || "";
@@ -172,6 +184,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
       streamController.handleDisconnect(reason || "cancelled");
       reader.cancel();
       writer.abort();
+      runAbortedHook();
     }
   });
 }
@@ -277,7 +290,10 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   return createDisconnectAwareStream(
     { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
     wrappedController,
-    onAbortTerminal ? () => onAbortTerminal(abortMessage) : null
+    onAbortTerminal ? () => onAbortTerminal(abortMessage) : null,
+    // The SSE transform exposes its idempotent finalizer (see stream.js);
+    // transforms without one (other pipeWithDisconnect callers) no-op.
+    () => transformStream.finalizeStream?.()
   );
 }
 
