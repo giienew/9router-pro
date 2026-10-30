@@ -4,6 +4,25 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.15 (DRAFT)
+
+> DRAFT entry: covers the pre-existing `audit-fixes` content only. It is not
+> final — the coordinator completes it after merging the other tracks (see
+> the subsection at the end of this section).
+
+- **Direct variant routing**: a variant name routes directly to its backing provider/model with its prompt — no backing combo is created or kept in sync. `/v1/models` lists variants, and combo member failover is capped.
+- **Request reliability (P0 audit fixes)**: a generous, configurable total-request deadline; a dedicated mutex chain for round-robin/sticky selection; a fusion cap with cancellation; a shared attempt limiter capping every modality fallback loop; API key creation failures surfaced instead of silent; hot-path DB writes fail open; variant name safety (over-long names, alias collisions, and suffix budget rejected); combo failure status and message now come from the same member.
+- **Faster, safer reads (P1 audit fixes)**: key-scoped `/v1/models` cache with write invalidation and concurrent live resolvers under a shared timeout; a short settings cache with write invalidation; quota and rate limits enforced at every handler entry, with an `apiKey` index; auto-quarantine for credentials failing auth repeatedly; proxy honesty with a fail-closed strict mode; Kiro `profileArn` resolution distinguished from unusable ARNs, with region rewritten only when the source region is unknown; global `fallback` now means fallback everywhere; plus a correctness batch (flaky cap, error classification, usage accounting, migration, rescue).
+- **Upstream 0.5.111/0.5.112 ports (safe merges)**: dropped Codex image aliases shimmed, catalog updates, SSE error-frame surfacing, the lazy-runtime published-build fix, bulk-add opaque keys, OpenCode free-lane identity gates, translator/headroom fixes, and the Pi card, DeepSeek keccak, and CodeBuddy hooks.
+- **Dashboard scale and polish (P2 audit fixes)**: the header search box is scoped to the Providers page; Providers grids and the model picker use load-more windowing; Translator alerts became toasts and its entry is labeled `(debug)`; the sidebar and header now read `Profile & Settings`; Console Log gains a reconnect affordance and an empty-state explainer; remaining `alert()`/`confirm()` calls migrated to modals/toasts and the cyan glow dropped; quota naming, zero-data guidance, a summary hook, and first-run help added.
+- **Smarter routing and policy (P3 audit fixes)**: scored auto-routing with named variants (`auto:coding`, `auto:fast`, `auto:cheap`, `auto:headroom`) on Pro health tiers with sticky selection; per-key policy (expiry, cost caps, scoped usage view); three-layer resilience (provider breaker, connection cooldown, model lockout) with distinct timers and dashboard states; a per-combo strategy selector with an optional account pin per member; and a Pro-only changelog section in the release banner plus dead-code cleanup.
+- **Removals, each deliberate**: the Testing Studio page is gone (it duplicated the Injection Tester side-by-side comparison); the FirstRunChecklist is gone from Endpoint (removed, not fixed); the Token Saver custom prompt is gone (it duplicated the global prompt-injection scope — the global scope is the single home for a global instruction).
+- **Untouched by this release**: owner-reserved fates (landing page, pricing page, shadow routes, imageToText visibility) are not decided here.
+
+### ADDITIONS FROM IMPLEMENTATION RUN — coordinator finalizes
+
+The coordinator fills this subsection after merging the other implementation tracks.
+
 ## v0.5.109-pro.14
 
 - **Automation menu**: four new cards — **Notifications** (Telegram + webhook), **Response cache**, **Two-factor authentication** (TOTP + backup codes), and **Database maintenance** — plus a **latency stats card** on the Usage page.
