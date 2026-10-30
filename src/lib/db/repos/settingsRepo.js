@@ -89,6 +89,10 @@ const DEFAULT_SETTINGS = {
   // an identical request body. Off by default — a replay is only correct
   // when the caller wants determinism over freshness.
   responseCache: { enabled: false, ttlSeconds: 3600, maxEntries: 1000, semantic: { enabled: false, threshold: 0.8, ttlSeconds: 3600 } },
+  // Zero-config free-stack watchdog (R1): picks the best free stack when
+  // the admin has not configured one. Off by default; env
+  // FREE_STACK_WATCHDOG=on also enables it.
+  freeStackWatchdogEnabled: false,
   // Scheduled DB maintenance: prune old history + expired cache rows.
   dbMaintenance: { enabled: true, retentionDays: 90, lastRunAt: null, lastResult: null },
 };
