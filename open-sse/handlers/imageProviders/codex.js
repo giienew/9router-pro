@@ -9,9 +9,16 @@ const CODEX_USER_AGENT = `codex_cli_rs/${CODEX_CLI_VERSION}`;
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
 const CODEX_REF_DETAIL = "high";
-// Only drives the image_generation tool call. gpt-5.6-sol is rejected for ChatGPT Go accounts
-// ("model is not supported when using Codex with a ChatGPT account"); gpt-5.6-terra is accepted.
-const CODEX_IMAGES_MAIN_MODEL = "gpt-5.6-terra";
+// Only drives the image_generation tool call; any chat model on the plan works as host.
+const CODEX_IMAGES_MAIN_MODEL = "gpt-6-sol";
+// Compatibility shim (upstream 0.5.111): the dropped gpt-5.6-*-image ids
+// resolve to the new gpt-6-sol host instead of their dropped 5.6 base,
+// so existing combos/variants referencing them keep generating images.
+const CODEX_IMAGE_SHIM_HOST = {
+  "gpt-5.6-sol": "gpt-6-sol",
+  "gpt-5.6-terra": "gpt-6-sol",
+  "gpt-5.6-luna": "gpt-6-sol",
+};
 const CODEX_TOOL_IMAGE_MODELS = new Set([
   "gpt-image-1.5",
   "gpt-image-2",
@@ -49,11 +56,12 @@ function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
 }
 
-function resolveCodexImageModels(model) {
+export function resolveCodexImageModels(model) {
   if (CODEX_TOOL_IMAGE_MODELS.has(model)) {
     return { responsesModel: CODEX_IMAGES_MAIN_MODEL, toolModel: model };
   }
-  return { responsesModel: stripImageSuffix(model), toolModel: null };
+  const stripped = stripImageSuffix(model);
+  return { responsesModel: CODEX_IMAGE_SHIM_HOST[stripped] || stripped, toolModel: null };
 }
 
 function toDataUrl(input) {
