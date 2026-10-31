@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   Toggle,
+  Modal,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
@@ -29,6 +30,7 @@ import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import CatalogSearchModal from "./components/CatalogSearchModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
+import { loadFakeCounts, persistFakeCounts } from "./fakeCounts";
 
 // Plain-language meaning for the raw error codes shown on provider cards
 // (B-F17): a code alone ("429") tells the user nothing about what broke or
@@ -83,13 +85,77 @@ function ErrorBadgeWithExplanation({ errText, explanation }) {
   );
 }
 
-function getStatusDisplay(connected, error, errorCode) {
+// Long-press wrapper for the green connected-count badge (fake counts).
+// A normal tap still follows the card link; holding ~600ms without
+// moving opens the fake-count menu instead, and the tap that follows the
+// long-press is swallowed so the card does not navigate.
+function LongPressBadge({ onLongPress, title, children }) {
+  const timer = useRef(null);
+  const start = useRef(null);
+  const fired = useRef(false);
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  return (
+    <span
+      className="inline-flex"
+      style={{ WebkitTouchCallout: "none", userSelect: "none", touchAction: "manipulation" }}
+      title={title}
+      onPointerDown={(e) => {
+        fired.current = false;
+        start.current = { x: e.clientX, y: e.clientY };
+        timer.current = setTimeout(() => {
+          fired.current = true;
+          onLongPress();
+        }, 600);
+      }}
+      onPointerMove={(e) => {
+        if (!start.current) return;
+        if (Math.abs(e.clientX - start.current.x) > 12 || Math.abs(e.clientY - start.current.y) > 12) clear();
+      }}
+      onPointerUp={() => { clear(); start.current = null; }}
+      onPointerLeave={() => { clear(); start.current = null; }}
+      onPointerCancel={() => { clear(); start.current = null; }}
+      onClickCapture={(e) => {
+        if (fired.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          fired.current = false;
+        }
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {children}
+    </span>
+  );
+}
+
+LongPressBadge.propTypes = {
+  onLongPress: PropTypes.func.isRequired,
+  title: PropTypes.string,
+  children: PropTypes.node,
+};
+
+function getStatusDisplay(connected, error, errorCode, opts = {}) {
   const parts = [];
   if (connected > 0) {
+    const shown = opts.displayConnected != null ? opts.displayConnected : connected;
+    // Single string, not expression + text: a boundary space between the
+    // number and the label is dropped by browser auto-translate, so
+    // "192 Connected" would render as "192Terhubung". The error badge
+    // below already uses this single-string form.
+    const badge = (
+      <Badge variant="success" size="sm" dot>
+        {`${shown} Connected`}
+      </Badge>
+    );
     parts.push(
-      <Badge key="connected" variant="success" size="sm" dot>
-        {connected} Connected
-      </Badge>,
+      opts.onConnectedLongPress ? (
+        <LongPressBadge key="connected" onLongPress={opts.onConnectedLongPress} title="Long-press to edit the displayed count">
+          {badge}
+        </LongPressBadge>
+      ) : badge,
     );
   }
   if (error > 0) {
@@ -233,6 +299,34 @@ export default function ProvidersPage() {
   const [testResults, setTestResults] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [autoProxyForTests, setAutoProxyForTests] = useState(false);
+  // Fake counts: display override for the All Connection Providers shelf
+  // only, kept in this browser's localStorage. Real counts stay intact.
+  const [fakeCounts, setFakeCounts] = useState({});
+  const [fakeMenu, setFakeMenu] = useState(null);
+
+  useEffect(() => {
+    setFakeCounts(loadFakeCounts());
+  }, []);
+
+  const saveFakeCount = (providerId, value) => {
+    setFakeCounts((prev) => {
+      const next = { ...prev, [providerId]: value };
+      persistFakeCounts(next);
+      return next;
+    });
+    setFakeMenu(null);
+  };
+
+  const resetFakeCount = (providerId) => {
+    setFakeCounts((prev) => {
+      const next = { ...prev };
+      delete next[providerId];
+      persistFakeCounts(next);
+      return next;
+    });
+    setFakeMenu(null);
+  };
+
   const notify = useNotificationStore();
 
   useEffect(() => {
@@ -750,6 +844,8 @@ export default function ProvidersPage() {
               stats={entry.stats}
               authType={entry.authType}
               onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+              fakeConnected={fakeCounts[entry.providerId] ?? null}
+              onConnectedLongPress={() => setFakeMenu({ providerId: entry.providerId, providerName: entry.provider.name, original: entry.stats.connected, value: String(fakeCounts[entry.providerId] ?? entry.stats.connected) })}
             />
           ) : (
             <ApiKeyProviderCard
@@ -759,6 +855,8 @@ export default function ProvidersPage() {
               stats={entry.stats}
               authType={entry.authType}
               onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+              fakeConnected={fakeCounts[entry.providerId] ?? null}
+              onConnectedLongPress={() => setFakeMenu({ providerId: entry.providerId, providerName: entry.provider.name, original: entry.stats.connected, value: String(fakeCounts[entry.providerId] ?? entry.stats.connected) })}
             />
           ))}
         </div>
@@ -1090,11 +1188,55 @@ export default function ProvidersPage() {
           </div>
         </div>
       )}
+
+      {/* Fake count menu: All Connection Providers shelf only */}
+      {fakeMenu && (
+        <Modal
+          isOpen={!!fakeMenu}
+          title={`Display count — ${fakeMenu.providerName}`}
+          onClose={() => setFakeMenu(null)}
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">
+              Original count:{" "}
+              <span className="font-medium text-text-main">{fakeMenu.original}</span>
+              <br />
+              This only changes the number shown on this card in this browser.
+              Real counts, routing, and health are untouched.
+            </p>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">Fake count</label>
+              <input
+                type="number"
+                min={0}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                value={fakeMenu.value}
+                onChange={(e) => setFakeMenu({ ...fakeMenu, value: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                fullWidth
+                disabled={fakeMenu.value === "" || !Number.isInteger(Number(fakeMenu.value)) || Number(fakeMenu.value) < 0}
+                onClick={() => saveFakeCount(fakeMenu.providerId, Number(fakeMenu.value))}
+              >
+                Save
+              </Button>
+              <Button variant="secondary" fullWidth onClick={() => resetFakeCount(fakeMenu.providerId)}>
+                Reset to original
+              </Button>
+              <Button variant="ghost" fullWidth onClick={() => setFakeMenu(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
+function ProviderCard({ providerId, provider, stats, authType, onToggle, fakeConnected = null, onConnectedLongPress = null }) {
   const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
   const isNoAuth = !!provider.noAuth;
 
@@ -1153,7 +1295,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                   <Badge variant="success" size="sm" dot>Ready</Badge>
                 ) : (
                   <>
-                    {getStatusDisplay(connected, error, errorCode)}
+                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress })}
                     {breaker?.state === "open" && (
                       <span title="Provider breaker open — broad failures, no traffic until the probe window.">
                         <Badge variant="error" size="sm">
@@ -1224,6 +1366,8 @@ ProviderCard.propTypes = {
   }).isRequired,
   authType: PropTypes.string,
   onToggle: PropTypes.func,
+  fakeConnected: PropTypes.number,
+  onConnectedLongPress: PropTypes.func,
 };
 
 function ApiKeyProviderCard({
@@ -1232,6 +1376,8 @@ function ApiKeyProviderCard({
   stats,
   authType,
   onToggle,
+  fakeConnected = null,
+  onConnectedLongPress = null,
 }) {
   const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
   const isCompatible = providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
@@ -1300,7 +1446,7 @@ function ApiKeyProviderCard({
                   </Badge>
                 ) : (
                   <>
-                    {getStatusDisplay(connected, error, errorCode)}
+                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress })}
                     {breaker?.state === "open" && (
                       <span title="Provider breaker open — broad failures, no traffic until the probe window.">
                         <Badge variant="error" size="sm">
@@ -1384,6 +1530,8 @@ ApiKeyProviderCard.propTypes = {
   }).isRequired,
   authType: PropTypes.string,
   onToggle: PropTypes.func,
+  fakeConnected: PropTypes.number,
+  onConnectedLongPress: PropTypes.func,
 };
 
 function ProviderTestResultsView({ results }) {
