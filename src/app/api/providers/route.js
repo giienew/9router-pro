@@ -13,7 +13,6 @@ import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { getProviderBreakerSnapshot } from "@/sse/services/providerBreaker.js";
-import { getProviderHealthSummary } from "@/lib/providerHealthSummary.js";
 import { toProviderConnectionResponse } from "@/lib/providerConnectionResponse";
 
 export const dynamic = "force-dynamic";
@@ -97,9 +96,9 @@ export async function GET(request) {
       }
       // Breaker states are live (they flip on failures) so they bypass the
       // stats cache — reading the in-memory map is cheap.
-      // G10/G11: health tiers + quarantine exposure are likewise live
-      // (they read current connection rows), so they bypass the stats
-      // cache too. Breaker entries gain `preTrip`: true when the breaker
+      // NOTE: provider health summary removed here — it loaded + decrypted
+      // every connection and shipped 30k rows per call, uncached, with no
+      // consumer reading it. Breaker entries gain `preTrip`: true when the breaker
       // is still closed but has failures in the window — the pre-trip
       // state, i.e. one failure away from opening. Original breaker
       // fields (state, failuresInWindow, openedAt, probeUntil) are kept
@@ -112,8 +111,7 @@ export async function GET(request) {
           preTrip: b.state === "closed" && (b.failuresInWindow || 0) > 0,
         };
       }
-      const health = await getProviderHealthSummary();
-      return NextResponse.json({ stats: statsCache.data, breakers, health });
+      return NextResponse.json({ stats: statsCache.data, breakers });
     }
     const providerFilter = params.get("provider") || undefined;
     const lite = params.get("lite") === "1";
