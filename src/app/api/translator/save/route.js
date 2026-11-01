@@ -2,6 +2,36 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+// opt46 (M1-translator): never persist authorization material, even if a
+// stale client posts unmasked headers — scrub auth header values out of
+// JSON log content before writing. Non-JSON content passes through.
+function scrubAuthMaterial(content) {
+  if (typeof content !== "string") return content;
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content;
+  }
+  const scrub = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(scrub);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [key, value] of Object.entries(node)) {
+        if (/^(authorization|x-api-key|api-key|x-goog-api-key)$/i.test(key)) {
+          node[key] = /^authorization$/i.test(key) ? "Bearer ***" : "***";
+        } else {
+          scrub(value);
+        }
+      }
+    }
+  };
+  scrub(parsed);
+  return JSON.stringify(parsed, null, 2);
+}
+
 export async function POST(request) {
   try {
     const { file, content } = await request.json();
@@ -34,7 +64,7 @@ export async function POST(request) {
     }
 
     const filePath = path.join(logsDir, file);
-    fs.writeFileSync(filePath, content, "utf-8");
+    fs.writeFileSync(filePath, scrubAuthMaterial(content), "utf-8");
 
     return NextResponse.json({ success: true });
   } catch (error) {

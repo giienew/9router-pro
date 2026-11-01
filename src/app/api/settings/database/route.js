@@ -3,18 +3,27 @@ import { exportDb, getSettings, importDb, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { summarizeBackup, sanitizeSections, sanitizeProviders } from "@/lib/backup/summary.js";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
+const CLI_TOKEN_SALT = "9r-cli-auth";
 const PASSWORD_HEADER = "x-9r-password";
 
-// CLI token requests are already trusted (local machine); skip password re-auth.
-function isCliRequest(request) {
-  return Boolean(request.headers.get(CLI_TOKEN_HEADER));
+// opt46 (P1): a CLI request must prove its token VALUE, not just send the
+// header. The old presence-only check let any dashboard session skip the
+// password re-auth by attaching an arbitrary x-9r-cli-token header. This
+// mirrors hasValidCliToken in src/dashboardGuard.js (same salt).
+let cachedCliToken = null;
+async function hasValidCliToken(request) {
+  const token = request.headers.get(CLI_TOKEN_HEADER);
+  if (!token) return false;
+  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
+  return token === cachedCliToken;
 }
 
 export async function GET(request) {
   try {
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
+    if (!(await hasValidCliToken(request)) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     // Selective export: ?sections=combos,apiKeys and/or
@@ -41,13 +50,13 @@ export async function POST(request) {
     // UI can show exactly what an import would replace before it happens.
     if (body && body.preview === true) {
       const { password, preview, ...payload } = body;
-      if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
+      if (!(await hasValidCliToken(request)) && !(await verifyDashboardPassword(password))) {
         return NextResponse.json({ error: "Invalid password" }, { status: 401 });
       }
       return NextResponse.json({ summary: summarizeBackup(payload) });
     }
     const { password, applySections, ...payload } = body;
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
+    if (!(await hasValidCliToken(request)) && !(await verifyDashboardPassword(password))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     await importDb(payload, { sections: applySections });

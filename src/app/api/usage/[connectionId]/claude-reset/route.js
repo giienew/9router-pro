@@ -14,6 +14,11 @@ export async function POST(request, { params }) {
 
     let connection = await getProviderConnectionById(connectionId);
     if (!connection) return Response.json({ error: "Connection not found" }, { status: 404 });
+    // opt46 (Q1): never refresh or spend a reset grant for a turned-off
+    // connection — fail neutrally before any upstream call.
+    if (connection.isActive === false || connection.isActive === 0) {
+      return Response.json({ error: "Connection is turned off." }, { status: 400 });
+    }
     if (connection.provider !== "claude" || connection.authType !== "oauth") {
       return Response.json({ error: "Limit reset is only available for Claude OAuth connections." }, { status: 400 });
     }

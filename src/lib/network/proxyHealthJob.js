@@ -22,7 +22,12 @@ export function getProxyHealthJobState() {
 export async function startProxyHealthJob(ids) {
   if (job.running) return { ...job };
   const all = await getProxyPools();
-  const targets = Array.isArray(ids) && ids.length ? all.filter((p) => ids.includes(p.id)) : all;
+  const explicitlySelected = Array.isArray(ids) && ids.length > 0;
+  // opt46 (M2-proxy): the default run (no ids) skips pools the operator
+  // turned off; explicitly selected ids are still tested even if off.
+  const targets = explicitlySelected
+    ? all.filter((p) => ids.includes(p.id))
+    : all.filter((p) => p.isActive !== false && p.isActive !== 0);
   Object.assign(job, freshState(), {
     running: true,
     total: targets.length,
@@ -42,7 +47,6 @@ export async function startProxyHealthJob(ids) {
           testStatus: result.ok ? "active" : "error",
           lastTestedAt: new Date().toISOString(),
           lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
-          isActive: result.ok,
         });
       } catch {
         // a failed write must not stall the job; the counters still move

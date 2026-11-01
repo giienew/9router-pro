@@ -194,7 +194,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // nothing until its probe window. Half-open reads as available —
       // the first probe failure re-opens immediately.
       if (providerBreakerGate(providerId) === "skip") {
-        log.debug("AUTH", `${c.id?.slice(0, 8)} | provider breaker open for ${providerId} — skip`);
+        // opt46: breaker skips are operationally significant — warn, not debug.
+        log.warn("AUTH", `${c.id?.slice(0, 8)} | provider breaker open for ${providerId} — skip`);
         return false;
       }
       // Kiro: an account whose profileArn could not be resolved (refresh

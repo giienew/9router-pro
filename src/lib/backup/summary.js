@@ -90,6 +90,13 @@ function countInjections(scope) {
       }
     }
   }
+  // opt46 (F1): variants are the primary injection form — count entries
+  // with content under the same rule, or the Backup card reports 0 while
+  // live variants exist.
+  const variants = scope.variants;
+  if (variants && typeof variants === "object") {
+    for (const e of Object.values(variants)) if (entryHasContent(e)) n += 1;
+  }
   return n;
 }
 

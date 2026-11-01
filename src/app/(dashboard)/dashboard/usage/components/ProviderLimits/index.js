@@ -495,11 +495,11 @@ export default function ProviderLimits() {
           body: JSON.stringify({ isActive }),
         });
         if (res.ok) {
-          setQuotaData((prev) => {
-            const next = { ...prev };
-            return next;
-          });
+          // opt46 (Q2): refetch this row's quota right away instead of
+          // leaving it empty until auto-refresh (or stale after disable).
           await reconcileConnectionsPage(fetchConnections, page);
+          const provider = connections.find((c) => c.id === id)?.provider;
+          if (provider) await fetchQuota(id, provider, { isActive });
         }
       } catch (error) {
         console.error("Error updating connection status:", error);
@@ -507,7 +507,7 @@ export default function ProviderLimits() {
         setTogglingId(null);
       }
     },
-    [fetchConnections, page],
+    [connections, fetchConnections, fetchQuota, page],
   );
 
   const handleUpdateConnection = useCallback(
@@ -841,13 +841,22 @@ export default function ProviderLimits() {
           ),
         );
         await reconcileConnectionsPage(fetchConnections, page);
+        // opt46 (Q2): newly toggled rows used to stay quota-empty until the
+        // 60s auto-refresh. Refetch each row's quota now (fetchQuota itself
+        // sets the neutral empty state for turned-off rows, no fetch).
+        await Promise.all(
+          targetIds.map(async (id) => {
+            const provider = connections.find((c) => c.id === id)?.provider;
+            if (provider) await fetchQuota(id, provider, { isActive });
+          }),
+        );
       } catch (error) {
         console.error("Error bulk toggling connections:", error);
       } finally {
         setBulkToggling(false);
       }
     },
-    [bulkToggling, fetchConnections, page],
+    [bulkToggling, connections, fetchConnections, fetchQuota, page],
   );
 
   const handleDisableDepleted = () => {
@@ -1093,12 +1102,12 @@ export default function ProviderLimits() {
             onClick={handleEnableAvailable}
             disabled={bulkToggling}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-            title="Enable connections that still have quota on the current page"
+            title="Turn on turned-off accounts on the current page (quota unknown until refreshed)"
           >
             <span className="material-symbols-outlined text-[14px]">
               check_circle
             </span>
-            <span className="hidden sm:inline">Turn on Available</span>
+            <span className="hidden sm:inline">Turn on Turned Off</span>
           </button>
 
           {/* Auto-refresh toggle */}
@@ -1618,10 +1627,10 @@ export default function ProviderLimits() {
           setBulkConfirmState(null);
           await bulkSetActive(state.ids, state.direction === "enable");
         }}
-        title={bulkConfirmState?.direction === "enable" ? "Turn on available accounts?" : "Turn off empty accounts?"}
+        title={bulkConfirmState?.direction === "enable" ? "Turn on turned-off accounts?" : "Turn off empty accounts?"}
         message={bulkConfirmState
           ? (bulkConfirmState.direction === "enable"
-            ? `This turns on ${bulkConfirmState.ids.length} account${bulkConfirmState.ids.length === 1 ? "" : "s"} on the current page that still have quota.`
+            ? `This turns on ${bulkConfirmState.ids.length} turned-off account${bulkConfirmState.ids.length === 1 ? "" : "s"} on the current page. Their quota is unknown until refreshed.`
             : `This turns off ${bulkConfirmState.ids.length} account${bulkConfirmState.ids.length === 1 ? "" : "s"} on the current page with depleted quota.`)
           : ""}
         confirmText={bulkConfirmState?.direction === "enable" ? "Turn on" : "Turn off"}

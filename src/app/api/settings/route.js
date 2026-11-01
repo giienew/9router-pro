@@ -3,7 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { DATA_FILE } from "@/lib/db/paths.js";
-import { checkSsoOnlyGate } from "@/lib/auth/ssoTestGate.js";
+import { checkSsoOnlyGate, SSO_ONLY_MODES } from "@/lib/auth/ssoTestGate.js";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -71,9 +71,13 @@ export async function PATCH(request) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "9routerpro"
-        if (body.currentPassword && body.currentPassword !== "9routerpro") {
+        // First time setting password, no current password needed.
+        // Accept an empty currentPassword, the built-in default, or the
+        // operator's custom INITIAL_PASSWORD env value (opt46 P2: the old
+        // code rejected a correct custom env password with 401 even
+        // though GET reports hasPassword=true when the env is set).
+        const acceptedCurrent = ["9routerpro", process.env.INITIAL_PASSWORD].filter(Boolean);
+        if (body.currentPassword && !acceptedCurrent.includes(body.currentPassword)) {
            return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       }
@@ -90,10 +94,30 @@ export async function PATCH(request) {
       }
     }
 
+    // opt46 (A1/A2): one-level deep merge for nested objects the dashboard
+    // saves partially, so a partial save cannot silently drop sibling keys
+    // (responseCache.semantic, dbMaintenance.lastRunAt/lastResult).
+    if (body.responseCache && typeof body.responseCache === "object" && !Array.isArray(body.responseCache)) {
+      const current = await getSettings();
+      body.responseCache = { ...(current.responseCache || {}), ...body.responseCache };
+    }
+    if (body.dbMaintenance && typeof body.dbMaintenance === "object" && !Array.isArray(body.dbMaintenance)) {
+      const current = await getSettings();
+      body.dbMaintenance = { ...(current.dbMaintenance || {}), ...body.dbMaintenance };
+    }
+
     // opt44: SSO-only gate — switching to a password-less mode requires a
     // successful connection test of the exact configuration being saved.
-    // Only the authMode switch itself is gated; other PATCHes pass through.
-    if (body.authMode === "sso" || body.authMode === "saml" || body.authMode === "oidc") {
+    // opt46 (M1-SSO): also gate when the instance is ALREADY SSO-only and
+    // an IdP field changes — the old code only gated the authMode switch
+    // itself, so an untested IdP edit could lock out password login.
+    // (When the merged mode still allows password login, the gate is a
+    // no-op by construction, so gating on IdP-field presence is safe.)
+    const IDP_FIELDS = ["samlEntryPoint", "samlIssuer", "samlCert", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "ssoType"];
+    const needsSsoGate =
+      (body.authMode && SSO_ONLY_MODES.includes(body.authMode)) ||
+      IDP_FIELDS.some((k) => Object.prototype.hasOwnProperty.call(body, k));
+    if (needsSsoGate) {
       const current = await getSettings();
       const gateError = checkSsoOnlyGate({ ...current, ...body });
       if (gateError) {

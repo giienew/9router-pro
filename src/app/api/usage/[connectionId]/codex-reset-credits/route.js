@@ -53,6 +53,12 @@ async function getCodexConnection(connectionId) {
     return { response: Response.json({ error: "Connection not found" }, { status: 404 }) };
   }
 
+  // opt46 (Q1): never refresh or touch reset credits for a turned-off
+  // connection — fail neutrally before any upstream call.
+  if (connection.isActive === false || connection.isActive === 0) {
+    return { response: Response.json({ error: "Connection is turned off." }, { status: 400 }) };
+  }
+
   if (connection.provider !== "codex") {
     return { response: Response.json({ error: "Codex reset credits are only available for Codex connections." }, { status: 400 }) };
   }

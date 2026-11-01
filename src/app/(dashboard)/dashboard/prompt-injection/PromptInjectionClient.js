@@ -1097,21 +1097,28 @@ export default function PromptInjectionClient() {
   // data this page already fetched. Names + coordinates + counts ONLY —
   // prompt text (old or new) is never put in a preview row. Server
   // validation stays authoritative: the final toast counts come from it.
+  // opt46 (I1): content predicates shared by planImport (preview) and
+  // applyImport (execution) — an entry with no content/turns is EMPTY, and
+  // the server treats an empty save as DELETE. The import path must never
+  // send such entries, or a preview that says "overwrite" would silently
+  // delete live injections.
+  const validEntry = (e) => {
+    if (!e || typeof e !== "object") return false;
+    if (e.mode === "chat") return Array.isArray(e.turns) && e.turns.length > 0;
+    return typeof e.content === "string" && e.content.trim().length > 0;
+  };
+  const validVariant = (name, model) => {
+    const n = typeof name === "string" ? name.trim() : "";
+    return !!n && n.length <= 80 && !n.includes("/") && n !== "global" && n !== "user" &&
+      typeof model === "string" && model.includes("/");
+  };
   const planImport = (data) => {
     const items = [];
     const knownKey = (id) => keys.some((k) => k.id === id);
-    const validEntry = (e) => {
-      if (!e || typeof e !== "object") return false;
-      if (e.mode === "chat") return Array.isArray(e.turns) && e.turns.length > 0;
-      return typeof e.content === "string" && e.content.trim().length > 0;
-    };
-    const validVariant = (name, model) => {
-      const n = typeof name === "string" ? name.trim() : "";
-      return !!n && n.length <= 80 && !n.includes("/") && n !== "global" && n !== "user" &&
-        typeof model === "string" && model.includes("/");
-    };
     if (data.global) {
-      items.push({ coord: "Global", name: "Global", action: global_ ? "overwrite" : "new" });
+      items.push(validEntry(data.global)
+        ? { coord: "Global", name: "Global", action: global_ ? "overwrite" : "new" }
+        : { coord: "Global", name: "Global", action: "skip", reason: "Invalid entry" });
     }
     // Legacy files call templates "presets" — both are accepted.
     for (const template of data.templates || data.presets || []) {
@@ -1124,7 +1131,7 @@ export default function PromptInjectionClient() {
       items.push({ coord: "Template", name, action: templates.some((t) => t.name === name) ? "overwrite" : "new" });
     }
     for (const [name, entry] of Object.entries(data.variants || {})) {
-      if (!validVariant(name, entry?.model)) {
+      if (!validVariant(name, entry?.model) || !validEntry(entry)) {
         items.push({ coord: "Variant", name: name || "—", action: "skip", reason: "Invalid entry" });
         continue;
       }
@@ -1135,7 +1142,7 @@ export default function PromptInjectionClient() {
     for (const [model, entry] of Object.entries(data.prompts || {})) {
       const { name: _n, label: _l, ...rest } = entry || {};
       const name = (_n || _l || "").trim() || slugVariant(model);
-      if (!validVariant(name, model)) {
+      if (!validVariant(name, model) || !validEntry(rest)) {
         items.push({ coord: "Variant", name: name || "—", action: "skip", reason: "Invalid entry" });
         continue;
       }
@@ -1146,6 +1153,10 @@ export default function PromptInjectionClient() {
         items.push({ coord: "API key", name: keyName(keyId), action: "skip", reason: "Unknown API key" });
         continue;
       }
+      if (!validEntry(entry)) {
+        items.push({ coord: "API key", name: keyName(keyId), action: "skip", reason: "Invalid entry" });
+        continue;
+      }
       items.push({ coord: "API key", name: keyName(keyId), action: userPrompts[keyId] ? "overwrite" : "new" });
     }
     for (const [keyId, models] of Object.entries(data.keyModelPrompts || {})) {
@@ -1154,6 +1165,13 @@ export default function PromptInjectionClient() {
         continue;
       }
       for (const [model, entry] of Object.entries(models || {})) {
+        if (!validEntry(entry)) {
+          items.push({
+            coord: "Model + Key", name: `${keyName(keyId)} · ${model}`,
+            action: "skip", reason: "Invalid entry",
+          });
+          continue;
+        }
         items.push({
           coord: "Model + Key", name: `${keyName(keyId)} · ${model}`,
           action: keyModelPrompts[keyId]?.[model] ? "overwrite" : "new",
@@ -1178,13 +1196,21 @@ export default function PromptInjectionClient() {
         });
         if (res.ok) applied++; else skipped++;
       };
-      if (data.global) await send({ global: data.global });
+      if (data.global) {
+        // opt46 (I1): never send an empty entry — the server deletes on
+        // empty save, so an empty import entry must be skipped, not sent.
+        if (validEntry(data.global)) await send({ global: data.global });
+        else skipped++;
+      }
       // Legacy files call templates "presets" — both are accepted.
       for (const template of data.templates || data.presets || []) {
         const { targets, ...rest } = template || {};
+        const tName = typeof rest.name === "string" ? rest.name.trim() : "";
+        if (!tName || !validEntry(rest)) { skipped++; continue; }
         await send({ template: rest });
       }
       for (const [name, entry] of Object.entries(data.variants || {})) {
+        if (!validVariant(name, entry?.model) || !validEntry(entry)) { skipped++; continue; }
         await send({ variant: { name, ...entry } });
       }
       // Legacy backups carry model-coordinate entries: they become
@@ -1192,15 +1218,17 @@ export default function PromptInjectionClient() {
       for (const [model, entry] of Object.entries(data.prompts || {})) {
         const { name: _n, label: _l, ...rest } = entry || {};
         const name = (_n || _l || "").trim() || slugVariant(model);
+        if (!validVariant(name, model) || !validEntry(rest)) { skipped++; continue; }
         await send({ variant: { name, model, ...rest } });
       }
       for (const [keyId, entry] of Object.entries(data.userPrompts || {})) {
-        if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
+        if (!keys.some((k) => k.id === keyId) || !validEntry(entry)) { skipped++; continue; }
         await send({ keyId, ...entry });
       }
       for (const [keyId, models] of Object.entries(data.keyModelPrompts || {})) {
         if (!keys.some((k) => k.id === keyId)) { skipped++; continue; }
         for (const [model, entry] of Object.entries(models || {})) {
+          if (!validEntry(entry)) { skipped++; continue; }
           await send({ keyId, model, ...entry });
         }
       }

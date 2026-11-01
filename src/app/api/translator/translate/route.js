@@ -6,6 +6,23 @@ import { getModelInfo } from "@/sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
 
+// opt46 (M1-translator): authorization material must never reach the client
+// (Monaco editor + Copy button) or the on-disk translator logs. Send only
+// masked placeholders; the real Send flow re-derives credentials
+// server-side, so masking here breaks nothing.
+function maskAuthHeaders(headers) {
+  if (!headers || typeof headers !== "object") return headers;
+  const masked = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (/^(authorization|x-api-key|api-key|x-goog-api-key)$/i.test(key)) {
+      masked[key] = /^authorization$/i.test(key) ? "Bearer ***" : "***";
+    } else {
+      masked[key] = value;
+    }
+  }
+  return masked;
+}
+
 export async function POST(request) {
   try {
     const { step, body } = await request.json();
@@ -77,7 +94,7 @@ export async function POST(request) {
         const headers = executor.buildHeaders(credentials, stream);
         const finalBody = executor.transformRequest(model, translated, stream, credentials);
 
-        return NextResponse.json({ success: true, result: { url, headers, body: finalBody } });
+        return NextResponse.json({ success: true, result: { url, headers: maskAuthHeaders(headers), body: finalBody } });
       }
 
       default:

@@ -17,11 +17,12 @@ export async function POST(request, { params }) {
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 
+    // opt46 (M2-proxy): a health test only records testStatus/lastTestedAt/
+    // lastError — it must never flip the operator's manual isActive toggle.
     await updateProxyPool(id, {
       testStatus: result.ok ? "active" : "error",
       lastTestedAt: now,
       lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
-      isActive: result.ok,
     });
 
     return NextResponse.json({

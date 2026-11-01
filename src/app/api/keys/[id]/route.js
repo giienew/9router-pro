@@ -94,9 +94,13 @@ export async function PUT(request, { params }) {
     const updated = await updateApiKey(id, updateData);
 
     // Pro: token quota lives in KV, keyed by key id. `quota: null` clears it.
+    // opt46 (M1-key): merge with the stored quota first, like bulk PATCH —
+    // the old replace dropped fields the caller did not send (costLimit).
     let savedQuota = await getKeyQuota(id);
     if (quota !== undefined) {
-      savedQuota = await setKeyQuota(id, quota);
+      savedQuota = quota === null
+        ? await setKeyQuota(id, null)
+        : await setKeyQuota(id, { ...(savedQuota || {}), ...quota });
     }
     updated.quota = savedQuota;
     // Usage is keyed by key string: after a value change the NEW key counts,
@@ -104,9 +108,12 @@ export async function PUT(request, { params }) {
     updated.quotaUsed = savedQuota ? await getKeyUsageInWindow(updated.key, savedQuota.windowHours) : 0;
 
     // Pro: rate limits live in KV too. `limits: null` clears them.
+    // opt46 (M1-key): same stored-first merge as bulk PATCH.
     let savedLimits = await getKeyLimits(id);
     if (limits !== undefined) {
-      savedLimits = await setKeyLimits(id, limits);
+      savedLimits = limits === null
+        ? await setKeyLimits(id, null)
+        : await setKeyLimits(id, { ...(savedLimits || {}), ...limits });
     }
     updated.limits = savedLimits;
     updated.limitsUsage = {

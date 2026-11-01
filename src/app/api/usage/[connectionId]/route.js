@@ -143,6 +143,13 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    // opt46 (Q1): turned-off connections never refresh tokens or hit the
+    // upstream quota API — return the same neutral response as ineligible
+    // connections, before any refresh/fetch.
+    if (connection.isActive === false || connection.isActive === 0) {
+      return Response.json({ message: "Usage not available for this connection" });
+    }
+
     // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
     // Kiro's headless api-key flow persists authType "api_key" (underscore) while
     // generic apikey providers persist "apikey" — accept both spellings here.
