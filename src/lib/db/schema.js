@@ -109,7 +109,15 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)"],
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
+      // opt20 m1: DB-level uniqueness backing the app checks (name is
+      // case-insensitive in the app, hence LOWER(name)) — same pattern
+      // as opt13 for apiKeys. Indexes only, no table rebuild, so they
+      // also cover tables created before the column UNIQUE existed.
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_combos_name_unique ON combos(name)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_combos_name_lower_unique ON combos(LOWER(name))",
+    ],
   },
   kv: {
     columns: {
