@@ -580,6 +580,7 @@ export default function ProvidersPage() {
       textIcon: "OC",
       apiType: node.apiType,
       baseUrl: node.baseUrl || "",
+      type: node.type,
     }))
     .filter(
       (p) => matchSearch(p.name) && matchStatus(getProviderStats(p.id, "apikey")),
@@ -593,6 +594,7 @@ export default function ProvidersPage() {
       color: "#D97757",
       textIcon: "AC",
       baseUrl: node.baseUrl || "",
+      type: node.type,
     }))
     .filter(
       (p) => matchSearch(p.name) && matchStatus(getProviderStats(p.id, "apikey")),
@@ -1356,6 +1358,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle, fakeCon
                 }
                 fallbackColor={provider.color}
                 detectBaseUrl={provider.baseUrl}
+                providerType={provider.type}
               />
             </div>
             <div className="min-w-0">
@@ -1436,6 +1439,7 @@ ProviderCard.propTypes = {
     name: PropTypes.string.isRequired,
     color: PropTypes.string,
     textIcon: PropTypes.string,
+    type: PropTypes.string,
   }).isRequired,
   stats: PropTypes.shape({
     connected: PropTypes.number,
@@ -1477,11 +1481,12 @@ function ApiKeyProviderCard({
     compatible: "Compatible",
   };
 
-  // Custom nodes never show the type's brand logo: no OpenAI mark just
-  // because the node is openai-compatible, no Anthropic mark just
-  // because it is anthropic-compatible. The icon resolves through
-  // ProviderIcon (bundled-by-name from alt, brand-by-host and favicon
-  // tiers from detectBaseUrl, then initials).
+  // Custom nodes show the type's brand logo ONLY as the last resort:
+  // ProviderIcon tries the provider's own icon first (bundled-by-name
+  // from alt, brand-by-host and favicon tiers from detectBaseUrl) and
+  // falls through to the type mark (openai-compatible → openai,
+  // anthropic-compatible → anthropic) solely for nodes with genuinely
+  // no icon, before the initials fallback.
   const getIconPath = () => {
     return getProviderIconSrc(provider.id);
   };
@@ -1506,6 +1511,7 @@ function ApiKeyProviderCard({
                 size={30}
                 className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
                 detectBaseUrl={provider.baseUrl}
+                providerType={provider.type}
                 fallbackText={
                   provider.textIcon || provider.id.slice(0, 2).toUpperCase()
                 }

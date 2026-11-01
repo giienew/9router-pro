@@ -1542,6 +1542,7 @@ export default function ProviderDetailPage() {
               fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
               fallbackColor={providerInfo.color}
               detectBaseUrl={providerInfo.baseUrl}
+              providerType={providerInfo.type}
             />
           </div>
           <div className="min-w-0">

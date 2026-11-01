@@ -75,6 +75,27 @@ export function getBrandIconSrc(baseUrl) {
   return `/providers/${brand}.png`;
 }
 
+// Last-resort brand for custom providers: when a custom node has no
+// icon of its own (no bundled name, no brand host, no usable favicon),
+// fall back to its API type's main brand mark — openai-compatible →
+// openai, anthropic-compatible → anthropic. This is LAST in the chain
+// by design: it must never override a provider's own icon, only replace
+// the initials fallback for nodes with genuinely no icon. Both files
+// exist under /public/providers; a 404 is session-cached like every
+// other miss, and initials remain the ultimate fallback.
+const TYPE_TO_BRAND = {
+  "openai-compatible": "openai",
+  "anthropic-compatible": "anthropic",
+};
+
+/** `/providers/{brand}.png` for a custom node type, else null. */
+export function getTypeBrandIconSrc(providerType) {
+  if (!providerType || typeof providerType !== "string") return null;
+  const brand = TYPE_TO_BRAND[providerType.trim().toLowerCase()];
+  if (!brand || failedIds.has(brand)) return null;
+  return `/providers/${brand}.png`;
+}
+
 /** `/providers/{name}.png` for a provider display name, else null.
  *  Normalization strips everything but [a-z0-9], so "Token Harbor"
  *  resolves to the tokenharbor mark. A missing file just 404s and the
