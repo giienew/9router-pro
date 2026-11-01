@@ -9,6 +9,7 @@ import Input from "@/shared/components/Input";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
+import { getCurrentLocale, onLocaleChange, translate } from "@/i18n/runtime";
 import { InjectionTester } from "./InjectExtras";
 
 const API = "/api/prompt-injection";
@@ -121,7 +122,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={7}
-          placeholder="Write the system prompt…"
+          placeholder={translate("Write the system prompt…")}
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
         />
       ) : (
@@ -133,7 +134,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
                   className={`mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                     t.role === "user" ? "bg-surface-3 text-text-muted" : "bg-primary/15 text-primary"
                   }`}
-                  title={t.role === "user" ? "Your message" : "Bot reply"}
+                  title={t.role === "user" ? translate("Your message") : translate("Bot reply")}
                 >
                   <span className="material-symbols-outlined text-[16px]">
                     {t.role === "user" ? "person" : "smart_toy"}
@@ -143,13 +144,13 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
                   value={t.content}
                   onChange={(e) => setTurn(i, e.target.value)}
                   rows={3}
-                  placeholder={t.role === "user" ? "Your message…" : "The bot's reply…"}
+                  placeholder={t.role === "user" ? translate("Your message…") : translate("The bot's reply…")}
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm leading-relaxed"
                 />
                 <button
                   type="button"
                   onClick={() => removeTurn(i)}
-                  title="Remove turn"
+                  title={translate("Remove turn")}
                   className="mt-2 shrink-0 text-text-muted transition-colors hover:text-red-500"
                 >
                   <span className="material-symbols-outlined text-[18px]">close</span>
@@ -239,7 +240,7 @@ function SectionTitle({ icon, title, children, action, info }) {
             type="button"
             onClick={() => setInfoOpen(true)}
             aria-label="Info"
-            title="Info"
+            title={translate("Info")}
             className="flex shrink-0 items-center justify-center p-1 text-text-muted transition-colors hover:text-text-main"
           >
             <span className="material-symbols-outlined text-[19px] leading-none">info</span>
@@ -306,7 +307,7 @@ function ConfirmButton({ label, icon, onConfirm }) {
     <button
       type="button"
       onClick={() => setArmed(true)}
-      title="Delete — tap twice to confirm"
+      title={translate("Delete — tap twice to confirm")}
       className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
     >
       <span className="material-symbols-outlined text-[16px]">{icon}</span>
@@ -317,7 +318,7 @@ function ConfirmButton({ label, icon, onConfirm }) {
 
 // ------------------------------------------------------------ templates
 
-function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete }) {
+function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount = 0 }) {
   const isCopied = copiedId === `tpl:${template.id}`;
   return (
     <Card padding="sm">
@@ -330,17 +331,22 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete }) {
           <span className="text-xs text-text-muted">
             ~{estimateTokens(entryText(template))} tokens
           </span>
+          {usageCount > 0 && (
+            <span className="text-xs text-text-muted">
+              Used by {usageCount} {usageCount === 1 ? "injection" : "injections"}
+            </span>
+          )}
           <span className="flex-1" />
           <button
             type="button"
             onClick={onCopy}
-            title="Copy prompt text"
+            title={translate("Copy prompt text")}
             className={`${actionBtnClass} ${isCopied ? "text-emerald-500 hover:text-emerald-500" : ""}`}
           >
             <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
             {isCopied ? "Copied" : "Copy"}
           </button>
-          <button type="button" onClick={onEdit} title="Edit template" className={actionBtnClass}>
+          <button type="button" onClick={onEdit} title={translate("Edit template")} className={actionBtnClass}>
             <span className="material-symbols-outlined text-[16px]">edit</span>
             Edit
           </button>
@@ -353,14 +359,14 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete }) {
 
 // Template editor: a name + the prompt itself. Nothing else — a template
 // is library content, not a live setting.
-function TemplateModal({ template, onClose, onSave, saving }) {
+function TemplateModal({ template, onClose, onSave, saving, usages = [] }) {
   const isNew = !template?.id;
   const [name, setName] = useState(template?.name || "");
   return (
     <Modal
       isOpen
       onClose={onClose}
-      title={isNew ? "New template" : "Edit template"}
+      title={isNew ? translate("New template") : translate("Edit template")}
       size="lg"
       bodyClassName="p-4 sm:p-6"
     >
@@ -369,7 +375,7 @@ function TemplateModal({ template, onClose, onSave, saving }) {
           label="Template name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Persona — Friendly"
+          placeholder={translate("e.g. Persona — Friendly")}
         />
         <InjectEditor
           key={template?.id || "new"}
@@ -377,6 +383,21 @@ function TemplateModal({ template, onClose, onSave, saving }) {
           saving={saving}
           onSave={(fields) => onSave({ id: template?.id, name: name.trim(), ...fields })}
         />
+        {!isNew && usages.length > 0 && (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+            <p className="mb-1.5 text-sm font-medium">Injections using this template</p>
+            <ul className="flex flex-col gap-1">
+              {usages.map((u, i) => (
+                <li key={i} className="text-xs text-text-muted">
+                  {u.label} — {u.mode === "chat" ? `${u.turns} scripted turns` : "single prompt"}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-text-muted">
+              Editing this template does not change these injections — they hold their own copy. Re-apply the template to update one.
+            </p>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -543,7 +564,7 @@ function InjectionForm({
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder={scope === "variant" ? "provider/model — backing model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731" : "provider/model"}
+              placeholder={scope === "variant" ? translate("provider/model — backing model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731") : translate("provider/model")}
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
@@ -562,7 +583,7 @@ function InjectionForm({
             onChange={(e) => setKeyId(e.target.value)}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
           >
-            <option value="">All keys</option>
+            <option value="">{translate("All keys")}</option>
             {keys.map((k) => (
               <option key={k.id} value={k.id}>{keyName(k.id)}</option>
             ))}
@@ -589,7 +610,7 @@ function InjectionForm({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. dahlunce — this model's custom name"
+            placeholder={translate("e.g. dahlunce — this model's custom name")}
             className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
           />
         </label>
@@ -601,15 +622,15 @@ function InjectionForm({
           <div className="flex flex-wrap gap-2">
             <label className="flex flex-1 min-w-[120px] flex-col gap-1">
               <span className="text-[11px] text-text-muted">temperature (0–2)</span>
-              <input type="number" step="0.1" min="0" max="2" value={samplingState.temperature} onChange={(e) => setSamplingState((s) => ({ ...s, temperature: e.target.value }))} placeholder="client default" className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+              <input type="number" step="0.1" min="0" max="2" value={samplingState.temperature} onChange={(e) => setSamplingState((s) => ({ ...s, temperature: e.target.value }))} placeholder={translate("client default")} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
             </label>
             <label className="flex flex-1 min-w-[120px] flex-col gap-1">
               <span className="text-[11px] text-text-muted">top_p (0–1)</span>
-              <input type="number" step="0.05" min="0" max="1" value={samplingState.top_p} onChange={(e) => setSamplingState((s) => ({ ...s, top_p: e.target.value }))} placeholder="client default" className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+              <input type="number" step="0.05" min="0" max="1" value={samplingState.top_p} onChange={(e) => setSamplingState((s) => ({ ...s, top_p: e.target.value }))} placeholder={translate("client default")} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
             </label>
             <label className="flex flex-1 min-w-[120px] flex-col gap-1">
               <span className="text-[11px] text-text-muted">max_tokens</span>
-              <input type="number" min="1" value={samplingState.max_tokens} onChange={(e) => setSamplingState((s) => ({ ...s, max_tokens: e.target.value }))} placeholder="client default" className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+              <input type="number" min="1" value={samplingState.max_tokens} onChange={(e) => setSamplingState((s) => ({ ...s, max_tokens: e.target.value }))} placeholder={translate("client default")} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
             </label>
           </div>
         </div>
@@ -646,7 +667,7 @@ function InjectionForm({
               }}
               className="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:w-auto sm:flex-1 sm:max-w-[280px]"
             >
-              <option value="">— choose a template —</option>
+              <option value="">{translate("— choose a template —")}</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
@@ -730,7 +751,7 @@ function InjectionForm({
           setModel(modelPickValue(m));
           setPickerOpen(false);
         }}
-        title="Select model"
+        title={translate("Select model")}
         hideCombos
         hideInjections
       />
@@ -749,6 +770,14 @@ export default function PromptInjectionClient() {
     toastTimer.current = setTimeout(() => setMsg(null), 2600);
   }, []);
   const [loading, setLoading] = useState(true);
+  // Re-render when the dashboard locale changes, so translate() output
+  // refreshes (same pattern as the Token Saver page).
+  const [, setLocale] = useState("en");
+  useEffect(() => {
+    setLocale(getCurrentLocale());
+    return onLocaleChange(() => setLocale(getCurrentLocale()));
+  }, []);
+  const [injectStats, setInjectStats] = useState(null);
   const [global_, setGlobal] = useState(null);
   const [userPrompts, setUserPrompts] = useState({});
   const [variants, setVariants] = useState({});
@@ -771,6 +800,11 @@ export default function PromptInjectionClient() {
         fetch("/api/models"),
         fetch("/api/provider-nodes"),
       ]);
+      // Usage stats are a convenience, never a load blocker.
+      fetch(`${API}/stats?days=14`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setInjectStats(d && typeof d === "object" ? d : null))
+        .catch(() => {});
       const inj = await injRes.json();
       setGlobal(inj.global || null);
       setUserPrompts(inj.userPrompts || {});
@@ -986,6 +1020,28 @@ export default function PromptInjectionClient() {
     }
   }
 
+  // Fires per coordinate (14d), keyed by coordId; null until stats load.
+  const statsByName = injectStats?.totals?.byName || {};
+
+  // Template drift (display only): injections whose provenance stamp
+  // names a template. Matched by name, because the stamp is the name.
+  const usagesByName = {};
+  for (const { coord, entry } of rows) {
+    const tn = entry?.templateName;
+    if (tn) (usagesByName[tn] ||= []).push({ coord, entry });
+  }
+  const usageLabel = (coord) => {
+    if (coord.scope === "variant") return coord.name;
+    if (coord.scope === "global") return coord.keyId ? keyName(coord.keyId) : "Global";
+    return coord.keyId ? `${coord.model} · ${keyName(coord.keyId)}` : coord.model;
+  };
+  const templateUsages = (name) =>
+    (usagesByName[name] || []).map(({ coord, entry }) => ({
+      label: usageLabel(coord),
+      mode: entry.mode,
+      turns: entry.turns?.length || 0,
+    }));
+
   const saveTemplate = async (payload) => {
     if (!payload.name) {
       showToast("Template name is required", "error");
@@ -1141,7 +1197,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="edit_note"
-              title="Templates"
+              title={translate("Templates")}
               info={{
                 title: "How Templates work",
                 paras: [
@@ -1164,12 +1220,20 @@ export default function PromptInjectionClient() {
               injection — the template itself never runs.
             </SectionTitle>
             {templates.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
-                <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
-                <p className="text-sm text-text-muted">
-                  No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
-                </p>
-              </div>
+              <>
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
+                  <p className="text-sm text-text-muted">
+                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
+                  {translate("Don't have a prompt yet? Browse prompt references at")}{" "}
+                  <a href="https://github.com/togg53192-cmd/jailbreaks" target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
+                    github.com/togg53192-cmd/jailbreaks
+                  </a>
+                </div>
+              </>
             ) : (
               <div className="flex flex-col gap-2">
                 {templates.map((t) => (
@@ -1180,6 +1244,7 @@ export default function PromptInjectionClient() {
                     onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
                     onEdit={() => setEditingTemplate(t)}
                     onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
+                    usageCount={(usagesByName[t.name] || []).length}
                   />
                 ))}
               </div>
@@ -1189,7 +1254,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="input"
-              title="Injections"
+              title={translate("Injections")}
               info={{
                 title: "How Injections work",
                 paras: [
@@ -1266,12 +1331,17 @@ export default function PromptInjectionClient() {
                         {entry.templateName && (
                           <span className="text-xs text-text-muted">from template “{entry.templateName}”</span>
                         )}
+                        {injectStats !== null && (coord.scope === "variant" || (statsByName[coordId(coord)]?.fires || 0) > 0) && (
+                          <span className="text-xs text-text-muted">
+                            {statsByName[coordId(coord)]?.fires || 0} fires · 14d
+                          </span>
+                        )}
                         <span className="flex-1" />
                         {coord.scope === "variant" && (
                           <button
                             type="button"
                             onClick={() => copyName(coord.name)}
-                            title="Copy name"
+                            title={translate("Copy name")}
                             className={`${actionBtnClass} ${copied === `name:${coord.name}` ? "text-emerald-500 hover:text-emerald-500" : ""}`}
                           >
                             <span className="material-symbols-outlined text-[16px]">
@@ -1283,7 +1353,7 @@ export default function PromptInjectionClient() {
                         <button
                           type="button"
                           onClick={() => setEditingCoordId(isEditing ? null : id)}
-                          title="Edit"
+                          title={translate("Edit")}
                           className={actionBtnClass}
                         >
                           <span className="material-symbols-outlined text-[16px]">
@@ -1328,7 +1398,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="layers"
-              title="Stack preview"
+              title={translate("Stack preview")}
               info={{
                 title: "How Stack Preview works",
                 paras: [
@@ -1350,7 +1420,7 @@ export default function PromptInjectionClient() {
                   <input
                     value={pvModel}
                     onChange={(e) => setPvModel(e.target.value)}
-                    placeholder="provider/model — e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731"
+                    placeholder={translate("provider/model — e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731")}
                     list="pi-model-names"
                     className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
                   />
@@ -1362,7 +1432,7 @@ export default function PromptInjectionClient() {
                     onChange={(e) => setPvKeyId(e.target.value)}
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
                   >
-                    <option value="">No key</option>
+                    <option value="">{translate("No key")}</option>
                     {keys.map((k) => (
                       <option key={k.id} value={k.id}>{keyName(k.id)}</option>
                     ))}
@@ -1375,7 +1445,7 @@ export default function PromptInjectionClient() {
                     setPvModel(modelPickValue(m));
                     setPvPickerOpen(false);
                   }}
-                  title="Select model"
+                  title={translate("Select model")}
                 />
                 {pvStack === null ? (
                   <p className="text-sm text-text-muted">…</p>
@@ -1407,7 +1477,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="science"
-              title="Injection tester"
+              title={translate("Injection tester")}
               info={{
                 title: "How the Injection Tester works",
                 paras: [
@@ -1442,6 +1512,7 @@ export default function PromptInjectionClient() {
           onClose={() => setEditingTemplate(undefined)}
           onSave={saveTemplate}
           saving={saving === "template"}
+          usages={editingTemplate?.name ? templateUsages(editingTemplate.name) : []}
         />
       )}
     </div>

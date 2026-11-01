@@ -106,7 +106,7 @@ export async function PUT(request) {
       const existing = (await getInjectVariants())[name];
       if (!existing && (await getComboByName(name).catch(() => null))) {
         return NextResponse.json(
-          { error: `Nama "${name}" sudah dipakai combo — pilih nama lain` },
+          { error: `Name "${name}" is already used by a combo — pick another name` },
           { status: 400 }
         );
       }
@@ -114,7 +114,7 @@ export async function PUT(request) {
         const aliases = await getModelAliases().catch(() => ({}));
         if (aliases && typeof aliases === "object" && name in aliases) {
           return NextResponse.json(
-            { error: `Nama "${name}" sudah dipakai alias model — pilih nama lain` },
+            { error: `Name "${name}" is already used by a model alias — pick another name` },
             { status: 400 }
           );
         }

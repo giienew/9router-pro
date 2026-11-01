@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
+import { translate } from "@/i18n/runtime";
 
 // ---------------- Injection Tester ----------------
 // Sends a prompt through this router's /v1 at one model — or two models
@@ -197,7 +198,7 @@ export function InjectionTester() {
           onChange={(e) => setValue(e.target.value)}
           list="inject-tester-models"
           className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
-          placeholder="model name"
+          placeholder={translate("model name")}
         />
         <button
           type="button"
@@ -230,7 +231,7 @@ export function InjectionTester() {
             onChange={(e) => setKeyId(e.target.value)}
             className="rounded-lg border border-border bg-surface px-3 py-2"
           >
-            {keys.length === 0 && <option value="">No keys found</option>}
+            {keys.length === 0 && <option value="">{translate("No keys found")}</option>}
             {keys.map((k) => (
               <option key={k.id} value={k.id}>{k.name || k.id}</option>
             ))}
@@ -258,7 +259,7 @@ export function InjectionTester() {
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-          placeholder="Type any prompt — the model's raw reply is the verdict…"
+          placeholder={translate("Type any prompt — the model's raw reply is the verdict…")}
         />
         <div className="flex items-center gap-3">
           <button
@@ -272,8 +273,8 @@ export function InjectionTester() {
         </div>
       </div>
       <div className={`flex flex-col gap-4 ${mode === "vs" ? "sm:grid sm:grid-cols-2 sm:items-start" : ""} ${verdictColor}`}>
-        <ResultCard title={mode === "vs" ? "Model A" : "Result"} result={resA} />
-        {mode === "vs" && <ResultCard title="Model B" result={resB} />}
+        <ResultCard title={mode === "vs" ? translate("Model A") : translate("Result")} result={resA} />
+        {mode === "vs" && <ResultCard title={translate("Model B")} result={resB} />}
       </div>
       <ModelSelectModal
         isOpen={!!pickerFor}

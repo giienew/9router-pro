@@ -27,6 +27,7 @@ export {
   getBriefModes, getBriefGlobal, getBriefByKey, getBriefByModel,
   setBriefGlobal, setBriefForKey, setBriefForModel, resolveBriefLevel,
   recordRtkSavings, getTokenSaverStats,
+  recordPromptInjectFire, classifyInjectStack, getPromptInjectStats,
   getKeyQuota, getAllKeyQuotas, setKeyQuota, deleteKeyQuota,
   getKeyUsageInWindow, getKeyCostInWindow, checkKeyQuota,
   getKeyLimits, getAllKeyLimits, setKeyLimits, deleteKeyLimits, cleanKeyLimits,

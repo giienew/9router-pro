@@ -10,7 +10,7 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { dispatchCombo, createVariantHelpers, withBreakerSuccess } from "../services/comboDispatch.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections, recordPromptInjectFire, classifyInjectStack, getInjectKeyModelPrompts } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseAutoTarget, buildAutoCandidates, getLatencyByProviderCached, AUTO_EXPLORATION_SHARE } from "../services/autoRouting.js";
 import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
@@ -406,6 +406,29 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       resolvedModel: `${provider}/${model}`,
       bareModel: model,
     });
+    // Prompt Injection usage stats (9Router Pro): buffered, fail-open,
+    // coordinate keys + scopes only — never prompt text. A lone
+    // model-scope entry is ambiguous (plain model vs model+key), so only
+    // then is the request key's model+key map read, once.
+    try {
+      if (Array.isArray(promptInjects) && promptInjects.length) {
+        const requested = injectModelName || requestedModel || modelStr;
+        const variantPick = typeof requested === "string" && requested && !requested.includes("/");
+        let keyModelNames = null;
+        if (!variantPick && injectKeyRecord?.id) {
+          const modelish = promptInjects.filter((p) => p && p.name !== "global" && p.name !== "user");
+          if (modelish.length === 1) {
+            const km = await getInjectKeyModelPrompts().catch(() => null);
+            keyModelNames = km?.[injectKeyRecord.id] ? new Set(Object.keys(km[injectKeyRecord.id])) : new Set();
+          }
+        }
+        recordPromptInjectFire(classifyInjectStack(promptInjects, {
+          apiKeyId: injectKeyRecord?.id || null,
+          requestedModel: requested,
+          keyModelNames,
+        }));
+      }
+    } catch { /* stats must never break chat */ }
     // R7 locked sampling: a direct variant pick (or a combo member naming
     // a variant) carries that variant's sampling params, overriding the
     // client's defaults for this request only. Prompt text untouched.

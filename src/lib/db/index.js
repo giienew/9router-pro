@@ -13,7 +13,7 @@ import { getAppVersion } from "./version.js";
 // older backup never wipes newer data (prompt injections, quotas, brief
 // modes) it knows nothing of. tokenSaverStats is statistics rather than
 // configuration, but it rides along so a restore keeps the savings history.
-const EXTRA_KV_SCOPES = ["promptInjections", "promptPresets", "keyQuotas", "keyLimits", "disabledModels", "briefMode", "tokenSaverStats"];
+const EXTRA_KV_SCOPES = ["promptInjections", "promptPresets", "keyQuotas", "keyLimits", "disabledModels", "briefMode", "tokenSaverStats", "promptInjectStats"];
 
 // Which backup section group each KV scope belongs to (selective backup).
 const KV_SCOPE_GROUPS = {
@@ -24,6 +24,7 @@ const KV_SCOPE_GROUPS = {
   disabledModels: "settings",
   briefMode: "settings",
   tokenSaverStats: "settings",
+  promptInjectStats: "settings",
 };
 import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
@@ -106,6 +107,9 @@ export {
 export {
   recordRtkSavings, flushTokenSaverStats, getTokenSaverStats,
 } from "./repos/tokenSaverStatsRepo.js";
+export {
+  recordPromptInjectFire, classifyInjectStack, flushPromptInjectStats, getPromptInjectStats,
+} from "./repos/promptInjectStatsRepo.js";
 
 // Pricing
 export {
