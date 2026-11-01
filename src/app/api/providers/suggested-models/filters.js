@@ -57,4 +57,15 @@ export const FILTERS = {
       .sort((a, b) => String(a.id).localeCompare(String(b.id))),
 
   "nous-free": normalizeNousFreeModels,
+
+  // NewAPI pricing endpoint ({data:[{model_name, model_ratio, ...}]}). Keeps only
+  // free models (model_ratio === 0). Used by totu-ai (modelsFetcher type "pricing").
+  pricing: (models) => {
+    const list = Array.isArray(models) ? models : Array.isArray(models?.data) ? models.data : [];
+    return list
+      .filter((m) => Number(m.model_ratio) === 0)
+      .map((m) => ({ id: m.model_name || m.id, name: m.model_name || m.id }))
+      .filter((m) => m.id)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  },
 };
