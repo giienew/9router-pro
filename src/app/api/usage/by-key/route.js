@@ -44,11 +44,13 @@ export async function GET(request) {
       if (!DATE_KEY_RE.test(start) || !DATE_KEY_RE.test(end) || start > end) {
         return NextResponse.json({ error: "Custom period needs start and end dates (YYYY-MM-DD, start <= end)" }, { status: 400 });
       }
-      startDate = new Date(`${start}T00:00:00.000Z`);
-      endDate = new Date(`${end}T23:59:59.999Z`);
+      // m3: one TZ rule everywhere — server-local, like stats/chart. The
+      // UTC forms here used to shift "today"/custom by up to 8h vs Overview.
+      startDate = new Date(`${start}T00:00:00`);
+      endDate = new Date(`${end}T23:59:59.999`);
     } else if (period === "today") {
       startDate = new Date();
-      startDate.setUTCHours(0, 0, 0, 0);
+      startDate.setHours(0, 0, 0, 0);
     } else if (period !== "all") {
       startDate = new Date(Date.now() - PERIOD_MS[period]);
     }

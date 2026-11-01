@@ -2,6 +2,22 @@ import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
+// M1: sendFull used to recompute getUsageStats on every connect and every
+// 60s per open tab, bypassing the stats route's 5s cache. Share the same
+// 5s window here (module-level: all SSE connections read one value).
+// 5s of staleness is invisible — light updates still push realtime fields.
+const FULL_CACHE_TTL_MS = 5000;
+let fullCache = { ts: 0, data: null };
+
+async function getFullStatsCached() {
+  if (fullCache.data && Date.now() - fullCache.ts < FULL_CACHE_TTL_MS) {
+    return fullCache.data;
+  }
+  const stats = await getUsageStats();
+  fullCache = { ts: Date.now(), data: stats };
+  return stats;
+}
+
 // The client merges only activeRequests / recentRequests / errorProvider /
 // pending from SSE messages, so "update" and "pending" events push just
 // those fields (built from getActiveRequests, no stats recompute). The full
@@ -26,7 +42,7 @@ export async function GET() {
       const sendFull = async () => {
         if (state.closed) return;
         try {
-          state.cachedStats = await getUsageStats();
+          state.cachedStats = await getFullStatsCached();
           enqueue(state.cachedStats);
         } catch {
           state.cleanup();

@@ -6,7 +6,7 @@ import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
-const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
+const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 
 function fmtTime(iso) {
   if (!iso) return "Never";
@@ -150,9 +150,9 @@ export default function UsageTable({
       ];
     }
     return [
-      { field: "promptTokens", label: "Input Cost" },
-      { field: "cachedCost", label: "Cached Cost" },
-      { field: "completionTokens", label: "Output Cost" },
+      { field: "promptTokens", label: "Input Cost (est.)" },
+      { field: "cachedCost", label: "Cached Cost (est.)" },
+      { field: "completionTokens", label: "Output Cost (est.)" },
       { field: "cost", label: "Total Cost" },
     ];
   }, [viewMode]);

@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
+import { getProviderIconSrc, getNameIconSrc, getTypeBrandIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
 
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
@@ -22,8 +22,14 @@ function getProviderConfig(providerId) {
   return AI_PROVIDERS[providerId] || { color: "#6b7280", name: providerId };
 }
 
-function getProviderImageUrl(providerId) {
-  return getProviderIconSrc(providerId);
+// m5: full candidate chain for one provider entry — bundled id, then the
+// custom display name (tokenharbor/tokenjuicr bundles), then the node
+// type's brand mark (openai-compatible → openai). The old id-only lookup
+// left every custom node on initials.
+function getProviderImageUrl(p) {
+  return getProviderIconSrc(p.provider)
+    || getNameIconSrc(p.nodeName)
+    || getTypeBrandIconSrc(p.providerType);
 }
 
 // Custom provider node - rectangle with image + name
@@ -212,7 +218,7 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
     const data = {
       label: (config.name !== p.provider ? config.name : null) || p.nodeName || p.name || p.provider,
       color: config.color || "#6b7280",
-      imageUrl: getProviderImageUrl(p.provider),
+      imageUrl: getProviderImageUrl(p),
       textIcon: config.textIcon || (p.provider || "?").slice(0, 2).toUpperCase(),
       active,
     };
@@ -381,6 +387,8 @@ ProviderTopology.propTypes = {
     id: PropTypes.string,
     provider: PropTypes.string,
     name: PropTypes.string,
+    nodeName: PropTypes.string,
+    providerType: PropTypes.string,
   })),
   activeRequests: PropTypes.arrayOf(PropTypes.shape({
     provider: PropTypes.string,

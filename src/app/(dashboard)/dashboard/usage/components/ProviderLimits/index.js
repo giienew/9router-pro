@@ -130,6 +130,18 @@ function providerLabel(providerId) {
   return AI_PROVIDERS[providerId]?.name || providerId;
 }
 
+// m5: icon props for one provider id — display name (name tier) + node
+// type (type-brand tier) + base URL (brand/favicon tiers). Built-ins have
+// no node entry, so they fall back to the built-in label (id tier first).
+function providerIconProps(nodeMap, providerId) {
+  const n = nodeMap?.[providerId];
+  return {
+    alt: n?.name || providerLabel(providerId),
+    providerType: n?.type,
+    detectBaseUrl: n?.baseUrl,
+  };
+}
+
 function formatCreditDate(value) {
   if (!value) return "N/A";
   const date = new Date(value);
@@ -200,6 +212,10 @@ export default function ProviderLimits() {
     } catch { /* non-fatal: URL sync is best-effort */ }
   }, [pathname, router, searchParams]);
   const [providerOptions, setProviderOptions] = useState([]);
+  // m5: custom-node map (id → {name, type, baseUrl}) for icons. ProviderIcon
+  // needs the display name (name tier) + node type (type-brand tier) — the
+  // raw node id alone resolves to nothing for custom providers.
+  const [nodeMap, setNodeMap] = useState({});
   const [accountFilter, setAccountFilter] = useState("all");
   const [quotaSortMode, setQuotaSortMode] = useState("default");
   const [quotaVisibility, setQuotaVisibility] = useState({});
@@ -225,6 +241,20 @@ export default function ProviderLimits() {
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const tickCountRef = useRef(0);
+
+  // m5: load custom provider nodes once — icon names/types come from here.
+  useEffect(() => {
+    fetch("/api/provider-nodes")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const map = {};
+        for (const n of d?.nodes || []) {
+          if (n?.id) map[n.id] = { name: n.name, type: n.type, baseUrl: n.baseUrl };
+        }
+        setNodeMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
@@ -923,7 +953,7 @@ export default function ProviderLimits() {
                 ) : (
                   <ProviderIcon
                     src={`/providers/${providerFilter}.png`}
-                    alt={providerFilter}
+                    {...providerIconProps(nodeMap, providerFilter)}
                     size={18}
                     className="size-[18px] rounded object-contain"
                     fallbackText={providerFilter.slice(0, 2).toUpperCase()}
@@ -985,7 +1015,7 @@ export default function ProviderLimits() {
                       >
                         <ProviderIcon
                           src={`/providers/${provider}.png`}
-                          alt={provider}
+                          {...providerIconProps(nodeMap, provider)}
                           size={24}
                           className="size-6 rounded-md object-contain"
                           fallbackText={provider.slice(0, 2).toUpperCase()}
@@ -1157,7 +1187,7 @@ export default function ProviderLimits() {
                     <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
                       <ProviderIcon
                         src={`/providers/${conn.provider}.png`}
-                        alt={conn.provider}
+                        {...providerIconProps(nodeMap, conn.provider)}
                         size={32}
                         className="object-contain"
                         fallbackText={

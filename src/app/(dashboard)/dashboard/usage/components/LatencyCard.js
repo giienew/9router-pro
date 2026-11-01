@@ -36,14 +36,30 @@ export default function LatencyCard({ period = "7d" }) {
       {!data && !error && <p className="text-xs text-text-muted">Loading…</p>}
       {data && data.samples === 0 && (
         <div>
-          <p className="text-xs text-text-muted">No latency data yet — it accrues from requests served after this feature landed.</p>
-          <a href="/dashboard/endpoint" className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
-            Send a request, then check back →
-          </a>
+          {data.observabilityEnabled === false ? (
+            <>
+              <p className="text-xs text-text-muted">Request details are <span className="font-semibold text-text-main">off</span> — nothing is being recorded, so this card stays empty.</p>
+              <p className="mt-1 text-xs text-text-muted">
+                Turn on <span className="font-medium text-text-main">Observability</span> in{" "}
+                <a href="/dashboard/profile" className="font-medium text-primary underline">Profile</a>{" "}
+                and new requests will appear here.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-text-muted">No latency data yet — it accrues from requests served after this feature landed.</p>
+              <a href="/dashboard/endpoint" className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
+                Send a request, then check back →
+              </a>
+            </>
+          )}
         </div>
       )}
       {data && data.samples > 0 && (
         <div className="flex flex-col gap-3">
+          {data.period === "all" && (
+            <p className="text-xs text-text-muted">Window: all recorded details (latest 5,000) — the 60-day / all / custom views share this window.</p>
+          )}
           <div className="flex flex-wrap gap-6 text-sm">
             <span>Requests <b className="font-mono">{data.samples}</b></span>
             <span>TTFT p50 <b className="font-mono">{fmtMs(data.ttft.p50)}</b></span>

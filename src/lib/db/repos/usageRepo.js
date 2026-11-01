@@ -102,9 +102,14 @@ function aggregateEntryToDay(day, entry) {
     addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
   }
 
-  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
-  const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
+  // m2: rollup keys store the output bucket (mask + sha256-10), never the
+  // raw key — and meta carries only the mask. Local (no-key) rows keep
+  // their per-model composite form (no secret in either part).
+  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : null;
+  const akModelKey = apiKeyVal
+    ? apiKeyBucketKey(apiKeyVal, entry.model, entry.provider || "unknown")
+    : `local-no-key|${entry.model}|${entry.provider || "unknown"}`;
+  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKeyMasked: maskApiKey(apiKeyVal) } });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -121,10 +126,13 @@ function pushToRing(entry) {
 async function getConnectionMapCached() {
   if (Date.now() - connCache.ts < CONN_CACHE_TTL_MS) return connCache.map;
   try {
-    const { getProviderConnections } = await import("./connectionsRepo.js");
-    const all = await getProviderConnections();
+    // Slim query: the map needs only identity columns. Selecting the data
+    // blob + decrypting every row (what getProviderConnections does) cost
+    // a full decrypt-all per call — the opt22 M1 fix.
+    const db = await getAdapter();
+    const rows = db.all(`SELECT id, name, email FROM providerConnections`);
     const map = {};
-    for (const c of all) map[c.id] = c.name || c.email || c.id;
+    for (const c of rows) map[c.id] = c.name || c.email || c.id;
     connCache.map = map;
     connCache.ts = Date.now();
   } catch {}
@@ -378,8 +386,11 @@ export async function getUsageHistory(filter = {}) {
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
+  // m8: an unfiltered call used to dump the whole table. Default cap keeps
+  // the export safe; pass filter.limit explicitly for a larger window.
+  const limit = Math.min(10000, Math.max(1, Math.floor(Number(filter.limit)) || 1000));
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
+  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC LIMIT ?`, [...params, limit]);
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,
@@ -491,16 +502,15 @@ function loadDaysInRange(adapter, maxDays) {
 export async function getUsageStats(period = "all", range = null) {
   const db = await getAdapter();
 
-  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
-    import("./connectionsRepo.js"),
+  const [{ getApiKeys }, { getProviderNodes }] = await Promise.all([
     import("./apiKeysRepo.js"),
     import("./nodesRepo.js"),
   ]);
 
-  let allConnections = [];
-  try { allConnections = await getProviderConnections(); } catch {}
-  const connectionMap = {};
-  for (const c of allConnections) connectionMap[c.id] = c.name || c.email || c.id;
+  // M1: the id→name map comes from the slim 30s-cached helper, not from an
+  // unfiltered getProviderConnections() (SELECT * + per-row decrypt over
+  // all connections on every stats call). Same fallback as before.
+  const connectionMap = await getConnectionMapCached();
 
   const providerNodeNameMap = {};
   try {
@@ -513,6 +523,15 @@ export async function getUsageStats(period = "all", range = null) {
   const apiKeyMap = {};
   for (const k of allApiKeys) {
     if (k.key) apiKeyMap[k.key.trim()] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  }
+
+  // Reverse lookup for bucket-form rollup keys (m2): a stored bucket key
+  // carries only mask + sha256-10, so resolve the key name by hashing each
+  // known key — no raw key needed at read time.
+  const bucketHashNameMap = {};
+  for (const [rawKey, info] of Object.entries(apiKeyMap)) {
+    const digest = createHash("sha256").update(rawKey.trim()).digest("hex").slice(0, 10);
+    bucketHashNameMap[digest] = info.name;
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
@@ -608,6 +627,9 @@ export async function getUsageStats(period = "all", range = null) {
       stats.totalCompletionTokens += day.completionTokens || 0;
       stats.totalCachedTokens += day.cachedTokens || 0;
       stats.totalCost += day.cost || 0;
+      // m7: totals come from day.requests, not byProvider sums — a row with
+      // no provider still counts in day.requests but never lands in
+      // byProvider, so the old reduce silently dropped provider-less rows.
 
       for (const [prov, p] of Object.entries(day.byProvider || {})) {
         if (!stats.byProvider[prov]) stats.byProvider[prov] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0 };
@@ -655,15 +677,27 @@ export async function getUsageStats(period = "all", range = null) {
         const rawModel = ak.rawModel || "";
         const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
-        const apiKeyVal = ak.apiKey ? ak.apiKey.trim() : null;
-        const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
-        const apiKeyMasked = maskApiKey(apiKeyVal);
-        const keyName = keyInfo?.name || (apiKeyVal ? (apiKeyMasked || apiKeyVal.slice(0, 8) + "...") : "Local (No API Key)");
-        const apiKeyKey = apiKeyMasked || "local-no-key";
-        // Stored rollup keys embed the full API key — never echo them into
-        // the payload. Local (no-key) rollup keys contain no secret and keep
-        // their per-model composite form.
-        const outKey = apiKeyVal ? apiKeyBucketKey(apiKeyVal, rawModel, provider || "unknown") : akKey;
+        // Stored keys come in two forms: bucket form (m2: mask#hash|model|
+        // provider, no secret) and legacy raw composites (pre-m2 blobs,
+        // converted by the one-time rewrite). Both resolve to the SAME
+        // output bucket — a raw composite is never echoed into the payload.
+        const firstSeg = akKey.split("|")[0];
+        const isBucket = /^.{1,8}\*\*\*.{0,4}#[0-9a-f]{10}$/.test(firstSeg);
+        let apiKeyMasked, keyName, apiKeyKey, outKey;
+        if (isBucket) {
+          apiKeyMasked = firstSeg.split("#")[0];
+          keyName = bucketHashNameMap[firstSeg.split("#")[1]] || apiKeyMasked;
+          apiKeyKey = apiKeyMasked;
+          outKey = akKey;
+        } else {
+          const apiKeyVal = (ak.apiKey && typeof ak.apiKey === "string" ? ak.apiKey.trim() : null)
+            || (firstSeg && firstSeg !== "local-no-key" ? firstSeg : null);
+          const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
+          apiKeyMasked = apiKeyVal ? maskApiKey(apiKeyVal) : (ak.apiKeyMasked || null);
+          keyName = keyInfo?.name || (apiKeyVal ? (apiKeyMasked || apiKeyVal.slice(0, 8) + "...") : "Local (No API Key)");
+          apiKeyKey = apiKeyMasked || "local-no-key";
+          outKey = apiKeyVal ? apiKeyBucketKey(apiKeyVal, rawModel, provider || "unknown") : akKey;
+        }
         if (!stats.byApiKey[outKey]) {
           stats.byApiKey[outKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
@@ -752,6 +786,7 @@ export async function getUsageStats(period = "all", range = null) {
       stats.totalCompletionTokens += completionTokens;
       stats.totalCachedTokens += cachedTokens;
       stats.totalCost += entryCost;
+      stats.totalRequests++;
 
       if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0 };
       stats.byProvider[r.provider].requests++;
@@ -800,10 +835,15 @@ export async function getUsageStats(period = "all", range = null) {
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
-        if (!stats.byApiKey["local-no-key"]) {
-          stats.byApiKey["local-no-key"] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
+        // m7: local rows use the SAME split shape as the daily path
+        // (local-no-key|model|provider) instead of one collapsed bucket —
+        // the grouped table still merges them by keyName, and the lastUsed
+        // overlay (which already uses the split form) now matches.
+        const localKey = `local-no-key|${r.model}|${r.provider || "unknown"}`;
+        if (!stats.byApiKey[localKey]) {
+          stats.byApiKey[localKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
-        const ake = stats.byApiKey["local-no-key"];
+        const ake = stats.byApiKey[localKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       }
@@ -819,7 +859,8 @@ export async function getUsageStats(period = "all", range = null) {
     }
   }
 
-  stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
+  // m7: totalRequests is accumulated per path above (day.requests for
+  // daily views, row counts for live views) — not derived from byProvider.
   return stats;
 }
 
@@ -942,12 +983,9 @@ export async function getRecentLogs(limit = 200) {
     );
     if (!rows.length) return [];
 
-    const connMap = {};
-    try {
-      const { getProviderConnections } = await import("./connectionsRepo.js");
-      const connections = await getProviderConnections();
-      for (const c of connections) connMap[c.id] = c.name || c.email || "";
-    } catch {}
+    // M1: names come from the slim 30s-cached helper, not a full
+    // decrypt-all — the log needs only id→name, same as the stats path.
+    const connMap = await getConnectionMapCached();
 
     return rows.map((r) => {
       const ts = formatLogDate(new Date(r.timestamp));

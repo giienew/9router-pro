@@ -29,15 +29,34 @@ function timeAgo(timestamp) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+// m8: one shared 1s ticker for every TimeAgo on the page — the old code
+// ran one interval per Recent Requests row (20 timers). The ticker starts
+// on first subscribe and stops when the last row unmounts.
+let sharedTickListeners = new Set();
+let sharedTickTimer = null;
+function subscribeSharedTick(fn) {
+  sharedTickListeners.add(fn);
+  if (!sharedTickTimer) {
+    sharedTickTimer = setInterval(() => {
+      for (const l of [...sharedTickListeners]) l(Date.now());
+    }, 1000);
+    sharedTickTimer?.unref?.();
+  }
+  return () => {
+    sharedTickListeners.delete(fn);
+    if (sharedTickListeners.size === 0 && sharedTickTimer) {
+      clearInterval(sharedTickTimer);
+      sharedTickTimer = null;
+    }
+  };
+}
+
 // Auto-update time display every second without re-rendering parent
 function TimeAgo({ timestamp }) {
   const [, setTick] = useState(0);
-  
-  useEffect(() => {
-    const timer = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  
+
+  useEffect(() => subscribeSharedTick(setTick), []);
+
   return <>{timeAgo(timestamp)}</>;
 }
 
@@ -98,10 +117,12 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
     .map(([key, data]) => {
       const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
       const totalCost = data.cost || 0;
-      // ponytail: cost split is a token-share allocation of the (rate-accurate)
-      // server total, not a per-rate recompute. cached is a subset of prompt, so
-      // peel it out of the input share. Upgrade to a stored per-component cost
-      // breakdown if exact cached-rate cost display is needed.
+      // Cost split is a token-share allocation of the (rate-accurate)
+      // server total, not a per-rate recompute — the table labels these
+      // columns "(est.)" for exactly that reason. cached is a subset of
+      // prompt, so peel it out of the input share. ponytail: upgrade to
+      // a stored per-component cost breakdown if exact cached-rate cost
+      // display is needed.
       const cachedTokens = data.cachedTokens || 0;
       const nonCachedInput = Math.max(0, (data.promptTokens || 0) - cachedTokens);
       const inputCost = totalTokens > 0 ? nonCachedInput * (totalCost / totalTokens) : 0;
@@ -238,10 +259,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       fetch("/api/provider-nodes").then((r) => r.ok ? r.json() : null),
     ])
       .then(([d, nodesData]) => {
-        // Build node name lookup for custom providers
+        // Build node name/type lookups for custom providers
         const nodeNameMap = {};
+        const nodeTypeMap = {};
         for (const node of (nodesData?.nodes || [])) {
           nodeNameMap[node.id] = node.name;
+          nodeTypeMap[node.id] = node.type;
         }
         const seen = new Set();
         const unique = (d?.connections || []).filter((c) => {
@@ -254,6 +277,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         }).map((c) => ({
           ...c,
           nodeName: nodeNameMap[c.provider] || null,
+          providerType: nodeTypeMap[c.provider] || null,
         }));
         const noAuthProviders = Object.values(FREE_PROVIDERS)
           .filter((p) => p.noAuth && !p.hidden && !seen.has(p.id) && isLLMProvider(p.id))

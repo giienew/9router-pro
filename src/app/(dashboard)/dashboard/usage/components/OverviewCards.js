@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
-const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
+const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 
 // R8 sparkline: tiny SVG polyline, flat, no library. `values` are the
 // /api/usage/chart buckets for the current period.

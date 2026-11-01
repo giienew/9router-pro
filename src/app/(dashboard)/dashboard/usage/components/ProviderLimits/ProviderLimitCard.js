@@ -17,6 +17,8 @@ const planVariants = {
 export default function ProviderLimitCard({
   provider,
   name,
+  providerType,
+  detectBaseUrl,
   plan,
   quotas = [],
   message = null,
@@ -66,7 +68,9 @@ export default function ProviderLimitCard({
           >
             <ProviderIcon
               src={`/providers/${provider}.png`}
-              alt={provider || "Provider"}
+              alt={name || provider || "Provider"}
+              providerType={providerType}
+              detectBaseUrl={detectBaseUrl}
               size={40}
               className="object-contain rounded-lg"
               fallbackText={provider?.slice(0, 2).toUpperCase() || "PR"}
