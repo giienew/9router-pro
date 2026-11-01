@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Input, Toggle, CardSkeleton } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { translate } from "@/i18n/runtime";
 
 export default function AutomationPage() {
   const notify = useNotificationStore();
@@ -166,21 +167,22 @@ export default function AutomationPage() {
   if (loading) return <CardSkeleton />;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className="mx-auto w-full max-w-4xl flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <Card title="Notifications" subtitle="Telegram + webhook alerts for silent jobs (scheduled backup success/failure). Tokens are never shown back — leave a field blank to keep the stored value." icon="notifications">
         <div className="flex flex-col gap-4">
+          <a href="/dashboard/profile" className="text-xs font-medium text-primary hover:underline">{translate("Backup settings →")}</a>
           <Toggle label="Telegram" checked={tgEnabled} onChange={setTgEnabled} description={tgConfigured ? "Bot token stored" : "No bot token stored"} />
           {tgEnabled && (
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Input type="password" placeholder="Bot token (blank = keep stored)" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
-              <Input placeholder="Chat id" value={tgChatId} onChange={(e) => setTgChatId(e.target.value)} />
+              <Input type="password" placeholder={translate("Bot token (blank = keep stored)")} value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
+              <Input placeholder={translate("Chat id")} value={tgChatId} onChange={(e) => setTgChatId(e.target.value)} />
             </div>
           )}
           <Toggle label="Webhook" checked={whEnabled} onChange={setWhEnabled} description="POST JSON { event, timestamp, data } + HMAC header when a secret is set" />
           {whEnabled && (
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Input placeholder="https://… webhook URL" value={whUrl} onChange={(e) => setWhUrl(e.target.value)} />
-              <Input type="password" placeholder="Secret for X-9Router-Signature (blank = keep stored)" value={whSecret} onChange={(e) => setWhSecret(e.target.value)} />
+              <Input placeholder={translate("https://… webhook URL")} value={whUrl} onChange={(e) => setWhUrl(e.target.value)} />
+              <Input type="password" placeholder={translate("Secret for X-9Router-Signature (blank = keep stored)")} value={whSecret} onChange={(e) => setWhSecret(e.target.value)} />
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
@@ -210,7 +212,7 @@ export default function AutomationPage() {
 
       <Card title="Two-Factor Authentication" subtitle="TOTP for dashboard password login. Setup shows the secret + backup codes once — save them before enabling." icon="shield">
         <div className="flex flex-col gap-4">
-          <p className="text-sm">Status: <b>{totpEnabled ? `Enabled (${totpBackupLeft} backup codes left)` : "Disabled"}</b></p>
+          <p className="text-sm">{translate("Status:")} <b>{totpEnabled ? <>{translate("Enabled")} ({totpBackupLeft} {translate("backup codes left")})</> : translate("Disabled")}</b></p>
           {!totpEnabled && !setupData && <div><Button variant="primary" onClick={startTotpSetup}>Start setup</Button></div>}
           {!totpEnabled && setupData && (
             <div className="flex flex-col gap-2 text-sm">
@@ -222,14 +224,14 @@ export default function AutomationPage() {
                 {setupData.backupCodes.map((c) => <span key={c}>{c}</span>)}
               </div>
               <div className="flex gap-2">
-                <Input placeholder="6-digit code from the app" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} />
+                <Input placeholder={translate("6-digit code from the app")} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} />
                 <Button variant="primary" onClick={enableTotp}>Enable</Button>
               </div>
             </div>
           )}
           {totpEnabled && (
             <div className="flex gap-2">
-              <Input placeholder="Current code or backup code to disable" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} />
+              <Input placeholder={translate("Current code or backup code to disable")} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} />
               <Button onClick={disableTotp}>Disable</Button>
             </div>
           )}
