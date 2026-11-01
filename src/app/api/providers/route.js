@@ -5,10 +5,12 @@ import {
   getProviderConnectionStats,
   bulkSetConnectionsActive,
   createProviderConnection,
+  getApikeyConnectionNames,
   getProviderNodeById,
   getProviderNodes,
   getProxyPoolById,
 } from "@/models";
+import { allocateFreeName } from "@/lib/allocateName";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
@@ -228,8 +230,9 @@ export async function POST(request) {
     if (!apiKey && provider !== "ollama-local" && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
+    const autoAllocate = body.autoAllocateName === true;
     const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
-    if (!connectionName) {
+    if (!connectionName && !autoAllocate) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
@@ -281,10 +284,16 @@ export async function POST(request) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
     }
 
-    const newConnection = await createProviderConnection({
+    // Bulk auto-allocation (opt21): the server, not the client's paginated
+    // name list, is the source of truth for names. The bulk client sends
+    // baseName + flag; the server scans DB names for the smallest free
+    // "<base> <n>" (any N, any provider — a fully-taken front range simply
+    // yields the next N) and retries past a race 409. Single adds (no flag)
+    // keep the exact #4311 behavior: explicit name, 409 on collision, never
+    // a silent overwrite, never an auto-rename.
+    const createArgs = {
       provider,
       authType: isWebCookieProvider ? "cookie" : "apikey",
-      name: connectionName,
       apiKey: apiKey || "",
       priority: priority || 1,
       globalPriority: globalPriority || null,
@@ -292,10 +301,33 @@ export async function POST(request) {
       providerSpecificData: mergedProviderSpecificData,
       isActive: true,
       testStatus: testStatus || "unknown",
-      // POST with an id is an explicit edit of that connection; without one, a
-      // name collision is refused rather than silently overwriting a key. #4311
-      allowOverwrite: body.id ? true : (body.allowOverwrite === true || body.overwrite === true),
-    });
+    };
+    let newConnection;
+    if (autoAllocate) {
+      const allocateBase = (typeof body.baseName === "string" && body.baseName.trim()) ? body.baseName.trim() : "Key";
+      const taken = new Set((await getApikeyConnectionNames(provider)).map((n) => n.toLowerCase()));
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const candidate = allocateFreeName(allocateBase, taken);
+        try {
+          newConnection = await createProviderConnection({ ...createArgs, name: candidate, allowOverwrite: false });
+          break;
+        } catch (error) {
+          if (error?.code !== "PROVIDER_NAME_CONFLICT") throw error;
+          taken.add(candidate.toLowerCase());
+        }
+      }
+      if (!newConnection) {
+        return NextResponse.json({ error: "Could not allocate a free connection name after 50 attempts" }, { status: 500 });
+      }
+    } else {
+      newConnection = await createProviderConnection({
+        ...createArgs,
+        name: connectionName,
+        // POST with an id is an explicit edit of that connection; without one, a
+        // name collision is refused rather than silently overwriting a key. #4311
+        allowOverwrite: body.id ? true : (body.allowOverwrite === true || body.overwrite === true),
+      });
+    }
 
     invalidateStatsCache();
     return NextResponse.json(

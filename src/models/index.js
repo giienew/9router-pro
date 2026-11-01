@@ -6,6 +6,7 @@ export {
   bulkSetConnectionsActive,
   getProviderConnectionsPage,
   createProviderConnection,
+  getApikeyConnectionNames,
   updateProviderConnection,
   deleteProviderConnection,
   getProviderNodes,

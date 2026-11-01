@@ -41,6 +41,7 @@ export {
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
   reorderProviderConnections, cleanupProviderConnections,
+  getApikeyConnectionNames,
 } from "./repos/connectionsRepo.js";
 
 // Provider nodes

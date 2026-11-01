@@ -263,6 +263,19 @@ function reorderInTx(db, providerId) {
   });
 }
 
+// Names of existing apikey connections for one provider, for server-side
+// bulk name allocation (opt21). Served by idx_pc_provider; names only, no
+// secrets. The conflict check in createProviderConnection is (provider,
+// authType, name), so allocation queries the same scope.
+export async function getApikeyConnectionNames(provider) {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT name FROM providerConnections WHERE provider = ? AND authType = ?`,
+    [provider, "apikey"]
+  );
+  return rows.map((row) => row.name).filter((name) => typeof name === "string" && name);
+}
+
 export async function createProviderConnection(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
