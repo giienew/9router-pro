@@ -1472,12 +1472,12 @@ function ApiKeyProviderCard({
     compatible: "Compatible",
   };
 
+  // Custom nodes never show the type's brand logo: no OpenAI mark just
+  // because the node is openai-compatible, no Anthropic mark just
+  // because it is anthropic-compatible. The icon resolves through
+  // ProviderIcon (bundled-by-name from alt, brand-by-host and favicon
+  // tiers from detectBaseUrl, then initials).
   const getIconPath = () => {
-    if (isCompatible && provider.apiType)
-      return provider.apiType === "responses"
-        ? "/providers/oai-r.png"
-        : "/providers/oai-cc.png";
-    if (isAnthropicCompatible) return "/providers/anthropic-m.png";
     return getProviderIconSrc(provider.id);
   };
 
@@ -1500,6 +1500,7 @@ function ApiKeyProviderCard({
                 alt={provider.name}
                 size={30}
                 className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
+                detectBaseUrl={provider.baseUrl}
                 fallbackText={
                   provider.textIcon || provider.id.slice(0, 2).toUpperCase()
                 }

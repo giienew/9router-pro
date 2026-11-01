@@ -75,6 +75,17 @@ export function getBrandIconSrc(baseUrl) {
   return `/providers/${brand}.png`;
 }
 
+/** `/providers/{name}.png` for a provider display name, else null.
+ *  Normalization strips everything but [a-z0-9], so "Token Harbor"
+ *  resolves to the tokenharbor mark. A missing file just 404s and the
+ *  chain falls through; the miss is session-cached like every other. */
+export function getNameIconSrc(alt) {
+  if (!alt || typeof alt !== "string") return null;
+  const name = alt.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!name || failedIds.has(name)) return null;
+  return `/providers/${name}.png`;
+}
+
 // Favicon auto-detection for custom providers (9Router Pro): candidate
 // icon URLs derived from a provider's API base URL — the high-res
 // apple-touch-icon first, then favicon.ico; origin first, then the
