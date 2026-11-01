@@ -202,9 +202,9 @@ const getPageInfo = (pathname) => {
 
   if (pathname === "/dashboard")
     return {
-      title: "Dashboard",
-      description: "At-a-glance health, usage, keys, and combos",
-      icon: "dashboard",
+      title: "Endpoint",
+      description: "API endpoint configuration",
+      icon: "api",
       breadcrumbs: [],
     };
   return { title: "", description: "", breadcrumbs: [] };
