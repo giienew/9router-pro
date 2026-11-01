@@ -32,6 +32,7 @@ export default function APIPageClient({ machineId }) {
   // so a reseller key is fully configured in one step (editable later in the
   // key's Settings panel).
   const emptyKeyDraft = () => ({
+    prefix: "sk",
     restricted: false,
     allow: [],
     quotaEnabled: false,
@@ -697,7 +698,7 @@ export default function APIPageClient({ machineId }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName }),
+        body: JSON.stringify({ name: newKeyName, prefix: (newKeyDraft.prefix || "").trim() || "sk" }),
       });
       const data = await res.json();
 
@@ -1355,6 +1356,15 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
+          <div>
+            <Input
+              label="Key Prefix"
+              value={newKeyDraft.prefix}
+              onChange={(e) => setNewKeyDraft((d) => ({ ...d, prefix: e.target.value }))}
+              placeholder="sk"
+            />
+            <span className="mt-0.5 block text-[11px] text-text-muted">Ganti dengan inisial/brand kamu, huruf angka - _ saja, default sk.</span>
+          </div>
 
           {/* 9Router Pro: optional settings, applied at creation */}
           <div className="border-t border-border-subtle pt-3">

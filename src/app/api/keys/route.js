@@ -44,15 +44,22 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, prefix } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    // Custom key prefix (per key, at creation). Default stays "sk".
+    const rawPrefix = typeof prefix === "string" ? prefix.trim() : "";
+    const keyPrefix = rawPrefix === "" ? "sk" : rawPrefix;
+    if (!/^[A-Za-z0-9_-]{1,20}$/.test(keyPrefix)) {
+      return NextResponse.json({ error: "Invalid prefix: only letters, digits, - and _ allowed, max 20 chars" }, { status: 400 });
+    }
+
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId);
+    const apiKey = await createApiKey(name, machineId, { prefix: keyPrefix });
 
     return NextResponse.json({
       key: apiKey.key,
