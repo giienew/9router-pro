@@ -116,6 +116,26 @@ export async function getProviderConnections(filter = {}) {
   return list;
 }
 
+// 9Router Pro (opt26): quota page only — fetch usage-eligible connections
+// straight from SQLite instead of loading + decrypting the whole table.
+// Mirrors the providers/client route's eligibility rule exactly: the provider
+// must support usage AND (oauth auth OR apikey-whitelisted provider).
+export async function getUsageEligibleConnections(usageProviders, apikeyProviders) {
+  const db = await getAdapter();
+  const usage = Array.isArray(usageProviders) ? usageProviders.filter(Boolean) : [];
+  const apikey = Array.isArray(apikeyProviders) ? apikeyProviders.filter(Boolean) : [];
+  if (!usage.length) return [];
+  const usagePlaceholders = usage.map(() => "?").join(", ");
+  const apikeyPlaceholders = apikey.length ? apikey.map(() => "?").join(", ") : null;
+  const sql = apikeyPlaceholders
+    ? `SELECT * FROM providerConnections WHERE provider IN (${usagePlaceholders}) AND (authType = 'oauth' OR provider IN (${apikeyPlaceholders}))`
+    : `SELECT * FROM providerConnections WHERE provider IN (${usagePlaceholders}) AND authType = 'oauth'`;
+  const rows = db.all(sql, [...usage, ...apikey]);
+  const list = rows.map(rowToConn);
+  list.sort((a, b) => (a.priority || 999) - (b.priority || 999));
+  return list;
+}
+
 export async function getProviderConnectionById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);

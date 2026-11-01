@@ -27,9 +27,6 @@ import {
   getPaginationPageValue,
   getProviderOptions,
   reconcileConnectionsPage,
-  getQuotaCache,
-  setQuotaCache,
-  QUOTA_CACHE_KEY,
   REFRESH_INTERVAL_MS,
   CLAUDE_REFRESH_INTERVAL_MS,
   DEPLETED_QUOTA_THRESHOLD,
@@ -298,8 +295,19 @@ export default function ProviderLimits() {
     [accountFilter, expiringFirst, page, pageSize, providerFilter],
   );
 
-  // Fetch quota for a specific connection
-  const fetchQuota = useCallback(async (connectionId, provider, { force = false } = {}) => {
+  // Fetch quota for a specific connection. Inactive accounts never reach
+  // upstream: no quota call, no token refresh attempt. They keep a neutral
+  // state (not an error) so the row stays visible but quiet.
+  const fetchQuota = useCallback(async (connectionId, provider, { force = false, isActive = true } = {}) => {
+    if (isActive === false) {
+      setLoading((prev) => ({ ...prev, [connectionId]: false }));
+      setErrors((prev) => ({ ...prev, [connectionId]: null }));
+      setQuotaData((prev) => ({
+        ...prev,
+        [connectionId]: { quotas: [], message: null },
+      }));
+      return;
+    }
     setLoading((prev) => ({ ...prev, [connectionId]: true }));
     setErrors((prev) => ({ ...prev, [connectionId]: null }));
 
@@ -337,7 +345,6 @@ export default function ProviderLimits() {
             ...prev,
             [connectionId]: quotaEntry,
           }));
-          setQuotaCache(connectionId, quotaEntry);
           return;
         }
 
@@ -361,7 +368,6 @@ export default function ProviderLimits() {
         ...prev,
         [connectionId]: quotaEntry,
       }));
-      setQuotaCache(connectionId, quotaEntry);
     } catch (error) {
       console.error(
         `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
@@ -378,15 +384,15 @@ export default function ProviderLimits() {
 
   // Refresh quota for a specific provider
   const refreshProvider = useCallback(
-    async (connectionId, provider) => {
-      await fetchQuota(connectionId, provider, { force: true });
+    async (connectionId, provider, isActive) => {
+      await fetchQuota(connectionId, provider, { force: true, isActive });
       setLastUpdated(new Date());
     },
     [fetchQuota],
   );
 
   const handleResetCodexLimit = useCallback(
-    async (connectionId, provider) => {
+    async (connectionId, provider, isActive) => {
       if ((provider !== "codex" && provider !== "claude") || resettingLimitId) return;
 
       setResettingLimitId(connectionId);
@@ -406,7 +412,7 @@ export default function ProviderLimits() {
           throw new Error(result.message || result.error || result.code || "Failed to reset limit");
         }
 
-        await fetchQuota(connectionId, provider, { force: true });
+        await fetchQuota(connectionId, provider, { force: true, isActive });
         setLastUpdated(new Date());
       } catch (error) {
         setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset limit" }));
@@ -443,6 +449,7 @@ export default function ProviderLimits() {
   }, []);
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [bulkConfirmState, setBulkConfirmState] = useState(null);
 
   const handleDeleteConnection = useCallback(
     async (id) => {
@@ -466,21 +473,6 @@ export default function ProviderLimits() {
             delete next[id];
             return next;
           });
-
-          if (typeof window !== "undefined") {
-            try {
-              const cache = getQuotaCache();
-              if (cache[id]) {
-                delete cache[id];
-                window.localStorage.setItem(
-                  QUOTA_CACHE_KEY,
-                  JSON.stringify(cache),
-                );
-              }
-            } catch (e) {
-              console.error("Error deleting cache entry:", e);
-            }
-          }
 
           await reconcileConnectionsPage(fetchConnections, page);
         }
@@ -534,7 +526,7 @@ export default function ProviderLimits() {
           setShowEditModal(false);
           setSelectedConnection(null);
           if (USAGE_SUPPORTED_PROVIDERS.includes(provider)) {
-            await fetchQuota(connectionId, provider);
+            await fetchQuota(connectionId, provider, { isActive: selectedConnection.isActive });
           }
         }
       } catch (error) {
@@ -585,7 +577,7 @@ export default function ProviderLimits() {
       await Promise.all(
         visibleConnections
           .filter(shouldFetch)
-          .map((conn) => fetchQuota(conn.id, conn.provider)),
+          .map((conn) => fetchQuota(conn.id, conn.provider, { isActive: conn.isActive })),
       );
 
       setLastUpdated(new Date());
@@ -612,7 +604,7 @@ export default function ProviderLimits() {
       );
 
       await Promise.all(
-        visibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
+        visibleConnections.map((conn) => fetchQuota(conn.id, conn.provider, { isActive: conn.isActive })),
       );
       setLastUpdated(new Date());
     };
@@ -862,14 +854,14 @@ export default function ProviderLimits() {
     const ids = sortedConnections
       .filter((c) => (c.isActive ?? true) && isConnectionDepleted(c))
       .map((c) => c.id);
-    bulkSetActive(ids, false);
+    if (ids.length) setBulkConfirmState({ direction: "disable", ids });
   };
 
   const handleEnableAvailable = () => {
     const ids = sortedConnections
       .filter((c) => !(c.isActive ?? true) && !isConnectionDepleted(c))
       .map((c) => c.id);
-    bulkSetActive(ids, true);
+    if (ids.length) setBulkConfirmState({ direction: "enable", ids });
   };
 
   const selectedProviderLabel =
@@ -1334,7 +1326,7 @@ export default function ProviderLimits() {
                     <Tooltip text="Refresh quota">
                       <button
                         type="button"
-                        onClick={() => refreshProvider(conn.id, conn.provider)}
+                        onClick={() => refreshProvider(conn.id, conn.provider, conn.isActive)}
                         disabled={isLoading || rowBusy}
                         aria-label="Refresh quota"
                         className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
@@ -1602,7 +1594,7 @@ export default function ProviderLimits() {
         onConfirm={async () => {
           const connection = resetConfirmState?.connection;
           if (!connection) return;
-          await handleResetCodexLimit(connection.id, connection.provider);
+          await handleResetCodexLimit(connection.id, connection.provider, connection.isActive);
           setResetConfirmState(null);
         }}
         title={resetConfirmState?.connection?.provider === "claude" ? "Reset Claude limits?" : "Reset Codex limit?"}
@@ -1613,6 +1605,29 @@ export default function ProviderLimits() {
         cancelText="Cancel"
         variant="danger"
         loading={Boolean(resettingLimitId)}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(bulkConfirmState)}
+        onClose={() => {
+          if (!bulkToggling) setBulkConfirmState(null);
+        }}
+        onConfirm={async () => {
+          const state = bulkConfirmState;
+          if (!state) return;
+          setBulkConfirmState(null);
+          await bulkSetActive(state.ids, state.direction === "enable");
+        }}
+        title={bulkConfirmState?.direction === "enable" ? "Turn on available accounts?" : "Turn off empty accounts?"}
+        message={bulkConfirmState
+          ? (bulkConfirmState.direction === "enable"
+            ? `This turns on ${bulkConfirmState.ids.length} account${bulkConfirmState.ids.length === 1 ? "" : "s"} on the current page that still have quota.`
+            : `This turns off ${bulkConfirmState.ids.length} account${bulkConfirmState.ids.length === 1 ? "" : "s"} on the current page with depleted quota.`)
+          : ""}
+        confirmText={bulkConfirmState?.direction === "enable" ? "Turn on" : "Turn off"}
+        cancelText="Cancel"
+        variant={bulkConfirmState?.direction === "enable" ? "success" : "danger"}
+        loading={bulkToggling}
       />
 
       {resetCreditsState && (

@@ -36,7 +36,7 @@ export {
 
 // Provider connections
 export {
-  getProviderConnections, getProviderConnectionById,
+  getProviderConnections, getProviderConnectionById, getUsageEligibleConnections,
   getProviderConnectionStats, bulkSetConnectionsActive, getProviderConnectionsPage,
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
