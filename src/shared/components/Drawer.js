@@ -53,6 +53,7 @@ export default function Drawer({
         "shadow-[var(--shadow-elev)]",
         "slide-in-right",
         "border-l border-border-subtle",
+        "max-w-[100vw]",
         widths[width] || widths.md,
         className
       )}>

@@ -153,7 +153,7 @@ export default function UsageTable({
       { field: "promptTokens", label: "Input Cost (est.)" },
       { field: "cachedCost", label: "Cached Cost (est.)" },
       { field: "completionTokens", label: "Output Cost (est.)" },
-      { field: "cost", label: "Total Cost" },
+      { field: "cost", label: "Total Cost (est.)" },
     ];
   }, [viewMode]);
 

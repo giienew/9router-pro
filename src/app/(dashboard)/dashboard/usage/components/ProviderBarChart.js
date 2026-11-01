@@ -22,20 +22,20 @@ const fmtTokens = (n) => {
   return String(n || 0);
 };
 
-export default function ProviderBarChart({ byProvider }) {
+export default function ProviderBarChart({ byProvider, providerNames = {} }) {
   const [viewMode, setViewMode] = useState("tokens");
 
   const chartData = useMemo(() => {
     if (!byProvider) return [];
     return Object.entries(byProvider)
       .map(([id, data]) => ({
-        name: id,
+        name: providerNames[id] || id,
         tokens: (data.promptTokens || 0) + (data.completionTokens || 0),
         requests: data.requests || 0,
       }))
       .filter((d) => d[viewMode] > 0)
       .sort((a, b) => b[viewMode] - a[viewMode]);
-  }, [byProvider, viewMode]);
+  }, [byProvider, providerNames, viewMode]);
 
   const fmt = viewMode === "tokens" ? fmtTokens : String;
   const label = viewMode === "tokens" ? "Tokens" : "Requests";
@@ -109,4 +109,5 @@ export default function ProviderBarChart({ byProvider }) {
 
 ProviderBarChart.propTypes = {
   byProvider: PropTypes.object,
+  providerNames: PropTypes.object,
 };

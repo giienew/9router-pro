@@ -2,13 +2,21 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { FREE_PROVIDERS, AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 
 // Keep providers without serviceKinds (default LLM) or with "llm" in serviceKinds
 function isLLMProvider(id) {
   const p = AI_PROVIDERS[id];
   if (!p?.serviceKinds) return true;
   return p.serviceKinds.includes("llm");
+}
+
+// Provider display name for table badges: the stats payload already resolves
+// custom node ids to names server-side; built-ins still arrive as raw ids
+// (dahl, kiro) and are upgraded here to their display names. Fallback is the
+// raw id itself — never a type label.
+function resolveProviderDisplay(id) {
+  return getProviderByAlias(id)?.name || AI_PROVIDERS[id]?.name || id;
 }
 import Badge from "./Badge";
 import Card from "./Card";
@@ -144,8 +152,8 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
 function getGroupKey(item, keyField) {
   switch (keyField) {
     case "rawModel": return item.rawModel || "Unknown Model";
-    case "accountName": return item.accountName || `Account ${item.connectionId?.slice(0, 8)}...` || "Unknown Account";
-    case "keyName": return item.apiKeyMasked ? `${item.keyName} (${item.apiKeyMasked})` : item.keyName || "Unknown Key";
+    case "accountName": return item.accountName || (item.connectionId ? `Account ${item.connectionId}` : "Unknown Account");
+    case "keyName": return item.apiKeyMasked ? (item.keyName === item.apiKeyMasked ? item.apiKeyMasked : `${item.keyName} (${item.apiKeyMasked})`) : item.keyName || "Unknown Key";
     case "endpoint": return item.endpoint || "Unknown Endpoint";
     default: return item[keyField] || "Unknown";
   }
@@ -190,9 +198,9 @@ const MODEL_COLUMNS = [
 ];
 
 const ACCOUNT_COLUMNS = [
+  { field: "accountName", label: "Account" },
   { field: "rawModel", label: "Model" },
   { field: "provider", label: "Provider" },
-  { field: "accountName", label: "Account" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
 ];
@@ -245,6 +253,15 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   // UsageChart already uses; skipped for custom ranges, which have none).
   const [series, setSeries] = useState(null);
   const [providers, setProviders] = useState([]);
+  const [providerNames, setProviderNames] = useState({});
+  const [providersError, setProvidersError] = useState(false);
+  // Requests with no connection never enter byAccount — disclose the gap
+  // instead of letting the account view silently sum below the total.
+  const accountGap = useMemo(() => {
+    if (!stats?.byAccount || typeof stats?.totalRequests !== "number") return 0;
+    const sum = Object.values(stats.byAccount).reduce((a, it) => a + (it.requests || 0), 0);
+    return Math.max(0, stats.totalRequests - sum);
+  }, [stats]);
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
   const hasLoadedStats = useRef(false);
@@ -259,6 +276,14 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       fetch("/api/provider-nodes").then((r) => r.ok ? r.json() : null),
     ])
       .then(([d, nodesData]) => {
+        if (!d || !nodesData) { setProvidersError(true); return; }
+        setProvidersError(false);
+        // Display names for the byProvider chart: built-in display names
+        // first, custom node names override (node ids are not built-in ids).
+        const names = {};
+        for (const [id, cfg] of Object.entries(AI_PROVIDERS)) if (cfg?.name) names[id] = cfg.name;
+        for (const node of (nodesData?.nodes || [])) if (node.id && node.name) names[node.id] = node.name;
+        setProviderNames(names);
         // Build node name/type lookups for custom providers
         const nodeNameMap = {};
         const nodeTypeMap = {};
@@ -284,7 +309,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           .map((p) => ({ provider: p.id, name: p.name }));
         setProviders([...unique, ...noAuthProviders]);
       })
-      .catch(() => {});
+      .catch(() => { setProvidersError(true); });
   }, []);
 
   // Fetch filtered stats via REST when period changes
@@ -391,7 +416,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           renderDetailCells: (item) => (
             <>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
+              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{resolveProviderDisplay(item.provider)}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
@@ -404,7 +429,10 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           Object.entries(stats.byAccount || {}).forEach(([accountKey, data]) => {
             const connPending = stats.pending.byAccount[data.connectionId];
             if (connPending) {
-              const modelKey = data.provider ? `${data.rawModel} (${data.provider})` : data.rawModel;
+              // Pending keys are built from the RAW provider token; the display
+            // field is a node name for custom nodes and would never match.
+            const rawProvider = data.providerRaw || data.provider;
+            const modelKey = rawProvider ? `${data.rawModel} (${rawProvider})` : data.rawModel;
               pendingMap[accountKey] = connPending[modelKey] || 0;
             }
           });
@@ -424,9 +452,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           ),
           renderDetailCells: (item) => (
             <>
-              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.accountName || `Account ${item.connectionId?.slice(0, 8)}...`}</td>
+              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.accountName || (item.connectionId ? `Account ${item.connectionId}` : "—")}</td>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
+              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{resolveProviderDisplay(item.provider)}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
@@ -451,7 +479,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             <>
               <td className="px-6 py-3 font-medium font-mono text-xs">{item.apiKeyMasked || item.keyName}</td>
               <td className="px-6 py-3">{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
+              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{resolveProviderDisplay(item.provider)}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
@@ -477,7 +505,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             <>
               <td className="px-6 py-3 font-medium font-mono text-sm">{item.endpoint}</td>
               <td className="px-6 py-3">{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
+              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{resolveProviderDisplay(item.provider)}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
@@ -497,7 +525,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     const dataCols = activeTableConfig.columns.filter((c) => !["requests", "lastUsed"].includes(c.field));
     const cell = (item, field) => (field === "keyName" ? item.apiKeyMasked || item.keyName || "" : item[field] ?? "");
     const lines = [
-      ["Group", ...dataCols.map((c) => c.label), "Requests", "Input Tokens", "Cached Tokens", "Output Tokens", "Total Tokens", "Cost (USD)", "Last Used"].map(esc).join(","),
+      ["Group", ...dataCols.map((c) => c.label), "Requests", "Input Tokens", "Cached Tokens", "Output Tokens", "Total Tokens", "Cost (USD, est.)", "Last Used"].map(esc).join(","),
     ];
     for (const group of activeTableConfig.groupedData) {
       for (const item of group.items) {
@@ -571,6 +599,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             activeRequests={stats.activeRequests || []}
             lastProvider={stats.recentRequests?.[0]?.provider || ""}
             errorProvider={stats.errorProvider || ""}
+            loadError={providersError}
           />
           <RecentRequests requests={stats.recentRequests || []} />
         </div>
@@ -582,7 +611,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Provider and model breakdown charts */}
       {!loading && (stats.byProvider || stats.byModel) && (
         <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-2">
-          <ProviderBarChart byProvider={stats.byProvider} />
+          <ProviderBarChart byProvider={stats.byProvider} providerNames={providerNames} />
           <TopModelsChart byModel={stats.byModel} />
         </div>
       )}
@@ -642,6 +671,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             renderDetailCells={activeTableConfig.renderDetailCells}
             emptyMessage={activeTableConfig.emptyMessage}
           />
+        )}
+        {!loading && tableView === "account" && accountGap > 0 && (
+          <p className="text-xs text-text-muted">{accountGap} requests have no account and aren&apos;t shown in this view.</p>
         )}
       </div>
     </div>

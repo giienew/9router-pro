@@ -265,7 +265,7 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
   return { nodes, edges };
 }
 
-export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "" }) {
+export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "", loadError = false }) {
   // Serialize to stable string keys so useMemo only re-runs when values actually change
   const activeKey = useMemo(
     () => activeRequests.map((r) => r.provider?.toLowerCase()).filter(Boolean).sort().join(","),
@@ -351,7 +351,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
     <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-subtle/30 sm:h-[480px]">
       {providers.length === 0 ? (
         <div className="h-full flex items-center justify-center text-text-muted text-sm">
-          No providers connected
+          {loadError ? "Failed to load providers — try refreshing the page." : "No providers connected"}
         </div>
       ) : (
         <ReactFlow
@@ -397,4 +397,5 @@ ProviderTopology.propTypes = {
   })),
   lastProvider: PropTypes.string,
   errorProvider: PropTypes.string,
+  loadError: PropTypes.bool,
 };

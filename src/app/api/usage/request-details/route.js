@@ -48,6 +48,13 @@ export async function GET(request) {
     if (startDate) filter.startDate = startDate;
     if (endDate) filter.endDate = endDate;
     
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return NextResponse.json(
+        { error: "Start date must be before end date." },
+        { status: 400 }
+      );
+    }
+
     const result = await getRequestDetails(filter);
 
     // Redact conversation payloads: the stored details include full request

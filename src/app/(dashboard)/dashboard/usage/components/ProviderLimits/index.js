@@ -126,8 +126,8 @@ function claudeGrantStatus(grant) {
   return grant.useRequiresLimit ? "at limit only" : "unavailable";
 }
 
-function providerLabel(providerId) {
-  return AI_PROVIDERS[providerId]?.name || providerId;
+function providerLabel(providerId, nodeMap) {
+  return nodeMap?.[providerId]?.name || AI_PROVIDERS[providerId]?.name || providerId;
 }
 
 // m5: icon props for one provider id — display name (name tier) + node
@@ -136,7 +136,7 @@ function providerLabel(providerId) {
 function providerIconProps(nodeMap, providerId) {
   const n = nodeMap?.[providerId];
   return {
-    alt: n?.name || providerLabel(providerId),
+    alt: n?.name || providerLabel(providerId, nodeMap),
     providerType: n?.type,
     detectBaseUrl: n?.baseUrl,
   };
@@ -873,13 +873,14 @@ export default function ProviderLimits() {
   };
 
   const selectedProviderLabel =
-    providerFilter === "all" ? "All providers" : providerLabel(providerFilter);
+    providerFilter === "all" ? "All providers" : providerLabel(providerFilter, nodeMap);
   const hasEligibleConnections = totals.eligibleConnections > 0;
   const hasVisibleConnections = sortedConnections.length > 0;
   const emptyState = getConnectionsEmptyMessage(
     totals,
     providerFilter,
     accountFilter,
+    providerFilter === "all" ? "All providers" : providerLabel(providerFilter, nodeMap),
   );
   const connectionsPageSummary = getConnectionsPaginationSummary(pagination);
   const isCustomPageSize = !ACCOUNT_PAGE_SIZE_OPTIONS.includes(pageSize);
@@ -1021,7 +1022,7 @@ export default function ProviderLimits() {
                           fallbackText={provider.slice(0, 2).toUpperCase()}
                         />
                         <span className="font-medium">
-                          {providerLabel(provider)}
+                          {providerLabel(provider, nodeMap)}
                         </span>
                         {providerFilter === provider && (
                           <span className="material-symbols-outlined ml-auto text-[20px]">
@@ -1197,7 +1198,7 @@ export default function ProviderLimits() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-text-primary truncate">
-                        {providerLabel(conn.provider)}
+                        {providerLabel(conn.provider, nodeMap)}
                       </h3>
                       {getConnectionLabel(conn) ? (
                         <p className="text-xs text-text-muted truncate">

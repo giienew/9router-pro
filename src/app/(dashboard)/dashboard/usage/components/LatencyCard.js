@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Card from "@/shared/components/Card";
+import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 
 function fmtMs(v) {
   if (v === null || v === undefined) return "—";
@@ -14,6 +15,20 @@ const MAP = { today: "24h", "24h": "24h", "7d": "7d", "30d": "30d", "60d": "all"
 export default function LatencyCard({ period = "7d" }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [nodeMap, setNodeMap] = useState({});
+
+  // Custom node id -> node name for the by-provider rows (same pattern as
+  // the Logs tab). Built-ins fall back to their display names, then raw id.
+  useEffect(() => {
+    fetch("/api/provider-nodes")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const map = {};
+        for (const n of d?.nodes || []) if (n.id && n.name) map[n.id] = n.name;
+        setNodeMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -28,7 +43,8 @@ export default function LatencyCard({ period = "7d" }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const providers = data ? Object.entries(data.byProvider || {}).sort((a, b) => b[1].samples - a[1].samples).slice(0, 5) : [];
+  const displayProvider = (raw) => nodeMap[raw] || getProviderByAlias(raw)?.name || AI_PROVIDERS[raw]?.name || raw;
+  const providers = data ? Object.entries(data.byProvider || {}).map(([raw, v]) => ({ name: displayProvider(raw), raw, v })).sort((a, b) => b.v.samples - a.v.samples).slice(0, 5) : [];
 
   return (
     <Card title="Latency" subtitle="TTFT + total time, p50/p95 from request details" icon="speed">
@@ -60,6 +76,15 @@ export default function LatencyCard({ period = "7d" }) {
           {data.period === "all" && (
             <p className="text-xs text-text-muted">Window: all recorded details (latest 5,000) — the 60-day / all / custom views share this window.</p>
           )}
+          {data.period === "24h" && (
+            <p className="text-xs text-text-muted">Window: last 24 hours.</p>
+          )}
+          {data.period === "7d" && (
+            <p className="text-xs text-text-muted">Window: last 7 days.</p>
+          )}
+          {data.period === "30d" && (
+            <p className="text-xs text-text-muted">Window: last 30 days.</p>
+          )}
           <div className="flex flex-wrap gap-6 text-sm">
             <span>Requests <b className="font-mono">{data.samples}</b></span>
             <span>TTFT p50 <b className="font-mono">{fmtMs(data.ttft.p50)}</b></span>
@@ -69,10 +94,10 @@ export default function LatencyCard({ period = "7d" }) {
           </div>
           {providers.length > 0 && (
             <div className="flex flex-col gap-1 text-xs">
-              {providers.map(([name, v]) => (
-                <div key={name} className="flex justify-between gap-4">
-                  <span className="text-text-muted">{name} ({v.samples})</span>
-                  <span className="font-mono">total p50 {fmtMs(v.totalP50)} · p95 {fmtMs(v.totalP95)} · ttft p50 {fmtMs(v.ttftP50)}</span>
+              {providers.map(({ name, raw, v }) => (
+                <div key={raw} className="flex flex-wrap justify-between gap-x-4 gap-y-0.5">
+                  <span className="text-text-muted min-w-0">{name} ({v.samples})</span>
+                  <span className="font-mono min-w-0">total p50 {fmtMs(v.totalP50)} · p95 {fmtMs(v.totalP95)} · ttft p50 {fmtMs(v.ttftP50)}</span>
                 </div>
               ))}
             </div>

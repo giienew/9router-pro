@@ -25,13 +25,13 @@ const fmtRequests = (n) => String(n || 0);
 const VIEW_MODES = [
   { value: "tokens", label: "Tokens" },
   { value: "requests", label: "Requests" },
-  { value: "cost", label: "Cost" },
+  { value: "cost", label: "Cost (est.)" },
 ];
 
 const VIEW_CONFIG = {
   tokens:   { dataKey: "tokens",   color: "#6366f1", gradId: "gradTokens",   formatter: fmtTokens,   label: "Tokens" },
   requests: { dataKey: "requests", color: "#14b8a6", gradId: "gradRequests", formatter: fmtRequests, label: "Requests" },
-  cost:     { dataKey: "cost",     color: "#f59e0b", gradId: "gradCost",     formatter: fmtCost,     label: "Cost" },
+  cost:     { dataKey: "cost",     color: "#f59e0b", gradId: "gradCost",     formatter: fmtCost,     label: "Cost (est.)" },
 };
 
 export default function UsageChart({ period = "7d" }) {

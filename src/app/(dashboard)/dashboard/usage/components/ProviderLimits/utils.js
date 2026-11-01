@@ -118,7 +118,7 @@ export function getConnectionsPageRange(pagination) {
   return { start, end };
 }
 
-export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter) {
+export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter, providerLabelText) {
   if (!totals.eligibleConnections) {
     return {
       icon: "cloud_off",
@@ -134,7 +134,7 @@ export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter
       description:
         providerFilter === "all"
           ? "Try changing the account status filter to see more quota trackers."
-          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
+          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerLabelText || providerFilter}.`,
     };
   }
   return {
