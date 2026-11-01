@@ -20,7 +20,6 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import SecurityWarning from "./components/SecurityWarning";
 import KeyAccessControls from "./components/KeyAccessControls";
-import FirstRequestSnippet from "./components/FirstRequestSnippet";
 
 
 export default function APIPageClient({ machineId }) {
@@ -1303,11 +1302,6 @@ export default function APIPageClient({ machineId }) {
             ))}
           </div>
         )}
-        {keys.length > 0 && (
-          <div className="mt-4">
-            <FirstRequestSnippet baseUrl={currentEndpoint} keyName={keys[0]?.name} />
-          </div>
-        )}
       </Card>
 
       {/* R11 bulk edit modal — applies to every selected key */}
@@ -1564,7 +1558,6 @@ export default function APIPageClient({ machineId }) {
               {copied === "created_key" ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <FirstRequestSnippet baseUrl={currentEndpoint} keyName={createdKeyName} />
           <Button onClick={() => { setCreatedKey(null); setCreatedKeyName(""); }} fullWidth>
             Done
           </Button>
