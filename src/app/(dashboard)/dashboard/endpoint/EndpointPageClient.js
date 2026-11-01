@@ -711,7 +711,7 @@ export default function APIPageClient({ machineId }) {
 
       if (res.ok) {
         // Apply the optional settings picked in the create dialog.
-        const id = data.key?.id;
+        const id = data.id;
         if (id) {
           if (newKeyDraft.restricted) {
             await handleUpdateKeyAccess(id, { restricted: true, allow: newKeyDraft.allow });
