@@ -1,11 +1,11 @@
 <div align="center">
   <img src="./images/pro-prompt-injection.png" alt="9Router Pro — Prompt Injection" width="800"/>
 
-  # 9Router Pro — by Gienetic
+  # 9Router Pro
 
   **A Pro edition of 9Router with Prompt Injection: one injection per target — global, per API key, per model — as a system prompt or a scripted chat.**
 
-  By **Gienetic** — [GitHub](https://github.com/giienew) · [Telegram](https://t.me/gienetic)
+  [GitHub](https://github.com/giienew) · [Telegram](https://t.me/gienetic)
 
   [![Stars](https://img.shields.io/github/stars/giienew/9router-pro?style=social)](https://github.com/giienew/9router-pro/stargazers)
   [![Forks](https://img.shields.io/github/forks/giienew/9router-pro?style=social)](https://github.com/giienew/9router-pro/network/members)
@@ -86,6 +86,11 @@ A key that crosses a limit gets **HTTP 429 with a `Retry-After` header** and a m
 <p align="center">
   <img src="./images/pro-providers.png" alt="Providers dashboard" width="800"/>
   <br/><em>Providers — custom providers, an all-connections shelf, and a Test All in every section. Dark Pro theme, orange accent.</em>
+</p>
+
+<p align="center">
+  <img src="./images/pro-usage.png" alt="Usage dashboard" width="800"/>
+  <br/><em>Usage — request totals, latency, cached vs output tokens, and a live topology map of providers flowing through the router.</em>
 </p>
 
 <p align="center">

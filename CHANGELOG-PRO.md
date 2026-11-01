@@ -4,6 +4,13 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.16
+
+- **Re-audit fixes (1 critical + 11 major)**: database export/import now checks the CLI token value instead of its mere presence; the SSO-only test gate also fires when IdP fields change; response-cache and maintenance settings deep-merge instead of wiping nested config; a customized `INITIAL_PASSWORD` is accepted on first password set; quota endpoints refuse inactive connections; bulk-enable wording is honest about unknown quota with a refetch after toggle; import skips empty entries instead of deleting live injections; proxy health checks no longer reactivate operator-disabled pools; translator responses and logs mask credentials; single-key edits merge quota/limits instead of replacing them; the backup card counts variants.
+- **New providers (BYOK)**: OrcaRouter and TOTU AI, both OpenAI-compatible gateways with live catalog fetching. Kimi OAuth was already present from upstream, so no duplicate entry was added.
+- **Removals**: cross-provider catalog search is removed (it duplicated the provider shelf and cost a full-catalog fetch on every search).
+- **README**: title and credit line cleaned up, screenshots refreshed (providers, usage, prompt injection).
+
 ## v0.5.109-pro.15
 
 ### ADDITIONS FROM IMPLEMENTATION RUN
