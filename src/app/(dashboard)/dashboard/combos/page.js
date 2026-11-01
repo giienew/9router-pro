@@ -12,7 +12,6 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
 import { resolveProviderId, AI_PROVIDERS } from "@/shared/constants/providers";
-import { FreeStackAdvisor, ComboAdvisorSection } from "./AdvisorSections";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -247,9 +246,10 @@ export default function CombosPage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
-        // Renaming a combo migrates its pins to the new name (pins are
-        // keyed by combo name); otherwise they would orphan. Pins of
-        // members no longer in the combo are pruned on the same save.
+        // Renaming a combo migrates its pins and its strategy to the new
+        // name (both are keyed by combo name); otherwise they would
+        // orphan. Pins of members no longer in the combo are pruned on
+        // the same save.
         const oldName = editingCombo?.name;
         let pinsAfter = comboMemberPins;
         if (oldName && data.name && data.name !== oldName && pinsAfter[oldName]) {
@@ -265,6 +265,16 @@ export default function CombosPage() {
           }
         }
         if (pinsAfter !== comboMemberPins) await persistComboMemberPins(pinsAfter);
+        // Strategies are keyed by combo name too: rename the entry with
+        // the combo, or the renamed combo silently falls back to default
+        // and the old entry orphans in settings forever (opt20 M1).
+        let strategiesAfter = comboStrategies;
+        if (oldName && data.name && data.name !== oldName && strategiesAfter[oldName]) {
+          strategiesAfter = { ...strategiesAfter };
+          strategiesAfter[data.name] = strategiesAfter[oldName];
+          delete strategiesAfter[oldName];
+        }
+        if (strategiesAfter !== comboStrategies) await persistComboStrategies(strategiesAfter);
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -281,6 +291,16 @@ export default function CombosPage() {
     for (const name of names) delete updated[name];
     return updated;
   };
+
+  // A strategy entry is worth keeping iff it carries a meaningful value:
+  // any non-empty key counts, except fallbackStrategy === "fallback"
+  // (the default). Keeps judge/tuning/policy entries when the strategy
+  // is switched back to fallback (opt20 M2).
+  const hasMeaningfulStrategy = (entry) => Object.entries(entry || {}).some(([key, value]) => {
+    if (value == null || value === "") return false;
+    if (key === "fallbackStrategy" && value === "fallback") return false;
+    return true;
+  });
 
   const persistComboStrategies = async (updated) => {
     await fetch("/api/settings", {
@@ -308,9 +328,25 @@ export default function CombosPage() {
 
   const handleDelete = async (id) => {
     const combo = combos.find((c) => c.id === id);
+    // Delete-impact preview (opt20 m6): count live references to the
+    // combo name (restricted keys, model aliases) so a referenced combo
+    // is never deleted blind. Best-effort: plain prompt on any failure.
+    let message = combo ? `Delete combo "${combo.name}"?` : "Delete this combo?";
+    if (combo) {
+      try {
+        const refRes = await fetch(`/api/combos/${id}/references`);
+        if (refRes.ok) {
+          const { references } = await refRes.json();
+          const parts = [];
+          if (references?.keys?.length) parts.push(`${references.keys.length} key${references.keys.length === 1 ? "" : "s"} (${references.keys.join(", ")})`);
+          if (references?.aliases?.length) parts.push(`${references.aliases.length} alias${references.aliases.length === 1 ? "" : "es"} (${references.aliases.join(", ")})`);
+          if (parts.length) message += ` Referenced by: ${parts.join("; ")}.`;
+        }
+      } catch { /* plain prompt on preview failure */ }
+    }
     setConfirmState({
       title: "Delete Combo",
-      message: combo ? `Delete combo "${combo.name}"?` : "Delete this combo?",
+      message,
       onConfirm: async () => {
         setConfirmState((prev) => prev ? { ...prev, loading: true } : null);
         try {
@@ -322,8 +358,12 @@ export default function CombosPage() {
             }
             setCombos((prev) => prev.filter((c) => c.id !== id));
             setSelectedIds((prev) => prev.filter((x) => x !== id));
+            setConfirmState(null);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            notify.error(err.error || "Failed to delete combo");
+            setConfirmState((prev) => prev ? { ...prev, loading: false } : null);
           }
-          setConfirmState(null);
         } catch (error) {
           console.log("Error deleting combo:", error);
           setConfirmState((prev) => prev ? { ...prev, loading: false } : null);
@@ -349,13 +389,17 @@ export default function CombosPage() {
           const results = await Promise.all(
             ids.map((id) => fetch(`/api/combos/${id}`, { method: "DELETE" }))
           );
-          const failed = results.filter((r) => !r.ok).length;
-          await persistComboStrategies(pruneStrategiesForNames(names));
-          await persistComboMemberPins(prunePinsForNames(names));
-          setCombos((prev) => prev.filter((c) => !ids.includes(c.id)));
+          // Only the combos that actually deleted lose their config and
+          // leave the list; failures stay (refetch = server truth) and
+          // are named, instead of vanishing with their config (opt20 M3).
+          const succeededNames = names.filter((_, i) => results[i]?.ok);
+          const failedNames = names.filter((_, i) => !results[i]?.ok);
+          await persistComboStrategies(pruneStrategiesForNames(succeededNames));
+          await persistComboMemberPins(prunePinsForNames(succeededNames));
+          await fetchData();
           clearSelection();
           setConfirmState(null);
-          if (failed > 0) notify.warning(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}.`);
+          if (failedNames.length > 0) notify.error(`Failed to delete: ${failedNames.join(", ")}`);
         } catch (error) {
           console.log("Error bulk deleting combos:", error);
           notify.error("Failed to delete selected combos");
@@ -367,14 +411,15 @@ export default function CombosPage() {
     });
   };
 
-  // Merge a per-combo strategy patch into settings.comboStrategies. Passing an empty
-  // patch (strategy back to default "fallback") drops the entry entirely.
+  // Merge a per-combo strategy patch into settings.comboStrategies. An
+  // entry is dropped only when it carries no meaningful value (default
+  // fallback with no extras); judge/tuning/policy extras keep it.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
       const updated = { ...comboStrategies };
       const next = { ...(updated[comboName] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
-      if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
+      if (!hasMeaningfulStrategy(next)) {
         delete updated[comboName];
       } else {
         updated[comboName] = next;
@@ -383,6 +428,7 @@ export default function CombosPage() {
       await persistComboStrategies(updated);
     } catch (error) {
       console.log("Error updating combo strategy:", error);
+      notify.error("Failed to update combo strategy");
     }
   };
 
@@ -392,13 +438,16 @@ export default function CombosPage() {
     try {
       const updated = { ...comboStrategies };
       for (const combo of selectedCombos) {
-        if (!strategy || strategy === "fallback") {
+        const next = {
+          ...(updated[combo.name] || {}),
+          fallbackStrategy: strategy,
+        };
+        // Same rule as single set: switching to fallback keeps extras
+        // (judge/tuning/policy); only a meaningless entry is dropped.
+        if (!hasMeaningfulStrategy(next)) {
           delete updated[combo.name];
         } else {
-          updated[combo.name] = {
-            ...(updated[combo.name] || {}),
-            fallbackStrategy: strategy,
-          };
+          updated[combo.name] = next;
         }
       }
       await persistComboStrategies(updated);
@@ -421,11 +470,6 @@ export default function CombosPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      {/* R1 + R4 advisor sections (drafts only; creation needs Apply) */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <FreeStackAdvisor />
-        <ComboAdvisorSection />
-      </div>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
