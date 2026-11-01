@@ -1286,9 +1286,14 @@ export default function ProvidersPage() {
               >
                 Save
               </Button>
-              <Button variant="secondary" fullWidth onClick={() => resetFakeCount(fakeMenu.providerId)}>
-                Reset to original
-              </Button>
+              <Button
+                variant="secondary"
+                icon="refresh"
+                className="shrink-0"
+                aria-label="Reset to original"
+                title="Reset to original"
+                onClick={() => resetFakeCount(fakeMenu.providerId)}
+              />
               <Button variant="ghost" fullWidth onClick={() => setFakeMenu(null)}>
                 Cancel
               </Button>
