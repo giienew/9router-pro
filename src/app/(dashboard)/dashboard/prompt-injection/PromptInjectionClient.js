@@ -1257,9 +1257,6 @@ export default function PromptInjectionClient() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-text-muted">
-          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
             Export
@@ -1277,6 +1274,9 @@ export default function PromptInjectionClient() {
             />
           </label>
         </div>
+        <p className="text-sm text-text-muted">
+          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
+        </p>
       </div>
       {msg && (
         <div className="fixed bottom-5 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2">
