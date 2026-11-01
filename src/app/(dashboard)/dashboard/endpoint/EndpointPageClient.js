@@ -19,7 +19,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import SecurityWarning from "./components/SecurityWarning";
-import KeyAccessControls from "./components/KeyAccessControls";
+import KeyAccessControls, { KeyAccessSummary } from "./components/KeyAccessControls";
 
 
 export default function APIPageClient({ machineId }) {
@@ -30,7 +30,7 @@ export default function APIPageClient({ machineId }) {
   const [newKeyName, setNewKeyName] = useState("");
   // 9Router Pro: optional settings applied to the key right at creation time,
   // so a reseller key is fully configured in one step (editable later in the
-  // key's Settings panel).
+  // key's Edit modal).
   const emptyKeyDraft = () => ({
     prefix: "sk",
     customKey: "",
@@ -49,11 +49,12 @@ export default function APIPageClient({ machineId }) {
   const [createPickerAliases, setCreatePickerAliases] = useState({});
   const [createdKey, setCreatedKey] = useState(null);
   const [createdKeyName, setCreatedKeyName] = useState("");
-  // opt10: inline rename (key id + draft) and custom-value edit target.
-  const [editingNameId, setEditingNameId] = useState(null);
-  const [editingNameValue, setEditingNameValue] = useState("");
-  const [customKeyTarget, setCustomKeyTarget] = useState(null);
-  const [customKeyValue, setCustomKeyValue] = useState("");
+  // opt12: unified Edit modal — one draft for every editable field of one
+  // key; nothing is saved until Save (Regenerate is the only exception,
+  // being its own confirmed action that closes the modal).
+  const [editTarget, setEditTarget] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   // R11 bulk key edit: checkbox selection + one modal for the selection.
   const [selectedKeyIds, setSelectedKeyIds] = useState([]);
@@ -751,39 +752,87 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  // opt10: rename a key inline (unique name enforced server-side).
-  const handleRenameKey = async (key) => {
-    const trimmed = editingNameValue.trim();
-    if (!trimmed) { notify.error("Nama key tidak boleh kosong"); return; }
-    if (trimmed === key.name) { setEditingNameId(null); return; }
+  // opt12: unified Edit modal — open with a draft copied from the key.
+  const openEditModal = (key) => {
+    setEditTarget(key);
+    setEditDraft({
+      name: key.name,
+      customKey: "",
+      access: key.access || { restricted: false, allow: [] },
+      quota: key.quota || null,
+      limits: key.limits || null,
+      expiresAt: key.expiresAt || null,
+    });
+  };
+
+  // Closing discards the draft untouched: Cancel/X never save anything.
+  // Also hides the key again on the card if it was revealed in the modal.
+  const closeEditModal = () => {
+    if (editTarget) {
+      const id = editTarget.id;
+      setVisibleKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+    setEditTarget(null);
+    setEditDraft(null);
+  };
+
+  // opt12: ONE PUT carrying every changed field at once. On 400 the modal
+  // stays open with the draft intact so the user fixes it, nothing is lost.
+  const handleEditSave = async () => {
+    if (!editTarget || !editDraft) return;
+    const trimmedName = editDraft.name.trim();
+    if (!trimmedName) { notify.error("Nama key tidak boleh kosong"); return; }
+    const normAccess = (a) => a || { restricted: false, allow: [] };
+    const body = {};
+    if (trimmedName !== editTarget.name) body.name = trimmedName;
+    if (JSON.stringify(normAccess(editDraft.access)) !== JSON.stringify(normAccess(editTarget.access))) body.access = editDraft.access;
+    if (JSON.stringify(editDraft.quota ?? null) !== JSON.stringify(editTarget.quota ?? null)) body.quota = editDraft.quota;
+    if (JSON.stringify(editDraft.limits ?? null) !== JSON.stringify(editTarget.limits ?? null)) body.limits = editDraft.limits;
+    if ((editDraft.expiresAt || null) !== (editTarget.expiresAt || null)) body.expiresAt = editDraft.expiresAt;
+    const custom = editDraft.customKey.trim();
+    if (custom !== "") body.customKey = custom;
+    if (!Object.keys(body).length) { closeEditModal(); return; }
+    setEditSaving(true);
     try {
-      const res = await fetch(`/api/keys/${key.id}`, {
+      const res = await fetch(`/api/keys/${editTarget.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
-        setEditingNameId(null);
+        if (custom !== "") {
+          setCreatedKey(data.key.key);
+          setCreatedKeyName(data.key?.name || editTarget.name);
+        }
+        closeEditModal();
         await fetchData();
       } else {
-        notify.error(data.error || "Failed to rename API key");
+        notify.error(data.error || "Failed to update API key");
       }
     } catch (error) {
-      console.log("Error renaming key:", error);
-      notify.error(error?.message || "Failed to rename API key");
+      console.log("Error updating key:", error);
+      notify.error(error?.message || "Failed to update API key");
     }
+    setEditSaving(false);
   };
 
   // opt10: regenerate the random value (old value dies immediately; the new
   // one is shown once, like at creation). Settings/quota/limits survive
   // because they are keyed by the key's internal id, not its value.
+  // opt12: called from inside the Edit modal, so confirming also closes
+  // that modal — never leave it open showing a stale key value.
   const handleRegenerateKey = (key) => {
     setConfirmState({
       title: "Regenerate API Key",
       message: `Regenerate API key "${key.name}"?\n\nKey lama akan langsung tidak berlaku. Key baru akan ditampilkan sekali untuk dicopy.`,
       onConfirm: async () => {
         setConfirmState(null);
+        closeEditModal();
         try {
           const res = await fetch(`/api/keys/${key.id}`, {
             method: "PUT",
@@ -804,34 +853,6 @@ export default function APIPageClient({ machineId }) {
         }
       }
     });
-  };
-
-  // opt10: replace the value with a user-chosen one (same once-modal flow).
-  const handleCustomKeySave = async () => {
-    if (!customKeyTarget) return;
-    const trimmed = customKeyValue.trim();
-    if (!trimmed) { notify.error("Custom key tidak boleh kosong"); return; }
-    try {
-      const res = await fetch(`/api/keys/${customKeyTarget.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customKey: trimmed }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const targetName = customKeyTarget.name;
-        setCustomKeyTarget(null);
-        setCustomKeyValue("");
-        setCreatedKey(data.key.key);
-        setCreatedKeyName(targetName);
-        await fetchData();
-      } else {
-        notify.error(data.error || "Failed to update API key");
-      }
-    } catch (error) {
-      console.log("Error setting custom key:", error);
-      notify.error(error?.message || "Failed to update API key");
-    }
   };
 
   const handleDeleteKey = async (id) => {
@@ -1308,45 +1329,7 @@ export default function APIPageClient({ machineId }) {
                   className="mt-1 shrink-0 accent-indigo-500"
                 />
                 <div className="flex-1 min-w-0">
-                  {editingNameId === key.id ? (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        value={editingNameValue}
-                        onChange={(e) => setEditingNameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleRenameKey(key);
-                          if (e.key === "Escape") setEditingNameId(null);
-                        }}
-                        autoFocus
-                        className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text-main outline-none transition-colors focus:border-brand-500"
-                      />
-                      <button
-                        onClick={() => handleRenameKey(key)}
-                        className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded text-primary transition-all"
-                        title="Save name"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">check</span>
-                      </button>
-                      <button
-                        onClick={() => setEditingNameId(null)}
-                        className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted transition-all"
-                        title="Cancel"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">close</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-sm font-medium flex items-center gap-1">
-                      {key.name}
-                      <button
-                        onClick={() => { setEditingNameId(key.id); setEditingNameValue(key.name); }}
-                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
-                        title="Rename key"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">edit</span>
-                      </button>
-                    </p>
-                  )}
+                  <p className="text-sm font-medium">{key.name}</p>
                   <div className="flex items-center gap-2 mt-1 min-w-0 flex-wrap">
                     <code className="text-xs text-text-muted font-mono break-all min-w-0">
                       {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
@@ -1369,20 +1352,6 @@ export default function APIPageClient({ machineId }) {
                           {copied === key.id ? "check" : "content_copy"}
                         </span>
                       </button>
-                      <button
-                        onClick={() => handleRegenerateKey(key)}
-                        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
-                        title="Regenerate key"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">refresh</span>
-                      </button>
-                      <button
-                        onClick={() => { setCustomKeyTarget(key); setCustomKeyValue(""); }}
-                        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
-                        title="Set custom key"
-                      >
-                        <span className="material-symbols-outlined text-[14px]">key</span>
-                      </button>
                     </div>
                   </div>
                   <p className="text-xs text-text-muted mt-1">
@@ -1398,21 +1367,11 @@ export default function APIPageClient({ machineId }) {
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
-                  <KeyAccessControls
-                    apiKey={key}
-                    onChange={(access) => handleUpdateKeyAccess(key.id, access)}
-                    onExpiryChange={(expiresAt) => handleUpdateKeyExpiry(key.id, expiresAt)}
-                    onQuotaChange={(quota) => handleUpdateKeyQuota(key.id, quota)}
-                    onLimitsChange={(limits) => handleUpdateKeyLimits(key.id, limits)}
-                    onRequestRestrict={() => setConfirmState({
-                      title: "Restrict API Key",
-                      message: `Restrict API key "${key.name}"?\n\nIt will only be able to call the combos and models you add. Until you add one, it can call nothing.`,
-                      onConfirm: async () => {
-                        setConfirmState(null);
-                        handleUpdateKeyAccess(key.id, { restricted: true, allow: key.access?.allow || [] });
-                      }
-                    })}
-                  />
+                  {/* opt12: informative chips only — every edit lives in the
+                      unified Edit modal, no separate panel on the card. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <KeyAccessSummary apiKey={key} />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 pt-0.5">
                   <Toggle
@@ -1434,6 +1393,13 @@ export default function APIPageClient({ machineId }) {
                     }}
                     title={key.isActive ? "Pause key" : "Resume key"}
                   />
+                  <button
+                    onClick={() => openEditModal(key)}
+                    className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                    title="Edit key"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">edit</span>
+                  </button>
                   <button
                     onClick={() => handleDeleteKey(key.id)}
                     className="p-2 hover:bg-red-500/10 rounded text-red-500 transition-all"
@@ -1690,30 +1656,76 @@ export default function APIPageClient({ machineId }) {
         )}
       </Modal>
 
-      {/* opt10: set a user-chosen value for an existing key */}
+      {/* opt12: unified Edit modal — name, key value (regenerate / custom),
+          restrict, quota, limits, expiry in one place, buffered in a draft.
+          Nothing is saved until Save, except Regenerate, which is its own
+          confirmed action and closes this modal. */}
       <Modal
-        isOpen={!!customKeyTarget}
-        title="Set Custom Key"
-        onClose={() => { setCustomKeyTarget(null); setCustomKeyValue(""); }}
+        isOpen={!!editTarget}
+        title={editTarget ? `Edit key "${editTarget.name}"` : "Edit key"}
+        size="lg"
+        onClose={closeEditModal}
       >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-text-muted">
-            Key saat ini: <code className="font-mono break-all">{customKeyTarget ? maskKey(customKeyTarget.key) : ""}</code>
-          </p>
-          <div>
+        {editTarget && editDraft && (
+          <div className="flex flex-col gap-4">
             <Input
-              label="Custom key baru"
-              value={customKeyValue}
-              onChange={(e) => setCustomKeyValue(e.target.value)}
-              placeholder="vio-key-saya-keren"
+              label="Name"
+              value={editDraft.name}
+              onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
             />
-            <span className="mt-0.5 block text-[11px] text-text-muted">Tanpa spasi, hanya huruf, angka, - dan _. Minimal 12 karakter. Key lama langsung tidak berlaku dan key baru ditampilkan sekali untuk dicopy.</span>
+            <div>
+              <span className="text-sm text-text-main">Key value</span>
+              <div className="mt-2 flex items-center gap-2 min-w-0 flex-wrap">
+                <code className="text-xs text-text-muted font-mono break-all min-w-0">
+                  {visibleKeys.has(editTarget.id) ? editTarget.key : maskKey(editTarget.key)}
+                </code>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => toggleKeyVisibility(editTarget.id)}
+                    className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                    title={visibleKeys.has(editTarget.id) ? "Hide key" : "Show key"}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">
+                      {visibleKeys.has(editTarget.id) ? "visibility_off" : "visibility"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => copy(editTarget.key, editTarget.id)}
+                    className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">
+                      {copied === editTarget.id ? "check" : "content_copy"}
+                    </span>
+                  </button>
+                  <Button size="sm" variant="outline" icon="refresh" onClick={() => handleRegenerateKey(editTarget)}>
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+              <span className="mt-1 block text-[11px] text-text-muted">Regenerate replaces the value immediately (old value dies at once) and shows the new value once for copying.</span>
+            </div>
+            <div>
+              <Input
+                label="Set Custom Key (optional)"
+                value={editDraft.customKey}
+                onChange={(e) => setEditDraft((d) => ({ ...d, customKey: e.target.value }))}
+                placeholder="Leave empty to keep the current value"
+              />
+              <span className="mt-0.5 block text-[11px] text-text-muted">Tanpa spasi, hanya huruf, angka, - dan _. Minimal 12 karakter. Empty = no change; a filled value replaces the current one on Save and the old value stops working immediately.</span>
+            </div>
+            <KeyAccessControls
+              apiKey={{ ...editTarget, name: editDraft.name, access: editDraft.access, quota: editDraft.quota, limits: editDraft.limits, expiresAt: editDraft.expiresAt }}
+              draft
+              onDraftChange={(patch) => setEditDraft((d) => ({ ...d, ...patch }))}
+            />
+            <div className="flex gap-2">
+              <Button onClick={handleEditSave} fullWidth disabled={editSaving || !editDraft.name.trim()}>
+                {editSaving ? "Saving..." : "Save"}
+              </Button>
+              <Button onClick={closeEditModal} variant="ghost" fullWidth>Cancel</Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => { setCustomKeyTarget(null); setCustomKeyValue(""); }} variant="ghost" fullWidth>Cancel</Button>
-            <Button onClick={handleCustomKeySave} fullWidth disabled={!customKeyValue.trim()}>Save custom key</Button>
-          </div>
-        </div>
+        )}
       </Modal>
 
       {/* Created Key Modal */}
