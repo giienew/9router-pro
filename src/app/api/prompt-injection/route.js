@@ -4,11 +4,12 @@ import {
   setInjectModelPrompt, setInjectUserPrompt, setInjectGlobal, setInjectKeyModelPrompt,
   deleteInjectModelPrompt, deleteInjectUserPrompt, deleteInjectKeyModelPrompt,
   getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants,
-  getModelAliases,
+  getModelAliases, isReservedVariantName,
   getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
 } from "@/lib/localDb";
 import { getComboByName } from "@/lib/db/repos/combosRepo.js";
 import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
+import { getProviderNodes, resolveRoutableBacking } from "@/lib/db/repos/nodesRepo.js";
 
 // Prompt Injection (9Router Pro) — one injection per target coordinate:
 // global, per API key, per variant (custom-named model), or per model+key
@@ -18,9 +19,8 @@ import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
 // A variant is a custom name backed by one provider/model: picking the
 // variant serves that model WITH the prompt; picking the raw model serves
 // it WITHOUT any prompt, so the original model name is never disturbed.
-// Saving a variant creates/updates a single-member combo of the same name
-// (that is how the name resolves to its backing model); deleting it
-// removes that combo too.
+// A variant name routes directly to its backing model — no combo object
+// is created for it, so the Kombinasi page shows only combos the user made.
 // GET    /api/prompt-injection             → { global, userPrompts, prompts, keyModelPrompts, variants, templates }
 // GET    /api/prompt-injection?preview=1&model=<name>&keyId=<id> → { stack }
 // PUT    /api/prompt-injection             → { global: entry|null }
@@ -28,7 +28,7 @@ import { selectPromptInjections } from "@/lib/db/repos/promptInjectRepo.js";
 //                                          | { keyId, mode, content|turns, position, enabled, templateName? }
 //                                          | { variant: { name, model, mode, content|turns, position, enabled, templateName? } }
 //                                          | { keyId, model, mode, ... }  (model+key coordinate)
-// DELETE /api/prompt-injection?variant=<name>        → variant (+ its combo)
+// DELETE /api/prompt-injection?variant=<name>        → variant
 //        /api/prompt-injection?model=<name>           → model coordinate (legacy cleanup)
 //        /api/prompt-injection?keyId=<id>             → key coordinate
 //        /api/prompt-injection?keyId=<id>&model=<n>   → model+key coordinate
@@ -46,15 +46,26 @@ export async function GET(request) {
       getPromptTemplates(),
     ]);
     // Stack preview: exactly what one request would receive, in order.
+    // Canonicalize alias-prefix forms (e.g. tokenharbor/...) to the
+    // node-id form chat uses, so model/model+key scopes report exactly
+    // as chat would resolve them. Bare variant names pass through
+    // untouched; on any failure the raw input is used (fail-open).
     const params = new URL(request.url).searchParams;
     if (params.get("preview")) {
       const model = params.get("model") || "";
+      let resolvedModel = model;
+      try {
+        if (model.includes("/")) {
+          const routed = resolveRoutableBacking(model, await getProviderNodes().catch(() => []));
+          if (typeof routed === "string" && routed) resolvedModel = routed;
+        }
+      } catch { /* fail-open: preview with the raw input */ }
       const stack = selectPromptInjections(
         { global, byKey: userPrompts, byModel: prompts, byKeyModel: keyModelPrompts, byVariant: variants },
         {
           apiKeyId: params.get("keyId") || null,
           requestedModel: model,
-          resolvedModel: model,
+          resolvedModel,
           bareModel: model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model,
         }
       );
@@ -94,6 +105,12 @@ export async function PUT(request) {
       if (!name || name.length > 80 || name.includes("/")) {
         return NextResponse.json(
           { error: "Variant needs a custom name without \"/\" and at most 80 characters (e.g. dahlunce)" },
+          { status: 400 }
+        );
+      }
+      if (isReservedVariantName(name)) {
+        return NextResponse.json(
+          { error: `Variant name "${name}" is reserved — pick another name` },
           { status: 400 }
         );
       }

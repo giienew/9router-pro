@@ -265,6 +265,16 @@ export function cleanVariantName(raw) {
   return name;
 }
 
+// Reserved variant names (save-time only — the read path deliberately
+// keeps cleaning them through, so a pre-existing entry is never dropped
+// silently on read). "global" and "user" collide with the resolver's
+// stack entry names, so a variant with either name would produce two
+// same-named stack entries that the stats classifier cannot attribute.
+export function isReservedVariantName(raw) {
+  const name = typeof raw === "string" ? raw.trim() : "";
+  return name === "global" || name === "user";
+}
+
 function cleanVariantEntry(raw) {
   if (!raw || typeof raw !== "object") return null;
   const backing = typeof raw.model === "string" ? raw.model.trim() : "";
@@ -337,6 +347,7 @@ export async function getInjectVariants() {
 export async function setInjectVariant(name, input = {}) {
   const cleanName = cleanVariantName(name);
   if (!cleanName) return null;
+  if (isReservedVariantName(cleanName)) return null;
   const map = await getInjectVariants();
   const entry = cleanVariantEntry({ ...input, updatedAt: new Date().toISOString() });
   if (!entry) {
@@ -606,7 +617,12 @@ export async function deletePromptTemplate(id) {
 // variant by its bare name, in which case the variant matches instead
 // and the model scopes stay silent (a variant pick is a different model
 // identity). Combo names never match.
-export function selectPromptInjections({ global, byKey, byModel, byKeyModel, byVariant } = {}, ctx = {}) {
+// The detailed form also reports isVariantPick: whether the stack's
+// model-scope entry (if any) came from the variant branch. The counter
+// MUST use this flag — never infer the pick from the requested name's
+// shape, because combo names and auto: targets are bare too, so a bare
+// requested name is not proof of a variant pick.
+export function selectPromptInjectionsDetailed({ global, byKey, byModel, byKeyModel, byVariant } = {}, ctx = {}) {
   const out = [];
   const push = (name, e) => {
     if (!e || !e.enabled) return;
@@ -651,7 +667,14 @@ export function selectPromptInjections({ global, byKey, byModel, byKeyModel, byV
       }
     }
   }
-  return out;
+  return { stack: out, isVariantPick: !!variantHit };
+}
+
+// Thin wrapper preserving the historical array-only contract (Stack
+// Preview UI and existing tests). New callers that also need the pick
+// flag should use selectPromptInjectionsDetailed / resolvePromptInjectionMeta.
+export function selectPromptInjections(maps = {}, ctx = {}) {
+  return selectPromptInjectionsDetailed(maps, ctx).stack;
 }
 
 // --------------------------------------------------------------- snapshot
@@ -697,5 +720,18 @@ export async function resolvePromptInjections(ctx = {}) {
     return selectPromptInjections(snap, ctx);
   } catch {
     return [];
+  }
+}
+
+// Same resolution, plus the explicit variant-pick flag. The chat stats
+// hook MUST use this (not the requested name's shape) to classify fires:
+// a bare requested name may be a combo name or an auto: target, which
+// are not variant picks even though they contain no "/".
+export async function resolvePromptInjectionMeta(ctx = {}) {
+  try {
+    const snap = await getInjectSnapshot();
+    return selectPromptInjectionsDetailed(snap, ctx);
+  } catch {
+    return { stack: [], isVariantPick: false };
   }
 }

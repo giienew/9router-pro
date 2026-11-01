@@ -81,8 +81,8 @@ export {
   getInjectModelPrompts, setInjectModelPrompt, deleteInjectModelPrompt,
   getInjectUserPrompts, setInjectUserPrompt, deleteInjectUserPrompt,
   getInjectKeyModelPrompts, setInjectKeyModelPrompt, deleteInjectKeyModelPrompt,
-  getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants,
-  getInjectGlobal, setInjectGlobal, resolvePromptInjections, resolveVariantSampling, applyVariantSampling, cleanSamplingParams,
+  getInjectVariants, setInjectVariant, deleteInjectVariant, migrateModelPromptsToVariants, isReservedVariantName,
+  getInjectGlobal, setInjectGlobal, resolvePromptInjections, resolvePromptInjectionMeta, resolveVariantSampling, applyVariantSampling, cleanSamplingParams,
   getPromptTemplates, upsertPromptTemplate, deletePromptTemplate,
 } from "./repos/promptInjectRepo.js";
 

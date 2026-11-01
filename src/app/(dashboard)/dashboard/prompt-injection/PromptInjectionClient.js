@@ -791,6 +791,7 @@ export default function PromptInjectionClient() {
   const [editingCoordId, setEditingCoordId] = useState(null);
   const [createSaving, setCreateSaving] = useState(false);
   const [createFormKey, setCreateFormKey] = useState(0);
+  const [importPreview, setImportPreview] = useState(null); // { data, items } | null
 
   const load = useCallback(async () => {
     try {
@@ -1077,8 +1078,96 @@ export default function PromptInjectionClient() {
   };
 
   const importInjections = async (file) => {
+    let data;
     try {
-      const data = JSON.parse(await file.text());
+      data = JSON.parse(await file.text());
+    } catch {
+      showToast("Import failed — not a valid injections file", "error");
+      return;
+    }
+    const items = planImport(data);
+    if (!items.length) {
+      await applyImport(data);
+      return;
+    }
+    setImportPreview({ data, items });
+  };
+
+  // Preview planner: mirrors the apply loop + route validation using only
+  // data this page already fetched. Names + coordinates + counts ONLY —
+  // prompt text (old or new) is never put in a preview row. Server
+  // validation stays authoritative: the final toast counts come from it.
+  const planImport = (data) => {
+    const items = [];
+    const knownKey = (id) => keys.some((k) => k.id === id);
+    const validEntry = (e) => {
+      if (!e || typeof e !== "object") return false;
+      if (e.mode === "chat") return Array.isArray(e.turns) && e.turns.length > 0;
+      return typeof e.content === "string" && e.content.trim().length > 0;
+    };
+    const validVariant = (name, model) => {
+      const n = typeof name === "string" ? name.trim() : "";
+      return !!n && n.length <= 80 && !n.includes("/") && n !== "global" && n !== "user" &&
+        typeof model === "string" && model.includes("/");
+    };
+    if (data.global) {
+      items.push({ coord: "Global", name: "Global", action: global_ ? "overwrite" : "new" });
+    }
+    // Legacy files call templates "presets" — both are accepted.
+    for (const template of data.templates || data.presets || []) {
+      const { targets, ...rest } = template || {};
+      const name = typeof rest.name === "string" ? rest.name.trim() : "";
+      if (!name || !validEntry(rest)) {
+        items.push({ coord: "Template", name: name || "—", action: "skip", reason: "Invalid entry" });
+        continue;
+      }
+      items.push({ coord: "Template", name, action: templates.some((t) => t.name === name) ? "overwrite" : "new" });
+    }
+    for (const [name, entry] of Object.entries(data.variants || {})) {
+      if (!validVariant(name, entry?.model)) {
+        items.push({ coord: "Variant", name: name || "—", action: "skip", reason: "Invalid entry" });
+        continue;
+      }
+      items.push({ coord: "Variant", name, action: variants[name] ? "overwrite" : "new" });
+    }
+    // Legacy backups carry model-coordinate entries: they become
+    // variants (name from the old label, else derived from the model).
+    for (const [model, entry] of Object.entries(data.prompts || {})) {
+      const { name: _n, label: _l, ...rest } = entry || {};
+      const name = (_n || _l || "").trim() || slugVariant(model);
+      if (!validVariant(name, model)) {
+        items.push({ coord: "Variant", name: name || "—", action: "skip", reason: "Invalid entry" });
+        continue;
+      }
+      items.push({ coord: "Variant", name, action: variants[name] ? "overwrite" : "new" });
+    }
+    for (const [keyId, entry] of Object.entries(data.userPrompts || {})) {
+      if (!knownKey(keyId)) {
+        items.push({ coord: "API key", name: keyName(keyId), action: "skip", reason: "Unknown API key" });
+        continue;
+      }
+      items.push({ coord: "API key", name: keyName(keyId), action: userPrompts[keyId] ? "overwrite" : "new" });
+    }
+    for (const [keyId, models] of Object.entries(data.keyModelPrompts || {})) {
+      if (!knownKey(keyId)) {
+        items.push({ coord: "API key", name: keyName(keyId), action: "skip", reason: "Unknown API key" });
+        continue;
+      }
+      for (const [model, entry] of Object.entries(models || {})) {
+        items.push({
+          coord: "Model + Key", name: `${keyName(keyId)} · ${model}`,
+          action: keyModelPrompts[keyId]?.[model] ? "overwrite" : "new",
+        });
+      }
+    }
+    return items;
+  };
+
+  // Apply loop, unchanged from before the preview step: per-item PUTs
+  // through the same route (merge per coordinate, server validation
+  // authoritative), then the same toast + reload.
+  const applyImport = async (data) => {
+    try {
       let applied = 0;
       let skipped = 0;
       const send = async (payload) => {
@@ -1100,14 +1189,6 @@ export default function PromptInjectionClient() {
       }
       // Legacy backups carry model-coordinate entries: they become
       // variants (name from the old label, else derived from the model).
-      const slugVariant = (model) => {
-        const slash = model.indexOf("/");
-        const provider = slash > 0 ? model.slice(0, slash) : "custom";
-        const providerPart = provider.startsWith("openai-compatible-chat-") ? "custom" : provider;
-        const last = model.slice(model.lastIndexOf("/") + 1);
-        const slugged = last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "model";
-        return `${providerPart}-${slugged}`.slice(0, 80);
-      };
       for (const [model, entry] of Object.entries(data.prompts || {})) {
         const { name: _n, label: _l, ...rest } = entry || {};
         const name = (_n || _l || "").trim() || slugVariant(model);
@@ -1128,6 +1209,15 @@ export default function PromptInjectionClient() {
     } catch {
       showToast("Import failed — not a valid injections file", "error");
     }
+  };
+
+  const slugVariant = (model) => {
+    const slash = model.indexOf("/");
+    const provider = slash > 0 ? model.slice(0, slash) : "custom";
+    const providerPart = provider.startsWith("openai-compatible-chat-") ? "custom" : provider;
+    const last = model.slice(model.lastIndexOf("/") + 1);
+    const slugged = last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "model";
+    return `${providerPart}-${slugged}`.slice(0, 80);
   };
 
   // ---- Stack Preview — re-runs automatically on any change ----
@@ -1541,6 +1631,65 @@ export default function PromptInjectionClient() {
           saving={saving === "template"}
           usages={editingTemplate?.name ? templateUsages(editingTemplate.name) : []}
         />
+      )}
+
+      {importPreview && (
+        <Modal
+          isOpen
+          onClose={() => setImportPreview(null)}
+          title={translate("Import preview")}
+          size="lg"
+          bodyClassName="p-4 sm:p-6"
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setImportPreview(null)}>
+                {translate("Cancel")}
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const { data } = importPreview;
+                  setImportPreview(null);
+                  await applyImport(data);
+                }}
+              >
+                {translate("Import")} ({importPreview.items.filter((i) => i.action !== "skip").length})
+              </Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-text-muted">
+              {translate("Review what will change before anything is applied. Skipped items will not be sent.")}
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {importPreview.items.map((item, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{item.name}</span>
+                    <span className="block text-xs text-text-muted">{item.coord}</span>
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      item.action === "new"
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : item.action === "overwrite"
+                          ? "bg-amber-500/10 text-amber-500"
+                          : "bg-surface-2 text-text-muted"
+                    }`}
+                  >
+                    {item.action === "new"
+                      ? translate("New")
+                      : item.action === "overwrite"
+                        ? translate("Overwrite")
+                        : `${translate("Skipped")}${item.reason ? ` · ${translate(item.reason)}` : ""}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-text-muted">{translate("Server validation still applies")}</p>
+          </div>
+        </Modal>
       )}
     </div>
   );

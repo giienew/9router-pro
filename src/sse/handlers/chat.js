@@ -10,7 +10,7 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { dispatchCombo, createVariantHelpers, withBreakerSuccess } from "../services/comboDispatch.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjections, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections, recordPromptInjectFire, classifyInjectStack, getInjectKeyModelPrompts } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjectionMeta, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections, recordPromptInjectFire, classifyInjectStack, getInjectKeyModelPrompts } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseAutoTarget, buildAutoCandidates, getLatencyByProviderCached, AUTO_EXPLORATION_SHARE } from "../services/autoRouting.js";
 import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
@@ -398,9 +398,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // the model+key's (matched by resolved provider/model). A variant
     // pick suppresses the model scopes, so the raw model name is never
     // disturbed by an injection.
-    // Fail-open: resolvePromptInjections already swallows storage errors.
+    // Fail-open: resolvePromptInjectionMeta already swallows storage errors.
     const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
-    const promptInjects = await resolvePromptInjections({
+    const { stack: promptInjects, isVariantPick } = await resolvePromptInjectionMeta({
       apiKeyId: injectKeyRecord?.id || null,
       requestedModel: injectModelName || requestedModel || modelStr,
       resolvedModel: `${provider}/${model}`,
@@ -409,11 +409,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Prompt Injection usage stats (9Router Pro): buffered, fail-open,
     // coordinate keys + scopes only — never prompt text. A lone
     // model-scope entry is ambiguous (plain model vs model+key), so only
-    // then is the request key's model+key map read, once.
+    // then is the request key's model+key map read, once. The variant
+    // flag comes from the resolver itself — never from the requested
+    // name's shape (combo names and auto: targets are bare too).
     try {
       if (Array.isArray(promptInjects) && promptInjects.length) {
         const requested = injectModelName || requestedModel || modelStr;
-        const variantPick = typeof requested === "string" && requested && !requested.includes("/");
+        const variantPick = isVariantPick === true;
         let keyModelNames = null;
         if (!variantPick && injectKeyRecord?.id) {
           const modelish = promptInjects.filter((p) => p && p.name !== "global" && p.name !== "user");
@@ -424,7 +426,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
         recordPromptInjectFire(classifyInjectStack(promptInjects, {
           apiKeyId: injectKeyRecord?.id || null,
-          requestedModel: requested,
+          isVariantPick: variantPick,
           keyModelNames,
         }));
       }

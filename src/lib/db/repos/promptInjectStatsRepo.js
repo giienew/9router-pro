@@ -6,7 +6,7 @@
 //   scope "promptInjectStats": key "YYYY-MM-DD" (UTC) →
 //     { requests, byScope: { <scope>: fires },
 //       byName: { <coordKey>: { scope, fires } } }
-// A fire records ONLY the injection's coordinate key, scope and mode —
+// A fire records ONLY the injection's coordinate key and scope —
 // never prompt text. Coordinate keys reuse the dashboard's coordId
 // shape: "global", "key:<apiKeyId>", "variant:<name>",
 // "model:<model>", "km:<apiKeyId>::<model>".
@@ -34,18 +34,23 @@ function emptyDay() {
 // global → key → variant → model+key. Names are the only signal, the
 // same signal the Stack Preview UI already shows:
 //   "global" → global scope, "user" → the request's API key scope.
-//   A bare requested name (no "/") is a variant pick: every remaining
-//   entry is that variant (a variant pick suppresses the model scopes).
-//   Otherwise the remaining entries are model scopes, in resolver order:
-//   the first is the plain model coordinate, later ones are model+key.
+//   When isVariantPick is true (the resolver's explicit flag, from
+//   resolvePromptInjectionMeta), every remaining entry is that variant
+//   (a variant pick suppresses the model scopes). Otherwise the
+//   remaining entries are model scopes, in resolver order: the first is
+//   the plain model coordinate, later ones are model+key.
+//   isVariantPick MUST come from the resolver — never infer it from the
+//   requested name's shape: combo names and auto: targets are bare too,
+//   so a bare requested name is not proof of a variant pick.
 //   A lone model-scope entry is ambiguous, so keyModelNames (the
 //   request key's model+key map keys, fetched lazily by the caller only
-//   in that case) decides it. A variant literally named "global" or
-//   "user" would misclassify — the same ambiguity the preview UI has.
-export function classifyInjectStack(stack, { apiKeyId = null, requestedModel = "", keyModelNames = null } = {}) {
+//   in that case) decides it — and only when it is truly lone: with two
+//   or more model-scope entries the first is always the plain model.
+//   A variant literally named "global" or "user" would misclassify —
+//   save-time now rejects those names, and no live entry uses them.
+export function classifyInjectStack(stack, { apiKeyId = null, isVariantPick = false, keyModelNames = null } = {}) {
   if (!Array.isArray(stack) || !stack.length) return [];
-  const variantPick =
-    typeof requestedModel === "string" && requestedModel && !requestedModel.includes("/");
+  const variantPick = isVariantPick === true;
   const fires = [];
   const modelish = [];
   for (const entry of stack) {
@@ -60,10 +65,11 @@ export function classifyInjectStack(stack, { apiKeyId = null, requestedModel = "
       modelish.push(entry);
     }
   }
+  const loneModelish = modelish.length === 1;
   modelish.forEach((entry, i) => {
     let scope = "model";
     if (i > 0) scope = "modelKey";
-    else if (keyModelNames && keyModelNames.has(entry.name)) scope = "modelKey";
+    else if (loneModelish && keyModelNames && keyModelNames.has(entry.name)) scope = "modelKey";
     const key =
       scope === "modelKey" ? `km:${apiKeyId || "?"}::${entry.name}` : `model:${entry.name}`;
     fires.push({ key, scope, mode: entry.mode || "single" });
