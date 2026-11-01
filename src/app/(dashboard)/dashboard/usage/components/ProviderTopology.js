@@ -13,6 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { getProviderIconSrc, getNameIconSrc, getTypeBrandIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
+import starfieldBg from "./topology-starfield.jpg";
 
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
@@ -429,7 +430,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   }, [nodes.length]);
 
   return (
-    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-subtle/30 sm:h-[480px]">
+    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border sm:h-[480px]" style={{ backgroundImage: `url(${starfieldBg.src})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}>
       {/* Current-flow keyframes for active edges. Dash period is 16px
           (6 dash + 10 gap), so 0 → 16px loops seamlessly. Positive
           dashoffset moves dashes toward the path start (the router),
