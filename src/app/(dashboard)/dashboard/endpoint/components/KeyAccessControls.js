@@ -248,7 +248,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
                     if (!draft && !onQuotaChange) return;
                     if (checked) {
                       const limit = parseInt(limitDraft, 10) || quota?.limit || 100000;
-                      emitQuota({ enabled: true, limit, windowHours: quota?.windowHours || 24 });
+                      emitQuota({ ...quota, enabled: true, limit, windowHours: quota?.windowHours || 24 });
                     } else if (quota) {
                       emitQuota({ ...quota, enabled: false });
                     }

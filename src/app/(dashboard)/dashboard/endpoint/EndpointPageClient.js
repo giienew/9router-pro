@@ -49,6 +49,8 @@ export default function APIPageClient({ machineId }) {
   const [createPickerAliases, setCreatePickerAliases] = useState({});
   const [createdKey, setCreatedKey] = useState(null);
   const [createdKeyName, setCreatedKeyName] = useState("");
+  // opt13 M-I2: which flow produced the once-modal key, for its title.
+  const [createdKeyKind, setCreatedKeyKind] = useState("created");
   // opt12: unified Edit modal — one draft for every editable field of one
   // key; nothing is saved until Save (Regenerate is the only exception,
   // being its own confirmed action that closes the modal).
@@ -69,9 +71,15 @@ export default function APIPageClient({ machineId }) {
     if (bulkDraft.clearExpiry) updates.expiresAt = null;
     else if (bulkDraft.expiresAt) updates.expiresAt = `${bulkDraft.expiresAt}T23:59:59.999Z`;
     if (bulkDraft.clearQuota) updates.quota = null;
-    else if (bulkDraft.quotaLimit) updates.quota = { enabled: true, limit: parseInt(bulkDraft.quotaLimit, 10), windowHours: Number(bulkDraft.quotaWindow) || 24 };
+    else if (bulkDraft.quotaLimit) {
+      if (!/^\d+$/.test(bulkDraft.quotaLimit.trim()) || parseInt(bulkDraft.quotaLimit, 10) <= 0) { notify.error("Token quota limit must be a positive whole number."); return; }
+      updates.quota = { enabled: true, limit: parseInt(bulkDraft.quotaLimit, 10), windowHours: Number(bulkDraft.quotaWindow) || 24 };
+    }
     if (bulkDraft.clearTpm) updates.limits = null;
-    else if (bulkDraft.tpm) updates.limits = { tpm: parseInt(bulkDraft.tpm, 10) };
+    else if (bulkDraft.tpm) {
+      if (!/^\d+$/.test(bulkDraft.tpm.trim()) || parseInt(bulkDraft.tpm, 10) <= 0) { notify.error("TPM limit must be a positive whole number."); return; }
+      updates.limits = { tpm: parseInt(bulkDraft.tpm, 10) };
+    }
     if (bulkDraft.allowText.trim()) updates.access = { restricted: true, allow: bulkDraft.allowText.split(",").map((s) => s.trim()).filter(Boolean) };
     if (bulkDraft.active === "pause") updates.isActive = false;
     else if (bulkDraft.active === "resume") updates.isActive = true;
@@ -669,6 +677,11 @@ export default function APIPageClient({ machineId }) {
   };
 
   const handleOpenTsModal = async () => {
+    // opt13 M-I6: same Require-API-key gate as Tunnel enable.
+    if (!requireApiKey) {
+      setTsStatus({ type: "error", message: "Security required: Enable \"Require API key\" before activating Tailscale." });
+      return;
+    }
     setTsStatus(null);
     setTsInstallLog([]);
     const data = await checkTailscaleInstalled();
@@ -700,6 +713,13 @@ export default function APIPageClient({ machineId }) {
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
+    // opt13 M-I5(a): a quota switched on with an empty/invalid limit used
+    // to silently skip the quota PUT, leaving an unlimited key. Block the
+    // create so the user fixes the limit instead.
+    if (newKeyDraft.quotaEnabled) {
+      const limit = parseInt(newKeyDraft.quotaLimit, 10);
+      if (!Number.isFinite(limit) || limit <= 0) { notify.error("Token quota limit must be filled with a positive number."); return; }
+    }
 
     try {
       const customKeyValue = (newKeyDraft.customKey || "").trim();
@@ -712,23 +732,26 @@ export default function APIPageClient({ machineId }) {
 
       if (res.ok) {
         // Apply the optional settings picked in the create dialog.
+        // opt13 M-I5(b): a failed setting PUT must not stay silent — the
+        // key is still created and shown, but failures are named.
         const id = data.id;
         if (id) {
+          const failedSettings = [];
           if (newKeyDraft.restricted) {
-            await handleUpdateKeyAccess(id, { restricted: true, allow: newKeyDraft.allow });
+            if (!(await handleUpdateKeyAccess(id, { restricted: true, allow: newKeyDraft.allow }))) failedSettings.push("Restrict access");
           }
           if (newKeyDraft.quotaEnabled) {
             const limit = parseInt(newKeyDraft.quotaLimit, 10);
             if (limit > 0) {
               const costLimit = parseFloat(newKeyDraft.quotaCostLimit);
-              await handleUpdateKeyQuota(id, {
+              if (!(await handleUpdateKeyQuota(id, {
                 enabled: true, limit, windowHours: newKeyDraft.quotaWindow,
                 ...(Number.isFinite(costLimit) && costLimit > 0 ? { costLimit } : {}),
-              });
+              }))) failedSettings.push("Token quota");
             }
           }
           if (newKeyDraft.expiresAt) {
-            await handleUpdateKeyExpiry(id, `${newKeyDraft.expiresAt}T23:59:59.999Z`);
+            if (!(await handleUpdateKeyExpiry(id, `${newKeyDraft.expiresAt}T23:59:59.999Z`))) failedSettings.push("Expiry");
           }
           const limits = {};
           let hasLimits = false;
@@ -737,10 +760,16 @@ export default function APIPageClient({ machineId }) {
             limits[f] = Number.isFinite(v) && v > 0 ? v : null;
             if (limits[f]) hasLimits = true;
           }
-          if (hasLimits) await handleUpdateKeyLimits(id, limits);
+          if (hasLimits) {
+            if (!(await handleUpdateKeyLimits(id, limits))) failedSettings.push("Rate limits");
+          }
+          if (failedSettings.length) {
+            notify.error(`Key created, but these settings failed to apply: ${failedSettings.join(", ")}. Please set them from the key's Edit menu.`);
+          }
         }
         setCreatedKey(data.key);
         setCreatedKeyName(newKeyName);
+        setCreatedKeyKind("created");
         await fetchData();
         closeAddModal();
       } else {
@@ -808,6 +837,7 @@ export default function APIPageClient({ machineId }) {
         if (custom !== "") {
           setCreatedKey(data.key.key);
           setCreatedKeyName(data.key?.name || editTarget.name);
+          setCreatedKeyKind("updated");
         }
         closeEditModal();
         await fetchData();
@@ -829,7 +859,7 @@ export default function APIPageClient({ machineId }) {
   const handleRegenerateKey = (key) => {
     setConfirmState({
       title: "Regenerate API Key",
-      message: `Regenerate API key "${key.name}"?\n\nKey lama akan langsung tidak berlaku. Key baru akan ditampilkan sekali untuk dicopy.`,
+      message: `Regenerate API key "${key.name}"?\n\nKey lama akan langsung tidak berlaku. Key baru akan ditampilkan sekali untuk dicopy.\n\nPerubahan yang belum disimpan di form ini akan hilang.`,
       onConfirm: async () => {
         setConfirmState(null);
         closeEditModal();
@@ -843,6 +873,7 @@ export default function APIPageClient({ machineId }) {
           if (res.ok) {
             setCreatedKey(data.key.key);
             setCreatedKeyName(key.name);
+            setCreatedKeyKind("regenerated");
             await fetchData();
           } else {
             notify.error(data.error || "Failed to regenerate API key");
@@ -904,11 +935,14 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.key) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, access: data.key.access } : k));
+        return true;
       } else {
         console.log("Error updating key access:", data.error || res.status);
+        return false;
       }
     } catch (error) {
       console.log("Error updating key access:", error);
+      return false;
     }
   };
 
@@ -923,11 +957,14 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.key) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, limits: data.key.limits, limitsUsage: data.key.limitsUsage } : k));
+        return true;
       } else {
         console.log("Error updating key limits:", data.error || res.status);
+        return false;
       }
     } catch (error) {
       console.log("Error updating key limits:", error);
+      return false;
     }
   };
 
@@ -942,11 +979,16 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.key) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, expiresAt: data.key.expiresAt } : k));
+        return true;
       } else {
-        notify.error(data.error || "Failed to update key expiry");
+        // opt13 M-I5: no individual notify here — handleCreateKey reports
+        // all failed settings together, so the user sees one summary.
+        console.log("Error updating key expiry:", data.error || res.status);
+        return false;
       }
     } catch (error) {
       console.log("Error updating key expiry:", error);
+      return false;
     }
   };
 
@@ -961,11 +1003,14 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.key) {
         setKeys(prev => prev.map(k => k.id === id ? { ...k, quota: data.key.quota, quotaUsed: data.key.quotaUsed } : k));
+        return true;
       } else {
         console.log("Error updating key quota:", data.error || res.status);
+        return false;
       }
     } catch (error) {
       console.log("Error updating key quota:", error);
+      return false;
     }
   };
 
@@ -1662,7 +1707,7 @@ export default function APIPageClient({ machineId }) {
           confirmed action and closes this modal. */}
       <Modal
         isOpen={!!editTarget}
-        title={editTarget ? `Edit key "${editTarget.name}"` : "Edit key"}
+        title={editTarget ? `Edit key "${editDraft?.name?.trim() || editTarget.name}"` : "Edit key"}
         size="lg"
         onClose={closeEditModal}
       >
@@ -1673,6 +1718,9 @@ export default function APIPageClient({ machineId }) {
               value={editDraft.name}
               onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
             />
+            {!editDraft.name.trim() && (
+              <span className="-mt-2 block text-[11px] text-red-500">Nama key tidak boleh kosong</span>
+            )}
             <div>
               <span className="text-sm text-text-main">Key value</span>
               <div className="mt-2 flex items-center gap-2 min-w-0 flex-wrap">
@@ -1731,8 +1779,8 @@ export default function APIPageClient({ machineId }) {
       {/* Created Key Modal */}
       <Modal
         isOpen={!!createdKey}
-        title="API Key Created"
-        onClose={() => { setCreatedKey(null); setCreatedKeyName(""); }}
+        title={createdKeyKind === "regenerated" ? "API Key Regenerated" : createdKeyKind === "updated" ? "API Key Updated" : "API Key Created"}
+        onClose={() => { setCreatedKey(null); setCreatedKeyName(""); setCreatedKeyKind("created"); }}
       >
         <div className="flex flex-col gap-4">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -1757,7 +1805,7 @@ export default function APIPageClient({ machineId }) {
               {copied === "created_key" ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <Button onClick={() => { setCreatedKey(null); setCreatedKeyName(""); }} fullWidth>
+          <Button onClick={() => { setCreatedKey(null); setCreatedKeyName(""); setCreatedKeyKind("created"); }} fullWidth>
             Done
           </Button>
         </div>

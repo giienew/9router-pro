@@ -117,6 +117,13 @@ export async function PUT(request, { params }) {
     return NextResponse.json({ key: updated });
   } catch (error) {
     console.log("Error updating key:", error);
+    // opt13 M-I7: same race backstop as POST — DB unique violations 400.
+    const msg = String(error?.message || "");
+    if (/UNIQUE constraint failed/.test(msg)) {
+      if (/idx_apiKeys_name_unique|apiKeys\.name/.test(msg)) return NextResponse.json({ error: "Nama key sudah dipakai" }, { status: 400 });
+      if (/idx_apiKeys_key_unique|apiKeys\.key/.test(msg)) return NextResponse.json({ error: "Key sudah dipakai" }, { status: 400 });
+      return NextResponse.json({ error: "Nama atau key sudah dipakai" }, { status: 400 });
+    }
     return NextResponse.json({ error: "Failed to update key" }, { status: 500 });
   }
 }

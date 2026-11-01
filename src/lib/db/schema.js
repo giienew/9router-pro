@@ -90,7 +90,15 @@ export const TABLES = {
       // Per-key policy (P3-26): ISO expiry; NULL = never expires.
       expiresAt: "TEXT",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)",
+      // opt13 M-I7: DB-level uniqueness backing the app checks (name is
+      // case-insensitive in the app, hence LOWER(name); key is already
+      // UNIQUE as a column — this named index makes its violations
+      // identifiable too). Indexes only, no table rebuild.
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_apiKeys_key_unique ON apiKeys(key)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_apiKeys_name_unique ON apiKeys(LOWER(name))",
+    ],
   },
   combos: {
     columns: {
