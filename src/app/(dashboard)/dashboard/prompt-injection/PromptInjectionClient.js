@@ -448,7 +448,7 @@ function InjectionForm({
   // backed by exactly one routed "provider/model". Picking the variant
   // serves that model WITH the prompt; picking the raw model serves it
   // WITHOUT any prompt. Combos are built on the Combos page, never here
-  // — the variant's own single-member combo is created by the API.
+  // — a variant routes directly to its backing model, no combo is created for it.
   const mainName = model.trim();
 
   // In edit mode the form is bound to the entry it opened with, captured
@@ -1152,153 +1152,17 @@ export default function PromptInjectionClient() {
     return () => clearTimeout(t);
   }, [runPreview, loading, global_, userPrompts, variants, keyModelPrompts]);
 
-  return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-text-muted">
-          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
-            Export
-          </Button>
-          <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-2 rounded-[8px] border border-border px-3 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]">
-            <span className="material-symbols-outlined text-[18px]">upload</span> Import
-            <input
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) importInjections(e.target.files[0]);
-                e.target.value = "";
-              }}
-            />
-          </label>
-        </div>
-      </div>
-      {msg && (
-        <div className="fixed bottom-5 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2">
-          <p className={`rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-sm shadow-[var(--shadow-elev)] ${msg.type === "error" ? "text-red-400" : msg.type === "info" ? "text-text-muted" : "text-emerald-400"}`}>
-            {msg.text}
-          </p>
-        </div>
-      )}
+  // Main list first: variants + Global. Per-key and model + key targets
+  // fold into "More targets" so the main list stays focused on variants.
+  const mainRows = rows.filter(
+    (r) => r.coord.scope === "variant" || (r.coord.scope === "global" && !r.coord.keyId)
+  );
+  const foldedRows = rows.filter(
+    (r) => (r.coord.scope === "global" && r.coord.keyId) || r.coord.scope === "model"
+  );
 
-      <datalist id="pi-model-names">
-        {modelOptions.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-
-      {loading ? (
-        <p className="text-sm text-text-muted">Loading…</p>
-      ) : (
-        <>
-          <section className="flex flex-col gap-3">
-            <SectionTitle
-              icon="edit_note"
-              title={translate("Templates")}
-              info={{
-                title: "How Templates work",
-                paras: [
-                  "A template is a saved prompt in your library. It never runs on its own and has no target — it is just content, ready to reuse.",
-                  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.",
-                ],
-                bullets: [
-                  "Good for: a persona you reuse across several models.",
-                  "Good for: a prompt you are still drafting — keep it here until it is ready to attach.",
-                  "To change a prompt everywhere, edit the template, then re-apply it to each injection.",
-                ],
-              }}
-              action={
-                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
-                  New template
-                </Button>
-              }
-            >
-              A library of reusable prompts. Using a template copies its content into an
-              injection — the template itself never runs.
-            </SectionTitle>
-            {templates.length === 0 ? (
-              <>
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
-                  <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
-                  <p className="text-sm text-text-muted">
-                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
-                  {translate("Don't have a prompt yet? Browse prompt references at")}{" "}
-                  <a href="https://github.com/togg53192-cmd/jailbreaks" target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
-                    github.com/togg53192-cmd/jailbreaks
-                  </a>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {templates.map((t) => (
-                  <TemplateCard
-                    key={t.id}
-                    template={t}
-                    copiedId={copied}
-                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
-                    onEdit={() => setEditingTemplate(t)}
-                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
-                    usageCount={(usagesByName[t.name] || []).length}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <SectionTitle
-              icon="input"
-              title={translate("Injections")}
-              info={{
-                title: "How Injections work",
-                paras: [
-                  "An injection attaches one prompt to one target: a custom variant name, or Global (every request), optionally narrowed to a single API key.",
-                  "A variant is a custom name backed by exactly one provider/model. Picking the variant serves that model WITH the prompt; picking the raw model serves it WITHOUT any prompt — the original model name is never disturbed by an injection.",
-                  "When a request arrives, matching injections stack least → most specific: Global → Key → Variant. A variant pick suppresses the model scopes: the variant is a different model identity, so the raw model's prompt must never leak into it.",
-                ],
-                bullets: [
-                  "Single prompt — one system prompt, appended or prepended to the request's system text.",
-                  "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
-                  "One target holds exactly one injection; saving again replaces it.",
-                  "A variant's name resolves through a single-member combo of the same name, created automatically — its backing is visible on the Combos page.",
-                  "Renaming a variant moves its prompt and its combo; deleting it removes both.",
-                  "Model + Key targets still exist for per-key overrides on a raw model.",
-                ],
-              }}
-            >
-              One prompt per target — a model name or Global, optionally scoped to a single API key.
-            </SectionTitle>
-            <Card>
-              <p className="mb-3 text-sm font-semibold">New injection</p>
-              <InjectionForm
-                key={createFormKey}
-                initialCoord={{ scope: "variant", name: "", model: "" }}
-                entryAt={entryAt}
-                keys={keys}
-                keyName={keyName}
-                templates={templates}
-                modelOptions={modelOptions}
-                allowTemplateSource
-                saving={createSaving}
-                onSave={async (coord, fields) => {
-                  setCreateSaving(true);
-                  try {
-                    const ok = await saveInjection(null, coord, fields);
-                    if (ok) setCreateFormKey((k) => k + 1);
-                  } finally {
-                    setCreateSaving(false);
-                  }
-                }}
-              />
-            </Card>
-            <div className="flex flex-col gap-2">
-              {rows.map(({ coord, entry }) => {
+  // One row card, shared by the main list and the folded targets below.
+  const renderRow = ({ coord, entry }) => {
                 const id = coordId(coord);
                 const isEditing = editingCoordId === id;
                 return (
@@ -1388,11 +1252,171 @@ export default function PromptInjectionClient() {
                     )}
                   </Card>
                 );
-              })}
+  };
+
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-6">
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-text-muted">
+          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
+            Export
+          </Button>
+          <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-2 rounded-[8px] border border-border px-3 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]">
+            <span className="material-symbols-outlined text-[18px]">upload</span> Import
+            <input
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) importInjections(e.target.files[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      </div>
+      {msg && (
+        <div className="fixed bottom-5 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2">
+          <p className={`rounded-lg border border-border-subtle bg-surface px-4 py-2.5 text-sm shadow-[var(--shadow-elev)] ${msg.type === "error" ? "text-red-400" : msg.type === "info" ? "text-text-muted" : "text-emerald-400"}`}>
+            {msg.text}
+          </p>
+        </div>
+      )}
+
+      <datalist id="pi-model-names">
+        {modelOptions.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
+      {loading ? (
+        <p className="text-sm text-text-muted">Loading…</p>
+      ) : (
+        <>
+          <section className="flex flex-col gap-3">
+            <SectionTitle
+              icon="input"
+              title={translate("Injections")}
+              info={{
+                title: "How Injections work",
+                paras: [
+                  "An injection attaches one prompt to one target: a custom variant name, or Global (every request), optionally narrowed to a single API key.",
+                  "A variant is a custom name backed by exactly one provider/model. Picking the variant serves that model WITH the prompt; picking the raw model serves it WITHOUT any prompt — the original model name is never disturbed by an injection.",
+                  "When a request arrives, matching injections stack least → most specific: Global → Key → Variant → Model + Key. A variant pick suppresses the model scopes: the variant is a different model identity, so the raw model's prompt must never leak into it.",
+                ],
+                bullets: [
+                  "Single prompt — one system prompt, appended or prepended to the request's system text.",
+                  "Chat script — scripted user/assistant turns inserted as if that conversation already happened.",
+                  "One target holds exactly one injection; saving again replaces it.",
+                  "A variant's name routes directly to its backing model — no combo is created for it, and the Combos page shows only combos you made yourself.",
+                  "Renaming a variant moves its prompt; deleting it removes the variant only.",
+                  "Model + Key targets still exist for per-key overrides on a raw model.",
+                ],
+              }}
+            >
+              One prompt per target — a variant name or Global, optionally scoped to a single API key.
+            </SectionTitle>
+            <Card>
+              <p className="mb-3 text-sm font-semibold">New injection</p>
+              <InjectionForm
+                key={createFormKey}
+                initialCoord={{ scope: "variant", name: "", model: "" }}
+                entryAt={entryAt}
+                keys={keys}
+                keyName={keyName}
+                templates={templates}
+                modelOptions={modelOptions}
+                allowTemplateSource
+                saving={createSaving}
+                onSave={async (coord, fields) => {
+                  setCreateSaving(true);
+                  try {
+                    const ok = await saveInjection(null, coord, fields);
+                    if (ok) setCreateFormKey((k) => k + 1);
+                  } finally {
+                    setCreateSaving(false);
+                  }
+                }}
+              />
+            </Card>
+            <div className="flex flex-col gap-2">
+              {mainRows.map(renderRow)}
+              {foldedRows.length > 0 && (
+                <details className="group" open={mainRows.length === 0}>
+                  <summary className="flex cursor-pointer list-none items-center gap-1.5 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text-main">
+                    <span className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-90">chevron_right</span>
+                    {translate("More targets")} ({foldedRows.length})
+                  </summary>
+                  <p className="pb-2 text-xs text-text-muted">{translate("Per-key and model + key targets — kept here so the main list stays focused on variants.")}</p>
+                  <div className="flex flex-col gap-2">
+                    {foldedRows.map(renderRow)}
+                  </div>
+                </details>
+              )}
               {rows.length === 0 && (
                 <p className="text-sm text-text-muted">No injections yet — create one above.</p>
               )}
             </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <SectionTitle
+              icon="edit_note"
+              title={translate("Templates")}
+              info={{
+                title: "How Templates work",
+                paras: [
+                  "A template is a saved prompt in your library. It never runs on its own and has no target — it is just content, ready to reuse.",
+                  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.",
+                ],
+                bullets: [
+                  "Good for: a persona you reuse across several models.",
+                  "Good for: a prompt you are still drafting — keep it here until it is ready to attach.",
+                  "To change a prompt everywhere, edit the template, then re-apply it to each injection.",
+                ],
+              }}
+              action={
+                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
+                  New template
+                </Button>
+              }
+            >
+              A library of reusable prompts. Using a template copies its content into an
+              injection — the template itself never runs.
+            </SectionTitle>
+            {templates.length === 0 ? (
+              <>
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
+                  <p className="text-sm text-text-muted">
+                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
+                  {translate("Don't have a prompt yet? Browse prompt references at")}{" "}
+                  <a href="https://github.com/togg53192-cmd/jailbreaks" target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
+                    github.com/togg53192-cmd/jailbreaks
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {templates.map((t) => (
+                  <TemplateCard
+                    key={t.id}
+                    template={t}
+                    copiedId={copied}
+                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
+                    onEdit={() => setEditingTemplate(t)}
+                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
+                    usageCount={(usagesByName[t.name] || []).length}
+                  />
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="flex flex-col gap-3">

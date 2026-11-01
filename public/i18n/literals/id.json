@@ -1061,7 +1061,7 @@
  "One PAT per line. Format:": "Satu PAT per baris. Format:",
  "One global prompt lives in Prompt Injection now, so there is a single place for it —": "Satu prompt global kini tinggal di Injeksi Prompt, jadi hanya ada satu tempat untuknya —",
  "One key per line. Format:": "Satu kunci per baris. Format:",
- "One prompt per target — a model name or Global, optionally scoped to a single API key.": "Satu prompt per target.",
+ "One prompt per target — a variant name or Global, optionally scoped to a single API key.": "Satu prompt per target.",
  "One request is matched against three name forms, in order: the requested name (often a combo name like glm_un), the real model behind it (provider/model), and the bare model id. The first hit wins. End users only ever see the name they asked for — which name carries the prompt is your private bookkeeping.": "Satu request dicocokkan dengan tiga bentuk nama, berurutan: nama yang diminta (sering nama combo seperti glm_un), model asli di baliknya (provider/model), dan ID model polos. Kecocokan pertama yang menang. Pengguna akhir hanya melihat nama yang mereka minta.",
  "One target holds exactly one injection; saving again replaces it.": "Satu target memuat tepat satu injeksi; menyimpan lagi akan menggantinya.",
  "One-to-one (rotate)": "Satu-ke-satu (rotasi)",
@@ -1740,7 +1740,7 @@
  "When": "Kapan",
  "When ON, dashboard requires password. When OFF, access without login.": "Ketika AKTIF, dasbor memerlukan kata sandi. Ketika NONAKTIF, akses tanpa login.",
  "When a request arrives, every matching injection is added to it, stacked from least to most specific: Global → Key → Model → Model + Key.": "Saat request tiba, setiap injeksi yang cocok ditambahkan, ditumpuk dari yang paling umum ke paling spesifik: Global → Key → Model → Model + Key.",
- "When a request arrives, matching injections stack least → most specific: Global → Key → Variant. A variant pick suppresses the model scopes: the variant is a different model identity, so the raw model's prompt must never leak into it.": "Saat request tiba, injection yang cocok menumpuk dari paling umum → paling spesifik: Global → Key → Varian. Pilihan varian menekan scope model: varian adalah identitas model yang berbeda, jadi prompt model mentah tidak boleh bocor ke dalamnya.",
+ "When a request arrives, matching injections stack least → most specific: Global → Key → Variant → Model + Key. A variant pick suppresses the model scopes: the variant is a different model identity, so the raw model's prompt must never leak into it.": "Saat request tiba, injection yang cocok menumpuk dari paling umum → paling spesifik: Global → Key → Varian → Model + Key. Pilihan varian menekan scope model: varian adalah identitas model yang berbeda, jadi prompt model mentah tidak boleh bocor ke dalamnya.",
  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.": "Saat Anda membuat injeksi Dari templat, prompt disalin ke injeksi tersebut. Mengedit injeksi setelahnya tidak mengubah templat, dan mengedit templat tidak mengubah injeksi yang sudah dibuat darinya.",
  "Whole days, from daily rollups.": "Hari penuh, dari rollup harian.",
  "Windows:": "Windows:",
@@ -1924,5 +1924,9 @@
  "📝 Configure providers in dashboard or use environment variables": "📝 Konfigurasi penyedia di dasbor atau gunakan variabel lingkungan",
  "🔐 OAuth required. Add now and authenticate after Apply; tool list will be discovered after first connect.": "🔐 OAuth diperlukan. Tambah sekarang dan autentikasi setelah Terapkan; daftar alat akan ditemukan setelah koneksi pertama.",
  "🔑 Paste token": "🔑 Tempel token",
- "🔑 Required Service Provider (SP) Values for your IdP Setup:": "🔑 Nilai Service Provider (SP) Wajib untuk Penyiapan IdP Anda:"
+ "🔑 Required Service Provider (SP) Values for your IdP Setup:": "🔑 Nilai Service Provider (SP) Wajib untuk Penyiapan IdP Anda:",
+ "A variant's name routes directly to its backing model — no combo is created for it, and the Combos page shows only combos you made yourself.": "Nama varian mengarah langsung ke model pendukungnya — tidak ada combo yang dibuat untuknya, dan halaman Combos hanya menampilkan combo yang kamu buat sendiri.",
+ "Renaming a variant moves its prompt; deleting it removes the variant only.": "Mengubah nama varian memindahkan prompt-nya; menghapusnya hanya menghapus varian itu.",
+ "More targets": "Target lainnya",
+ "Per-key and model + key targets — kept here so the main list stays focused on variants.": "Target per-key dan model + key — disimpan di sini agar daftar utama tetap fokus pada varian."
 }
