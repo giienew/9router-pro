@@ -163,8 +163,17 @@ OrbitRing.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
-// Flat static edge: one solid stroke per state (active/last/error/idle).
-// No halo, plasma, particles, sparks, filters, or animations.
+// Edge: one solid stroke per state (active/last/error/idle), plus a
+// pure-CSS "current" overlay on ACTIVE edges only: short flat dashes
+// flowing along the same bezier path, provider → router (the live
+// response stream converging into the sun). No halo, plasma, particles,
+// sparks, filters, glow, or shadow — the overlay is a flat white segment
+// at 0.55 opacity over the existing solid state color, so it stays
+// inside the current palette. Idle/last/error edges keep their single
+// static stroke. The animation is CSS-only (no JS timers); under
+// prefers-reduced-motion the overlay is hidden, leaving the solid edge
+// exactly as before. The active flag is the same signal as the existing
+// active edge color and node dot (see ProviderTopology props).
 function TopologyEdge({
   id,
   sourceX,
@@ -174,6 +183,7 @@ function TopologyEdge({
   sourcePosition,
   targetPosition,
   style = {},
+  data,
 }) {
   const [edgePath] = getBezierPath({
     sourceX,
@@ -184,7 +194,24 @@ function TopologyEdge({
     targetPosition,
   });
   const stroke = style.stroke || "var(--color-border)";
-  return <BaseEdge id={id} path={edgePath} style={{ ...style, stroke }} />;
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={{ ...style, stroke }} />
+      {data?.active && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke="#fff"
+          strokeOpacity={0.55}
+          strokeWidth={style.strokeWidth || 2.5}
+          strokeLinecap="round"
+          strokeDasharray="6 10"
+          pointerEvents="none"
+          className="topology-current-flow"
+        />
+      )}
+    </>
+  );
 }
 
 TopologyEdge.propTypes = {
@@ -403,6 +430,22 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 
   return (
     <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg-subtle/30 sm:h-[480px]">
+      {/* Current-flow keyframes for active edges. Dash period is 16px
+          (6 dash + 10 gap), so 0 → 16px loops seamlessly. Positive
+          dashoffset moves dashes toward the path start (the router),
+          i.e. flow direction is provider → router. */}
+      <style>{`
+        @keyframes topology-current-flow {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: 16px; }
+        }
+        .topology-current-flow {
+          animation: topology-current-flow 1.2s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .topology-current-flow { animation: none; display: none; }
+        }
+      `}</style>
       {providers.length === 0 ? (
         <div className="h-full flex items-center justify-center text-text-muted text-sm">
           {loadError ? "Failed to load providers — try refreshing the page." : "No providers connected"}
