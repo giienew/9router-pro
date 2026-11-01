@@ -914,10 +914,13 @@ export async function getChartData(period = "7d") {
         buckets[idx].completion += r.completionTokens || 0;
       }
     }
-    // "Today" stops at the current hour — future hours are not zero-usage,
-    // they have not happened yet.
-    const currentHourIdx = Math.floor((now - startTime) / bucketMs);
-    return buckets.slice(0, Math.max(1, Math.min(bucketCount, currentHourIdx + 1)));
+    // opt42: return all 24 buckets, NOT sliced to the current hour. Slicing
+    // left a single bucket during the first hour of the server day, and the
+    // Sparkline length<2 guard then blanked all five cards (00:00-00:59
+    // server time = 23:00-23:59 WIB prime time). Future hours read as zero
+    // until data arrives — the same convention the 24h/7d paths already use
+    // for empty buckets.
+    return buckets;
   }
 
   if (period === "24h") {
