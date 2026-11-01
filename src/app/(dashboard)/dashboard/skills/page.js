@@ -2,6 +2,7 @@
 
 import { Card, Badge } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { translate } from "@/i18n/runtime";
 import {
   SKILLS,
   SKILLS_REPO_URL,
@@ -9,7 +10,7 @@ import {
   getSkillBlobUrl,
 } from "@/shared/constants/skills";
 
-function CopyButton({ value, label = "Copy link" }) {
+function CopyButton({ value, label = translate("Copy link") }) {
   const { copied, copy } = useCopyToClipboard(2000);
   return (
     <button
@@ -20,7 +21,7 @@ function CopyButton({ value, label = "Copy link" }) {
       <span className="material-symbols-outlined text-[12px]">
         {copied ? "check" : "content_copy"}
       </span>
-      {copied ? "Copied!" : label}
+      {copied ? translate("Copied!") : label}
     </button>
   );
 }
@@ -55,7 +56,7 @@ function SkillRow({ skill }) {
             </Badge>
           )}
         </div>
-        <p className="text-xs text-text-muted mt-0.5">{skill.description}</p>
+        <p className="text-xs text-text-muted mt-0.5">{translate(skill.description)}</p>
         <a
           href={getSkillBlobUrl(skill.id)}
           target="_blank"
@@ -75,12 +76,17 @@ function SkillRow({ skill }) {
 export default function SkillsPage() {
   // Intentional width (G21): a reading-width column for the skill link
   // list, narrower than the default max-w-7xl dashboard width.
+  const entryUrl = getSkillRawUrl("9router");
+  const entrySnippet = `${translate("Read this skill and use it:")} ${entryUrl}`;
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <Card padding="md">
         <div className="text-xs text-text-muted mb-2">Paste this to your AI:</div>
-        <div className="px-3 py-2 rounded bg-surface-2 font-mono text-[12px] text-text-main">
-          Read this skill and use it: {getSkillRawUrl("9router")}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 px-3 py-2 rounded bg-surface-2 font-mono text-[12px] text-text-main break-all">
+            {entrySnippet}
+          </div>
+          <CopyButton value={entrySnippet} />
         </div>
       </Card>
 

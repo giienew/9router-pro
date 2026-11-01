@@ -1936,5 +1936,8 @@
  "A variant's name routes directly to its backing model — no combo is created for it, and the Combos page shows only combos you made yourself.": "Nama varian mengarah langsung ke model pendukungnya — tidak ada combo yang dibuat untuknya, dan halaman Combos hanya menampilkan combo yang kamu buat sendiri.",
  "Renaming a variant moves its prompt; deleting it removes the variant only.": "Mengubah nama varian memindahkan prompt-nya; menghapusnya hanya menghapus varian itu.",
  "More targets": "Target lainnya",
- "Per-key and model + key targets — kept here so the main list stays focused on variants.": "Target per-key dan model + key — disimpan di sini agar daftar utama tetap fokus pada varian."
+ "Per-key and model + key targets — kept here so the main list stays focused on variants.": "Target per-key dan model + key — disimpan di sini agar daftar utama tetap fokus pada varian.",
+ "Text-to-video / image-to-video via xAI Grok Imagine (async: submit, poll, download MP4).": "Video dari teks / gambar via xAI Grok Imagine (asinkron: kirim, pantau, unduh MP4).",
+ "Web and X search via Tavily / Exa / Brave / Serper / SearXNG / Google PSE / You.com / Xquik.": "Pencarian web dan X via Tavily / Exa / Brave / Serper / SearXNG / Google PSE / You.com / Xquik.",
+ "Copy link": "Salin tautan"
 }
