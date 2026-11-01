@@ -22,6 +22,7 @@ export default function NoAuthProxyCard({ providerId }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +46,7 @@ export default function NoAuthProxyCard({ providerId }) {
 
   const save = useCallback(async (poolId, strategy, poolIds) => {
     setSaving(true);
+    setSaveError("");
     try {
       const res = await fetch("/api/settings", { cache: "no-store" });
       const data = res.ok ? await res.json() : {};
@@ -59,15 +61,22 @@ export default function NoAuthProxyCard({ providerId }) {
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];
       else updated[providerId] = override;
-      await fetch("/api/settings", {
+      const saveRes = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerStrategies: updated }),
       });
+      // The old code flashed "Saved" even when this PATCH failed.
+      if (!saveRes.ok) {
+        const errData = await saveRes.json().catch(() => ({}));
+        setSaveError(errData.error || "Failed to save proxy settings.");
+        return;
+      }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch (e) {
       console.log("Save proxy config error:", e);
+      setSaveError("Failed to save proxy settings.");
     } finally {
       setSaving(false);
     }
@@ -123,6 +132,7 @@ export default function NoAuthProxyCard({ providerId }) {
         </div>
         {savedFlash && <Badge variant="success" size="sm">Saved</Badge>}
       </div>
+      {saveError && <p className="text-xs text-red-500 -mt-2 mb-2">{saveError}</p>}
 
       <Select
         label="Proxy Pool"

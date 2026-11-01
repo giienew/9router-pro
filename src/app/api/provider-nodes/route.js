@@ -42,6 +42,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
     }
 
+    // Custom-provider names must be unique (case-insensitive, like API keys):
+    // ids are generated, so no id clash, but two identically-named cards in
+    // "Provider Custom" are a display confusion. Routing (by id) is unaffected.
+    const existingNodes = await getProviderNodes().catch(() => []);
+    if (existingNodes.some((n) => (n.name || "").trim().toLowerCase() === name.trim().toLowerCase())) {
+      return NextResponse.json({ error: "Provider name already exists" }, { status: 400 });
+    }
+
     // Determine type
     const nodeType = type || "openai-compatible";
 

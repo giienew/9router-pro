@@ -9,6 +9,7 @@ import {
   Button,
   Toggle,
   Modal,
+  ConfirmModal,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
@@ -28,7 +29,6 @@ import { useVisibleCount } from "@/shared/hooks/useVisibleCount";
 import { useProviderSummary } from "@/shared/hooks/useProviderSummary";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
-import CatalogSearchModal from "./components/CatalogSearchModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
 import { loadFakeCounts, persistFakeCounts } from "./fakeCounts";
 
@@ -173,6 +173,13 @@ function getStatusDisplay(connected, error, errorCode, opts = {}) {
       ),
     );
   }
+  if (opts.lastTested) {
+    parts.push(
+      <span key="lastTested" className="text-text-muted">
+        last tested {getRelativeTime(opts.lastTested)}
+      </span>,
+    );
+  }
   if (parts.length === 0) {
     return <span className="text-text-muted">No connections</span>;
   }
@@ -288,11 +295,10 @@ function NotConnectedProviders({ entries, forceOpen }) {
 }
 
 export default function ProvidersPage() {
-  const { statsMap, setStatsMap, breakers } = useProviderSummary();
+  const { statsMap, setStatsMap, breakers, refresh } = useProviderSummary();
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
-  const [showCatalogSearch, setShowCatalogSearch] = useState(false);
   const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] =
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
@@ -303,6 +309,7 @@ export default function ProvidersPage() {
   // only, kept in this browser's localStorage. Real counts stay intact.
   const [fakeCounts, setFakeCounts] = useState({});
   const [fakeMenu, setFakeMenu] = useState(null);
+  const [toggleConfirm, setToggleConfirm] = useState(null);
 
   useEffect(() => {
     setFakeCounts(loadFakeCounts());
@@ -415,6 +422,7 @@ export default function ProvidersPage() {
     let anyEntry = false;
     let allDisabled = true;
     let latestError = null;
+    let lastTested = null;
     for (const t of authTypes) {
       const s = statsMap[`${providerId}|${t}`];
       if (!s) continue;
@@ -431,6 +439,9 @@ export default function ProvidersPage() {
       ) {
         latestError = s.latestError;
       }
+      if (s.lastTested && (!lastTested || new Date(s.lastTested) > new Date(lastTested))) {
+        lastTested = s.lastTested;
+      }
     }
     const errorCode = latestError ? getConnectionErrorTag(latestError) : null;
     const errorTime = latestError?.lastErrorAt
@@ -443,6 +454,7 @@ export default function ProvidersPage() {
       total,
       errorCode,
       errorTime,
+      lastTested,
       allDisabled: anyEntry && total > 0 ? allDisabled : false,
       // Provider breaker (P3-27) keyed by registry provider id. Compatible
       // nodes use synthetic ids, so they never match — their single
@@ -456,9 +468,16 @@ export default function ProvidersPage() {
 
   // Toggle all connections for a provider on/off. authType may be a single
   // string or an array (kiro counts oauth + api_key/apikey together).
-  const handleToggleProvider = async (providerId, authType, newActive) => {
-    const authTypes = Array.isArray(authType) ? authType : [authType];
-    // Optimistic: the provider switch reflects allDisabled only.
+  // Toggle all connections for a provider on/off. Disabling a whole fleet
+  // is confirmed (with the connection count at risk); enabling is immediate
+  // so recovery is never frictioned. A failed PATCH reverts the optimistic
+  // state and shows an error instead of silently lying.
+  const doToggleProvider = async (providerId, authTypes, newActive, displayName) => {
+    const snapshot = {};
+    for (const t of authTypes) {
+      const key = `${providerId}|${t}`;
+      if (statsMap[key]) snapshot[key] = statsMap[key].allDisabled;
+    }
     setStatsMap((prev) => {
       const next = { ...prev };
       for (const t of authTypes) {
@@ -468,11 +487,41 @@ export default function ProvidersPage() {
       return next;
     });
     // One bulk UPDATE server-side (was: one PUT per connection).
-    await fetch("/api/providers", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: providerId, authTypes, isActive: newActive }),
-    }).catch(() => {});
+    try {
+      const res = await fetch("/api/providers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: providerId, authTypes, isActive: newActive }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (error) {
+      setStatsMap((prev) => {
+        const next = { ...prev };
+        for (const [key, val] of Object.entries(snapshot)) {
+          if (next[key]) next[key] = { ...next[key], allDisabled: val };
+        }
+        return next;
+      });
+      notify.error(`Failed to ${newActive ? "enable" : "disable"} ${displayName} — change was not saved.`);
+    }
+  };
+
+  const handleToggleProvider = async (providerId, authType, newActive, displayName) => {
+    const authTypes = Array.isArray(authType) ? authType : [authType];
+    const name = displayName || providerId;
+    if (!newActive) {
+      const count = authTypes.reduce((n, t) => n + (statsMap[`${providerId}|${t}`]?.total || 0), 0);
+      setToggleConfirm({
+        title: `Disable ${name}?`,
+        message: `This will disable ${count} connection${count === 1 ? "" : "s"} for ${name}. Traffic will stop using them until you re-enable the provider.`,
+        onConfirm: async () => {
+          setToggleConfirm(null);
+          await doToggleProvider(providerId, authTypes, newActive, name);
+        },
+      });
+      return;
+    }
+    await doToggleProvider(providerId, authTypes, newActive, name);
   };
 
   const batchJobRef = useRef(null);
@@ -506,6 +555,7 @@ export default function ProvidersPage() {
     } finally {
       setTestingMode(null);
       batchJobRef.current = null;
+      await refresh();
     }
   };
 
@@ -682,6 +732,24 @@ export default function ProvidersPage() {
     return list;
   })();
 
+  // Providers disabled WITH connections (grouped by provider id across
+  // auth types; zero-connection providers live in NotConnectedProviders
+  // and are not double-counted here).
+  const offProviders = (() => {
+    const byId = new Map();
+    for (const [key, s] of Object.entries(statsMap)) {
+      if (!s) continue;
+      const pid = key.split("|")[0];
+      const cur = byId.get(pid) || { total: 0, allDisabled: true };
+      cur.total += s.total || 0;
+      if (!s.allDisabled) cur.allDisabled = false;
+      byId.set(pid, cur);
+    }
+    let n = 0;
+    for (const v of byId.values()) if (v.total > 0 && v.allDisabled) n++;
+    return n;
+  })();
+
   // Web Cookie: providers authenticated by a pasted browser/session cookie
   // (connections are stored with authType "cookie" — see POST /api/providers).
   const webCookieEntries = Object.entries(WEB_COOKIE_PROVIDERS)
@@ -758,9 +826,6 @@ export default function ProvidersPage() {
             </option>
           ))}
         </select>
-        <Button size="sm" variant="outline" icon="search" onClick={() => setShowCatalogSearch(true)}>
-          Search catalogs
-        </Button>
       </div>
 
       {!hasAnyResult && (
@@ -811,6 +876,7 @@ export default function ProvidersPage() {
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
             All Connection Providers
             <Badge variant="success" size="sm">{allOnProviders.length} on</Badge>
+            {offProviders > 0 && <Badge variant="default" size="sm">{offProviders} off</Badge>}
           </h2>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <button
@@ -843,7 +909,7 @@ export default function ProvidersPage() {
               provider={entry.provider}
               stats={entry.stats}
               authType={entry.authType}
-              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active, entry.provider.name)}
               fakeConnected={fakeCounts[entry.providerId] ?? null}
               onConnectedLongPress={() => setFakeMenu({ providerId: entry.providerId, providerName: entry.provider.name, original: entry.stats.connected, value: String(fakeCounts[entry.providerId] ?? entry.stats.connected) })}
             />
@@ -854,7 +920,7 @@ export default function ProvidersPage() {
               provider={entry.provider}
               stats={entry.stats}
               authType={entry.authType}
-              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active)}
+              onToggle={(active) => handleToggleProvider(entry.providerId, entry.authTypes, active, entry.provider.name)}
               fakeConnected={fakeCounts[entry.providerId] ?? null}
               onConnectedLongPress={() => setFakeMenu({ providerId: entry.providerId, providerName: entry.provider.name, original: entry.stats.connected, value: String(fakeCounts[entry.providerId] ?? entry.stats.connected) })}
             />
@@ -920,7 +986,7 @@ export default function ProvidersPage() {
                     stats={getProviderStats(info.id, "apikey")}
                     authType="compatible"
                     onToggle={(active) =>
-                      handleToggleProvider(info.id, "apikey", active)
+                      handleToggleProvider(info.id, "apikey", active, info.name)
                     }
                   />
                 ),
@@ -982,7 +1048,7 @@ export default function ProvidersPage() {
                   provider={info}
                   stats={getProviderStats(key, authTypes)}
                   authType="oauth"
-                  onToggle={(active) => handleToggleProvider(key, authTypes, active)}
+                  onToggle={(active) => handleToggleProvider(key, authTypes, active, info.name)}
                 />
               );
             })}
@@ -1048,7 +1114,7 @@ export default function ProvidersPage() {
                     stats={getProviderStats(key, freeAuthTypes)}
                     authType="free"
                     onToggle={(active) =>
-                      handleToggleProvider(key, freeAuthTypes, active)
+                      handleToggleProvider(key, freeAuthTypes, active, info.name)
                     }
                   />
                 ) : (
@@ -1058,7 +1124,7 @@ export default function ProvidersPage() {
                     provider={info}
                     stats={getProviderStats(key, freeAuthTypes)}
                     authType={Array.isArray(freeAuthTypes) ? (freeAuthTypes[0] ?? "apikey") : freeAuthTypes}
-                    onToggle={(active) => handleToggleProvider(key, freeAuthTypes, active)}
+                    onToggle={(active) => handleToggleProvider(key, freeAuthTypes, active, info.name)}
                   />
                 );
               })}
@@ -1121,7 +1187,7 @@ export default function ProvidersPage() {
                   provider={info}
                   stats={getProviderStats(key, authType)}
                   authType={authType}
-                  onToggle={(active) => handleToggleProvider(key, authType, active)}
+                  onToggle={(active) => handleToggleProvider(key, authType, active, info.name)}
                 />
               ))}
           </div>
@@ -1140,8 +1206,6 @@ export default function ProvidersPage() {
       </div>
       )}
 
-      {/* R10 cross-provider catalog search */}
-      <CatalogSearchModal isOpen={showCatalogSearch} onClose={() => setShowCatalogSearch(false)} />
       <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}
@@ -1232,12 +1296,22 @@ export default function ProvidersPage() {
           </div>
         </Modal>
       )}
+
+      {/* Confirm Modal: disabling a whole provider fleet */}
+      <ConfirmModal
+        isOpen={!!toggleConfirm}
+        onClose={() => setToggleConfirm(null)}
+        onConfirm={toggleConfirm?.onConfirm}
+        title={toggleConfirm?.title || "Confirm"}
+        message={toggleConfirm?.message}
+        variant="danger"
+      />
     </div>
   );
 }
 
 function ProviderCard({ providerId, provider, stats, authType, onToggle, fakeConnected = null, onConnectedLongPress = null }) {
-  const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
+  const { connected, error, errorCode, errorTime, lastTested, allDisabled, breaker } = stats;
   const isNoAuth = !!provider.noAuth;
 
   const dotColors = {
@@ -1295,7 +1369,7 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle, fakeCon
                   <Badge variant="success" size="sm" dot>Ready</Badge>
                 ) : (
                   <>
-                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress })}
+                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress, lastTested })}
                     {breaker?.state === "open" && (
                       <span title="Provider breaker open — broad failures, no traffic until the probe window.">
                         <Badge variant="error" size="sm">
@@ -1379,7 +1453,7 @@ function ApiKeyProviderCard({
   fakeConnected = null,
   onConnectedLongPress = null,
 }) {
-  const { connected, error, errorCode, errorTime, allDisabled, breaker } = stats;
+  const { connected, error, errorCode, errorTime, lastTested, allDisabled, breaker } = stats;
   const isCompatible = providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
   const isAnthropicCompatible = providerId.startsWith(
     ANTHROPIC_COMPATIBLE_PREFIX,
@@ -1446,7 +1520,7 @@ function ApiKeyProviderCard({
                   </Badge>
                 ) : (
                   <>
-                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress })}
+                    {getStatusDisplay(connected, error, errorCode, { displayConnected: fakeConnected, onConnectedLongPress, lastTested })}
                     {breaker?.state === "open" && (
                       <span title="Provider breaker open — broad failures, no traffic until the probe window.">
                         <Badge variant="error" size="sm">
@@ -1547,7 +1621,11 @@ function ProviderTestResultsView({ results }) {
   }
 
   const { summary, mode } = results;
+  // Test All now returns failures only (server-side) — the summary still
+  // reflects the full run. An empty list with failures means everything
+  // passed, not "no connections".
   const items = results.results || [];
+  const failuresOnly = results.failuresOnly === true;
   const modeLabel =
     {
       oauth: "OAuth",
@@ -1574,6 +1652,11 @@ function ProviderTestResultsView({ results }) {
             {summary.total} tested
           </span>
         </div>
+      )}
+      {summary && summary.failed > 0 && failuresOnly && (
+        <p className="text-xs text-text-muted">
+          Showing {summary.failed} failed of {summary.total} tested — passed rows are omitted.
+        </p>
       )}
       {items.map((r, i) => (
         <div
@@ -1611,7 +1694,9 @@ function ProviderTestResultsView({ results }) {
       ))}
       {items.length === 0 && (
         <div className="text-center py-4 text-text-muted text-sm">
-          No active connections found for this group.
+          {summary && summary.total > 0 && summary.failed === 0
+            ? `All ${summary.total} tests passed.`
+            : "No active connections found for this group."}
         </div>
       )}
     </div>

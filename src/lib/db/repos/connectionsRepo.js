@@ -136,10 +136,14 @@ export async function getProviderConnectionStats() {
     const key = `${row.provider}|${row.authType}`;
     const s = (stats[key] ||= {
       provider: row.provider, authType: row.authType,
-      total: 0, connected: 0, error: 0, allDisabled: true, latestError: null,
+      total: 0, connected: 0, error: 0, allDisabled: true, latestError: null, lastTested: null,
     });
     s.total++;
     if (row.isActive === 1 || row.isActive === true) s.allDisabled = false;
+    // A switched-off row is not connected anywhere: connected/error (and
+    // the latest error) count active rows only. total still covers all
+    // stored rows, so the shelf can show stored vs serving totals distinctly.
+    if (!(row.isActive === 1 || row.isActive === true)) continue;
     const cooling = Object.entries(extra).some(
       ([k, v]) => k.startsWith(MODEL_LOCK_PREFIX) && v && new Date(v).getTime() > nowMs,
     );
@@ -156,6 +160,9 @@ export async function getProviderConnectionStats() {
           lastErrorAt: extra.lastErrorAt || null,
         };
       }
+    }
+    if (!s.lastTested || (extra.lastTested && new Date(extra.lastTested) > new Date(s.lastTested))) {
+      s.lastTested = extra.lastTested || null;
     }
   }
   return stats;

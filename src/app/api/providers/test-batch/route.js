@@ -13,6 +13,7 @@ import {
   isBatchStopped,
   clearBatchJob,
 } from "@/lib/batchTestRegistry";
+import { invalidateStatsCache } from "@/lib/providerStatsCache";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -91,6 +92,9 @@ export async function POST(request) {
     if (jobId) registerBatchJob(jobId);
     let stopped = false;
     const results = [];
+    let passed = 0;
+    let failed = 0;
+    let tested = 0;
     for (const conn of connectionsToTest) {
       // Stop asked via /test-batch/stop, or the client went away entirely.
       if ((jobId && isBatchStopped(jobId)) || request.signal?.aborted) {
@@ -99,19 +103,27 @@ export async function POST(request) {
       }
       try {
         const data = await testSingleConnection(conn.id);
-        results.push({
-          provider: conn.provider,
-          connectionId: conn.id,
-          connectionName: conn.name || conn.email || conn.provider,
-          authType: conn.authType || getAuthGroup(conn.provider, conn),
-          valid: data.valid,
-          latencyMs: data.latencyMs || 0,
-          error: data.error || null,
-          diagnosis: data.diagnosis || null,
-          statusCode: data.statusCode || null,
-          testedAt: data.testedAt || new Date().toISOString(),
-        });
+        tested++;
+        if (data.valid) {
+          passed++;
+        } else {
+          failed++;
+          results.push({
+            provider: conn.provider,
+            connectionId: conn.id,
+            connectionName: conn.name || conn.email || conn.provider,
+            authType: conn.authType || getAuthGroup(conn.provider, conn),
+            valid: false,
+            latencyMs: data.latencyMs || 0,
+            error: data.error || null,
+            diagnosis: data.diagnosis || null,
+            statusCode: data.statusCode || null,
+            testedAt: data.testedAt || new Date().toISOString(),
+          });
+        }
       } catch (error) {
+        tested++;
+        failed++;
         results.push({
           provider: conn.provider,
           connectionId: conn.id,
@@ -128,17 +140,23 @@ export async function POST(request) {
     }
 
     if (jobId) clearBatchJob(jobId);
+    // Tests mutate testStatus/lastTested, so the summary cache must not
+    // keep serving pre-test counts.
+    invalidateStatsCache();
     return NextResponse.json({
       mode,
       providerId: providerId || null,
+      // Failures only: a full-fleet run returns tens of thousands of success
+      // rows the UI never needs. The summary still reflects the full run.
       results,
+      failuresOnly: true,
       stopped,
       testedAt: new Date().toISOString(),
       summary: {
-        total: results.length,
+        total: tested,
         planned: connectionsToTest.length,
-        passed: results.filter((r) => r.valid).length,
-        failed: results.filter((r) => !r.valid).length,
+        passed,
+        failed,
       },
     });
   } catch (error) {

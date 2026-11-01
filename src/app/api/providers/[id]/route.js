@@ -6,6 +6,7 @@ import {
   deleteProviderConnection,
 } from "@/models";
 import { toProviderConnectionResponse, usesAwsCredentialForm } from "@/lib/providerConnectionResponse";
+import { invalidateStatsCache } from "@/lib/providerStatsCache";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -161,6 +162,7 @@ export async function PUT(request, { params }) {
 
     const updated = await updateProviderConnection(id, updateData);
 
+    invalidateStatsCache();
     return NextResponse.json({ connection: toProviderConnectionResponse(updated) });
   } catch (error) {
     console.log("Error updating connection:", error);
@@ -178,6 +180,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    invalidateStatsCache();
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {
     console.log("Error deleting connection:", error);

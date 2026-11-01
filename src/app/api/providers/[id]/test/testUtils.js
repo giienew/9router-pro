@@ -1008,6 +1008,7 @@ export async function testSingleConnection(id) {
           testStatus: "error",
           lastError: proxyError,
           lastErrorAt: new Date().toISOString(),
+          lastTested: new Date().toISOString(),
         });
         return { valid: false, error: proxyError, latencyMs: 0, testedAt: new Date().toISOString() };
       }
@@ -1037,6 +1038,7 @@ export async function testSingleConnection(id) {
         ? new Date().toISOString()
         : null
       : new Date().toISOString(),
+    lastTested: new Date().toISOString(),
   };
 
   if (result.refreshed && result.newTokens) {

@@ -14,6 +14,7 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompat
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { getProviderBreakerSnapshot } from "@/sse/services/providerBreaker.js";
 import { toProviderConnectionResponse } from "@/lib/providerConnectionResponse";
+import { getStatsCache, setStatsCache, invalidateStatsCache, STATS_TTL_MS } from "@/lib/providerStatsCache";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +54,8 @@ async function normalizeProxyPoolId(proxyPoolId) {
 
 // 9Router Pro: summary stats are computed from up to tens of thousands of
 // rows — cache them briefly so reopening the providers page is instant.
-let statsCache = { at: 0, data: null };
-const STATS_TTL_MS = 30_000;
+// The cache lives in @/lib/providerStatsCache so every providers write path
+// (PATCH, POST, [id] PUT/DELETE, test-batch) can invalidate it.
 
 // 9Router Pro: lite projection for picker/list consumers that only need
 // identity + status — drops error strings, model locks, and token material.
@@ -90,9 +91,18 @@ function liteConnection(c) {
 export async function GET(request) {
   try {
     const params = new URL(request.url).searchParams;
+    // Unpaginated full-dump guard: a bare GET returns every connection row
+    // (SELECT * + map, tens of thousands). No in-app caller uses it — all
+    // use ?summary=1, ?lite=1, or ?provider+page. ?provider= without page
+    // stays allowed: ConnectionsCard renders a provider's full list.
+    const hasForm = params.get("summary") === "1" || params.get("lite") === "1" || params.has("page") || params.has("provider");
+    if (!hasForm) {
+      return NextResponse.json({ error: "Use ?summary=1, ?lite=1, or ?provider=<id>&page=<n> to list connections." }, { status: 400 });
+    }
     if (params.get("summary") === "1") {
-      if (!statsCache.data || Date.now() - statsCache.at > STATS_TTL_MS) {
-        statsCache = { at: Date.now(), data: await getProviderConnectionStats() };
+      const cached = getStatsCache();
+      if (!cached.data || Date.now() - cached.at > STATS_TTL_MS) {
+        setStatsCache(await getProviderConnectionStats());
       }
       // Breaker states are live (they flip on failures) so they bypass the
       // stats cache — reading the in-memory map is cheap.
@@ -111,7 +121,7 @@ export async function GET(request) {
           preTrip: b.state === "closed" && (b.failuresInWindow || 0) > 0,
         };
       }
-      return NextResponse.json({ stats: statsCache.data, breakers });
+      return NextResponse.json({ stats: getStatsCache().data, breakers });
     }
     const providerFilter = params.get("provider") || undefined;
     const lite = params.get("lite") === "1";
@@ -169,7 +179,7 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "provider and authTypes are required" }, { status: 400 });
     }
     const updated = await bulkSetConnectionsActive(provider, authTypes, !!isActive);
-    statsCache = { at: 0, data: null };
+    invalidateStatsCache();
     return NextResponse.json({ updated });
   } catch (error) {
     console.log("Error bulk-toggling providers:", error);
@@ -287,6 +297,7 @@ export async function POST(request) {
       allowOverwrite: body.id ? true : (body.allowOverwrite === true || body.overwrite === true),
     });
 
+    invalidateStatsCache();
     return NextResponse.json(
       { connection: toProviderConnectionResponse(newConnection) },
       { status: 201 },

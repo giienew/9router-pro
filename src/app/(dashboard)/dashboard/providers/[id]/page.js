@@ -942,9 +942,14 @@ export default function ProviderDetailPage() {
       });
       if (res.ok) {
         setConnections(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
+      } else {
+        // State is only updated on res.ok, so a failure never lies — but it
+        // must not be silent either (the old code only logged it).
+        notify.error("Failed to update connection status.");
       }
     } catch (error) {
       console.log("Error updating connection status:", error);
+      notify.error("Failed to update connection status.");
     }
   };
 
