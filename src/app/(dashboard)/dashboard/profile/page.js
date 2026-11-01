@@ -74,6 +74,7 @@ export default function ProfilePage() {
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [loginOffOpen, setLoginOffOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [settings, setSettings] = useState({ fallbackStrategy: "balanced" });
   const [loading, setLoading] = useState(true);
@@ -86,6 +87,7 @@ export default function ProfilePage() {
   const pendingImportRef = useRef(null);
   const pendingSnapshotRef = useRef(null);
   const [backupInfo, setBackupInfo] = useState(null);
+  const [backupInfoFailed, setBackupInfoFailed] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [backupSections, setBackupSections] = useState(BACKUP_GROUP_IDS);
   const [backupProvidersSel, setBackupProvidersSel] = useState(null); // null = all providers
@@ -484,35 +486,18 @@ export default function ProfilePage() {
     setOidcTestStatus({ type: "", message: "" });
 
     try {
-      const saveRes = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          authMode: oidcForm.authMode || settings.authMode || "password",
-          oidcIssuerUrl: issuerUrl,
-          oidcClientId: clientId,
-          oidcScopes: scopes || "openid profile email",
-          oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || "Sign in with OIDC",
-          ...(secret ? { oidcClientSecret: secret } : {}),
-        }),
-      });
-
-      const saved = await saveRes.json().catch(() => ({}));
-      if (!saveRes.ok) {
-        setOidcTestStatus({
-          type: "error",
-          message: saved.error || "Failed to save OIDC settings before testing",
-        });
-        return;
-      }
-
+      // opt44: test with the form values directly — never save first, so a
+      // failed test cannot leave wrong values stored (same as the SAML test).
+      // A blank secret omits clientSecret, so the test route falls back to
+      // the stored secret (blank = keep semantics preserved).
       const res = await fetch("/api/auth/oidc/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          issuerUrl: saved.oidcIssuerUrl || issuerUrl,
-          clientId: saved.oidcClientId || clientId,
-          scopes: saved.oidcScopes || scopes || "openid profile email",
+          issuerUrl,
+          clientId,
+          scopes: scopes || "openid profile email",
+          ...(secret ? { clientSecret: secret } : {}),
         }),
       });
 
@@ -720,7 +705,13 @@ export default function ProfilePage() {
     try {
       const res = await fetch("/api/settings/backup");
       if (res.ok) setBackupInfo(await res.json());
-    } catch { /* the Backup card renders without live info */ }
+      else setBackupInfoFailed(true);
+    } catch {
+      // The Backup card renders without live info — but it must NOT fall
+      // back to showing the auto-backup toggle as ON (opt44: the old
+      // `?? true` default lied while the endpoint was failing).
+      setBackupInfoFailed(true);
+    }
   };
 
   useEffect(() => { loadBackupInfo(); }, []);
@@ -742,7 +733,10 @@ export default function ProfilePage() {
   };
 
   const handleAutoBackupToggle = async () => {
-    const next = !(backupInfo?.autoBackupEnabled ?? true);
+    // opt44: never toggle from an unknown state — the toggle is disabled
+    // while backup info is loading, so this is only a safety guard.
+    if (!backupInfo) return;
+    const next = !backupInfo.autoBackupEnabled;
     try {
       await fetch("/api/settings", {
         method: "PATCH",
@@ -1029,7 +1023,8 @@ export default function ProfilePage() {
     // column, unlike the full-width data pages.
     <div className="max-w-2xl mx-auto px-4 sm:px-0">
       <div className="flex flex-col gap-6">
-        {/* Local Mode Info */}
+        {/* Appearance: theme switcher + database location. Named to not
+            collide with the footer access-mode label ("Remote Mode"). */}
         <Card>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3 sm:gap-4">
@@ -1037,8 +1032,8 @@ export default function ProfilePage() {
                 <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
               </div>
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
-                <p className="text-sm text-text-muted">Running on your machine</p>
+                <h2 className="text-lg sm:text-xl font-semibold">Appearance</h2>
+                <p className="text-sm text-text-muted">Theme and database location</p>
               </div>
             </div>
             <div className="inline-flex p-1 rounded-lg bg-black/5 dark:bg-white/5 w-full sm:w-auto">
@@ -1066,7 +1061,7 @@ export default function ProfilePage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
               <div>
                 <p className="font-medium text-sm sm:text-base">Database Location</p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
+                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">{settings.databasePath || "~/.9router/db/data.sqlite"}</p>
               </div>
             </div>
           </div>
@@ -1085,9 +1080,15 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <BackupCounts counts={backupInfo?.summary?.counts} />
+              {backupInfo ? (
+                <BackupCounts counts={backupInfo?.summary?.counts} />
+              ) : (
+                <p className="text-xs text-text-muted">
+                  {backupInfoFailed ? "Backup info failed to load." : "Loading backup info…"}
+                </p>
+              )}
               <p className="text-xs text-text-muted">
-                Last backup: {backupInfo?.lastBackupAt ? formatDateTime(backupInfo.lastBackupAt) : "never"}
+                Last backup: {backupInfo ? (backupInfo.lastBackupAt ? formatDateTime(backupInfo.lastBackupAt) : "never") : backupInfoFailed ? "unknown" : "Loading…"}
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -1174,8 +1175,9 @@ export default function ProfilePage() {
                   </p>
                 </div>
                 <Toggle
-                  checked={backupInfo?.autoBackupEnabled ?? true}
+                  checked={backupInfo?.autoBackupEnabled ?? false}
                   onChange={handleAutoBackupToggle}
+                  disabled={!backupInfo}
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1184,6 +1186,7 @@ export default function ProfilePage() {
                   id="auto-backup-keep"
                   value={backupInfo?.autoBackupKeep ?? 7}
                   onChange={(e) => handleAutoBackupKeep(Number(e.target.value))}
+                  disabled={!backupInfo}
                   className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
                 >
                   {[3, 7, 14, 30].map((n) => (
@@ -1254,7 +1257,12 @@ export default function ProfilePage() {
               </div>
               <Toggle
                 checked={settings.requireLogin === true}
-                onChange={() => updateRequireLogin(!settings.requireLogin)}
+                onChange={() => {
+                  // opt44: turning login OFF gets a confirmation first — one tap
+                  // otherwise opens the dashboard to anyone with the URL.
+                  if (settings.requireLogin === true) setLoginOffOpen(true);
+                  else updateRequireLogin(true);
+                }}
                 disabled={loading}
               />
             </div>
@@ -2079,12 +2087,23 @@ export default function ProfilePage() {
         isOpen={shutdownOpen}
         onClose={() => setShutdownOpen(false)}
         onConfirm={handleShutdown}
-        title="Close Proxy"
-        message="Are you sure you want to close the proxy server?"
-        confirmText="Close"
+        title="Shut down 9Router Pro?"
+        message="Are you sure you want to shut down 9Router Pro? The dashboard and API will stop until PM2 restarts it."
+        confirmText="Shut down"
         cancelText="Cancel"
         variant="danger"
         loading={isShuttingDown}
+      />
+
+      <ConfirmModal
+        isOpen={loginOffOpen}
+        onClose={() => setLoginOffOpen(false)}
+        onConfirm={() => { setLoginOffOpen(false); updateRequireLogin(false); }}
+        title="Turn off login?"
+        message="Anyone with the URL can open the dashboard."
+        confirmText="Turn off"
+        cancelText="Cancel"
+        variant="danger"
       />
 
       <Modal
@@ -2193,12 +2212,14 @@ export default function ProfilePage() {
 
 function SecurityLogSection() {
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
     fetch("/api/security-log")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.status === 401 ? "Sign in to view the security log." : "Failed to load security log."))))
       .then((data) => setEvents(data.events || []))
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -2208,6 +2229,8 @@ function SecurityLogSection() {
       </p>
       {error ? (
         <p className="text-sm text-text-muted mt-3">{error}</p>
+      ) : loading ? (
+        <p className="text-sm text-text-muted mt-3">Loading security log…</p>
       ) : events.length === 0 ? (
         <p className="text-sm text-text-muted mt-3">No security events recorded yet.</p>
       ) : (
@@ -2219,7 +2242,7 @@ function SecurityLogSection() {
               {ev.breach ? <span className="text-xs font-semibold text-red-600 dark:text-red-400">Breach flag</span> : null}
               {ev.ip && <span className="text-xs text-text-muted">{ev.ip}</span>}
               {ev.detail && <span className="text-xs text-text-muted">{ev.detail}</span>}
-              {ev.userAgent && <span className="text-xs text-text-muted truncate max-w-full" title={ev.userAgent}>{ev.userAgent}</span>}
+              {ev.userAgent && <span className="text-xs text-text-muted break-all" title={ev.userAgent}>{ev.userAgent}</span>}
             </div>
           ))}
         </div>

@@ -174,6 +174,7 @@ export async function exportDb(options = {}) {
     disabledModels: {},
     briefMode: {},
     tokenSaverStats: {},
+    promptInjectStats: {},
   };
 
   if (wants("combos")) {
@@ -220,12 +221,22 @@ export async function importDb(payload, options = {}) {
   // Safety snapshot BEFORE the wipe: importing a wrong-but-valid file must
   // never be unrecoverable. Same lightweight backup the schema migrator
   // takes (excludes the request-details log); newest 3 are kept.
+  // Safety snapshot BEFORE the wipe: importing a wrong-but-valid file must
+  // never be unrecoverable. Same lightweight backup the schema migrator
+  // takes (excludes the request-details log); newest 3 are kept.
+  // opt44: fail CLOSED — if the safety backup itself fails, the import is
+  // cancelled instead of wiping without a fallback. Pruning old backups is
+  // best-effort cleanup and never blocks an import.
   try {
     const dir = makeBackupDir("pre-import");
     backupDbLite(db, dir);
+  } catch (e) {
+    throw new Error(`Pre-import safety backup failed — import cancelled to protect current data: ${e?.message || e}`);
+  }
+  try {
     pruneOldBackups();
   } catch (e) {
-    console.warn("[DB] Pre-import backup failed (continuing):", e?.message || e);
+    console.warn("[DB] Pre-import backup pruning failed (continuing):", e?.message || e);
   }
 
   db.transaction(() => {

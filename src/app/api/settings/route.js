@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { DATA_FILE } from "@/lib/db/paths.js";
+import { checkSsoOnlyGate } from "@/lib/auth/ssoTestGate.js";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +13,21 @@ const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
-// Secrets must never be mass-assigned from request body (CWE-915)
-const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
+// Secrets must never be mass-assigned from request body (CWE-915).
+// ssoLastTestOk is server-managed (SSO test gate) — a client must never be
+// able to forge a test pass through PATCH.
+const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted", "ssoLastTestOk"];
 
 export async function GET() {
   try {
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    // opt44: the SSO test-pass fingerprint is server-managed — never expose
+    // it through the dashboard API. databasePath is the real server-side
+    // location (fixes the hardcoded "~/.9router/db/data.sqlite" label).
+    delete safeSettings.ssoLastTestOk;
+    safeSettings.databasePath = DATA_FILE;
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
@@ -44,6 +53,11 @@ export async function PATCH(request) {
 
     // If updating password, hash it
     if (body.newPassword) {
+      // opt44: minimum length for NEW passwords (the env-only first-setup
+      // rule below is untouched — this only gates the new value).
+      if (String(body.newPassword).length < 8) {
+        return NextResponse.json({ error: "New password must be at least 8 characters" }, { status: 400 });
+      }
       const settings = await getSettings();
       const currentHash = settings.password;
 
@@ -73,6 +87,17 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
         delete body.oidcClientSecret;
+      }
+    }
+
+    // opt44: SSO-only gate — switching to a password-less mode requires a
+    // successful connection test of the exact configuration being saved.
+    // Only the authMode switch itself is gated; other PATCHes pass through.
+    if (body.authMode === "sso" || body.authMode === "saml" || body.authMode === "oidc") {
+      const current = await getSettings();
+      const gateError = checkSsoOnlyGate({ ...current, ...body });
+      if (gateError) {
+        return NextResponse.json({ error: gateError }, { status: 400 });
       }
     }
 
@@ -110,6 +135,8 @@ export async function PATCH(request) {
 
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    delete safeSettings.ssoLastTestOk;
+    safeSettings.databasePath = DATA_FILE;
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error updating settings:", error);

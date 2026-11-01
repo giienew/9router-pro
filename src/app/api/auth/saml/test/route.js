@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
 import { formatX509Certificate } from "@/lib/auth/saml.js";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { recordSsoTestOk, fingerprintSaml } from "@/lib/auth/ssoTestGate.js";
 
 async function canAccessTestRoute() {
   const settings = await getSettings();
@@ -57,6 +58,9 @@ export async function POST(request) {
     const acsUrl = `${origin}/api/auth/saml/acs`;
     const metadataUrl = `${origin}/api/auth/saml/metadata`;
 
+    // opt44: record the test pass (fingerprint of the exact tested config)
+    // so PATCH /api/settings can allow an SSO-only switch for it.
+    await recordSsoTestOk("saml", fingerprintSaml({ samlEntryPoint, samlIssuer, samlCert }));
     return NextResponse.json({
       ok: true,
       samlEntryPoint,

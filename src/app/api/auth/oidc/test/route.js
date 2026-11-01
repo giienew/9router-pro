@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
 import { fetchOidcDiscovery, getPublicOrigin, probeOidcClientSecret } from "@/lib/auth/oidc";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { recordSsoTestOk, fingerprintOidc } from "@/lib/auth/ssoTestGate.js";
 
 async function canAccessTestRoute() {
   const settings = await getSettings();
@@ -64,6 +65,11 @@ export async function POST(request) {
       });
     }
 
+    // opt44: record the test pass (fingerprint of the exact tested config,
+    // secret hashed — never stored raw) so PATCH can allow an SSO-only
+    // switch. The invalid-secret branch above returns ok:false and records
+    // nothing, so a failed secret check can never open the gate.
+    await recordSsoTestOk("oidc", fingerprintOidc({ oidcIssuerUrl: issuerUrl, oidcClientId: clientId, oidcClientSecret: clientSecret }));
     return NextResponse.json({
       ok: true,
       discoveryOk: true,

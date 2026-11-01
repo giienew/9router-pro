@@ -53,6 +53,14 @@ export function getClientIp(request) {
     const realIp = request.headers.get("x-9r-real-ip");
     if (realIp) return realIp;
   }
+  // Behind Cloudflare (tunnel): the edge overwrites CF-Connecting-IP with
+  // the real client IP, so it cannot be spoofed through the public path —
+  // unlike X-Forwarded-For, whose first entry is client-controlled. The
+  // origin only receives traffic via the tunnel on localhost, so this
+  // header is trustworthy here. This also gives the login limiter and the
+  // security log per-IP values instead of a single "unknown" bucket.
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) return cfIp.trim();
   // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
   if (process.env.TRUST_PROXY === "true") {
     const xff = request.headers.get("x-forwarded-for");
