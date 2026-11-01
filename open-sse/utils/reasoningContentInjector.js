@@ -1,6 +1,13 @@
 // Some thinking-mode providers (DeepSeek, Kimi, MiniMax, ...) require reasoning_content
 // to be echoed back on assistant messages. Clients in OpenAI format don't send it,
 // so we inject a non-empty placeholder to satisfy upstream validation.
+//
+// Strict serde upstreams (axum/DeepSeek-compatible gateways) map both `reasoning`
+// and `reasoning_content` onto one struct field, so a message carrying both is
+// rejected with "duplicate field `reasoning_content`" — a non-retryable 400 that
+// surfaces to the client as a dead turn (observed with Hermes history, where one
+// assistant message carried both keys). Never let an upstream-bound message carry
+// both: keep reasoning_content, drop reasoning.
 import { PROVIDERS } from "../config/providers.js";
 
 const PLACEHOLDER = " ";
@@ -36,10 +43,33 @@ function shouldInject(message, scope) {
 
 function applyRule(body, rule) {
   if (!rule || !body?.messages) return body;
-  const messages = body.messages.map(m =>
-    shouldInject(m, rule.scope) ? { ...m, reasoning_content: PLACEHOLDER } : m
-  );
+  const messages = body.messages.map(m => {
+    if (!shouldInject(m, rule.scope)) return m;
+    // Injecting reasoning_content beside an existing `reasoning` key would
+    // create the alias pair, so drop `reasoning` in the same pass.
+    const injected = { ...m, reasoning_content: PLACEHOLDER };
+    delete injected.reasoning;
+    return injected;
+  });
   return { ...body, messages };
+}
+
+// Drop the alias pair unconditionally (not gated on any inject rule): a
+// message carrying both `reasoning` and `reasoning_content` is rejected by
+// strict serde upstreams no matter which provider/model serves it.
+function dropAliasedReasoning(body) {
+  if (!body?.messages) return body;
+  let changed = false;
+  const messages = body.messages.map(m => {
+    if (m && typeof m === "object" && "reasoning" in m && "reasoning_content" in m) {
+      const next = { ...m };
+      delete next.reasoning;
+      changed = true;
+      return next;
+    }
+    return m;
+  });
+  return changed ? { ...body, messages } : body;
 }
 
 function applyDeepSeekV4ProAlias({ provider, model, body }) {
@@ -72,5 +102,5 @@ export function injectReasoningContent({ provider, model, body }) {
   const modelRule = MODEL_RULES.find(r => r.match(model));
   const rule = providerRule || modelRule;
   const nextBody = applyDeepSeekV4ProAlias({ provider, model, body });
-  return applyRule(nextBody, rule);
+  return applyRule(dropAliasedReasoning(nextBody), rule);
 }
