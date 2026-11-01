@@ -130,31 +130,21 @@ export default function Sidebar({ onClose }) {
   return (
     <>
       <aside className="flex w-64 sm:w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 h-full max-h-dvh overflow-hidden">
-        {/* Mobile drawer header: two rows so the credit never wraps (row 1: dots + close + socials, row 2: credit single line). */}
-        <div className="flex flex-col gap-2 px-6 pt-5 pb-2 lg:hidden">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
-            <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-            <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close menu"
-              className="ml-2 -my-1 p-2 rounded text-text-muted hover:text-text-main"
-            >
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-            <span className="ml-auto"><ModderSocials /></span>
-          </div>
-          <span className="whitespace-nowrap text-[11px] leading-tight text-text-subtle">
-            Modder by <span className="font-semibold text-brand-500">Gienetic</span>
-          </span>
-        </div>
-        {/* Desktop drawer header: original single row, unchanged. */}
-        <div className="hidden lg:flex items-center gap-2 px-6 pt-5 pb-2">
+        {/* Traffic lights + modder credit, one aligned row */}
+        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
           <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
           <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
+          {/* Visible close affordance on the mobile drawer (G20): tapping the
+              scrim is not the only way out on narrow phones. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="ml-2 -my-1 p-2 rounded text-text-muted hover:text-text-main lg:hidden"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
           <span className="ml-auto flex items-center gap-2.5">
             <span className="text-[11px] leading-tight text-text-subtle">
               Modder by <span className="font-semibold text-brand-500">Gienetic</span>
