@@ -10,6 +10,7 @@ import { makeKv } from "../helpers/kvStore.js";
 const kv = makeKv("tokenSaverStats");
 const FLUSH_EVERY = 20;
 const FLUSH_DELAY_MS = 30_000;
+const RETENTION_DAYS = 90;
 
 let buffer = [];
 let flushTimer = null;
@@ -76,8 +77,23 @@ export async function flushTokenSaverStats() {
   }
 }
 
+// Retention: the stats API clamps to 90 days, so day-rows older than that
+// are never read. Prune them on read (the same place that already flushes),
+// so the scope stays bounded without any timer or background job.
+async function pruneOldDays() {
+  try {
+    const cutoff = dayKey(Date.now() - RETENTION_DAYS * 86_400_000);
+    const all = await kv.getAll();
+    const stale = Object.keys(all).filter((k) => k < cutoff);
+    for (const k of stale) await kv.remove(k);
+  } catch {
+    // Best-effort, like the rest of this repo.
+  }
+}
+
 export async function getTokenSaverStats(days = 14) {
   await flushTokenSaverStats();
+  await pruneOldDays();
   const out = [];
   const now = Date.now();
   for (let i = days - 1; i >= 0; i--) {

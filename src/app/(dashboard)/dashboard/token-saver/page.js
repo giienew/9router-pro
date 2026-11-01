@@ -1,11 +1,11 @@
-import TokenSaverClient from "./TokenSaverClient";
 import TokenSaverPro from "./TokenSaverPro";
+import TokenSaverClient from "./TokenSaverClient";
 
 export default function TokenSaverPage() {
   return (
     <>
-      <TokenSaverClient />
       <TokenSaverPro />
+      <TokenSaverClient />
     </>
   );
 }

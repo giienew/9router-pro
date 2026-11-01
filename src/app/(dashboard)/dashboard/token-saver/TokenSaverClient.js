@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, Button, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
+import { getCurrentLocale, onLocaleChange, translate } from "@/i18n/runtime";
 import {
   WENYAN_LOCALES,
   CAVEMAN_LEVELS,
@@ -485,6 +485,11 @@ export default function TokenSaverClient() {
             Token Saver
           </h2>
         </div>
+        <details className="group" open>
+          <summary className="cursor-pointer select-none text-xs font-semibold text-text-muted hover:text-primary transition-colors">
+            <span className="material-symbols-outlined align-middle text-[16px] text-text-muted group-open:rotate-90 transition-transform">chevron_right</span>
+            Setup
+          </summary>
         <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
           <div className="min-w-0 flex-1">
             <p className="font-medium">
@@ -671,7 +676,7 @@ export default function TokenSaverClient() {
                           ? "bg-primary text-white border-primary"
                           : "bg-transparent border-border text-text-muted hover:bg-surface-2"
                       }`}
-                      title={lvl.desc}
+                      title={translate(lvl.desc)}
                     >
                       {lvl.label}
                     </button>
@@ -722,7 +727,7 @@ export default function TokenSaverClient() {
                           ? "bg-primary text-white border-primary"
                           : "bg-transparent border-border text-text-muted hover:bg-surface-2"
                       }`}
-                      title={lvl.desc}
+                      title={translate(lvl.desc)}
                     >
                       {lvl.label}
                     </button>
@@ -801,6 +806,7 @@ export default function TokenSaverClient() {
           />
         </div>
         )}
+        </details>
       </Card>
 
       <Modal

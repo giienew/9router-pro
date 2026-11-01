@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button } from "@/shared/components";
+import { translate, onLocaleChange } from "@/i18n/runtime";
 
 const LEVELS = [
   { id: "", label: "Off" },
@@ -93,7 +94,7 @@ function SavingsPanel() {
               </div>
             ))}
           </div>
-          <div className="mt-4 flex h-20 items-end gap-1" title="Estimated tokens saved per day">
+          <div className="mt-4 flex h-20 items-end gap-1" title={translate("Estimated tokens saved per day")}>
             {stats.days.map((d) => {
               const saved = (d.bytesBefore || 0) - (d.bytesAfter || 0);
               return (
@@ -170,7 +171,7 @@ function TestBench() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={8}
-        placeholder="Paste a git diff, build log, test output… (RTK engages from ~500 characters)"
+        placeholder={translate("Paste a git diff, build log, test output… (RTK engages from ~500 characters)")}
         className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
       />
       <div className="mt-2 flex items-center gap-3">
@@ -213,7 +214,7 @@ function LevelSelect({ value, onChange }) {
       className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
     >
       {LEVELS.map((l) => (
-        <option key={l.id} value={l.id}>{l.label}</option>
+        <option key={l.id} value={l.id}>{translate(l.label)}</option>
       ))}
     </select>
   );
@@ -284,7 +285,7 @@ function BriefMode() {
               onChange={(e) => setSelKey(e.target.value)}
               className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
             >
-              <option value="">— select a key —</option>
+              <option value="">{translate("— select a key —")}</option>
               {keys.map((k) => <option key={k.id} value={k.id}>{k.name || k.id.slice(0, 8)}</option>)}
             </select>
             <LevelSelect value={selKeyLevel} onChange={setSelKeyLevel} />
@@ -308,7 +309,7 @@ function BriefMode() {
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
               list="brief-model-list"
-              placeholder="model or combo name"
+              placeholder={translate("model or combo name")}
               className="rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-sm"
             />
             <datalist id="brief-model-list">
@@ -411,11 +412,14 @@ function AntiFlakyCard() {
 }
 
 export default function TokenSaverPro() {
+  // Re-render translated strings when the dashboard locale changes.
+  const [, setLocaleTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLocaleTick((t) => t + 1)), []);
   return (
     <div className="space-y-6">
       <SavingsPanel />
-      <BriefMode />
       <TestBench />
+      <BriefMode />
       <AntiFlakyCard />
     </div>
   );
