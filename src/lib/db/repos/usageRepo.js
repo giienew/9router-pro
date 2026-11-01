@@ -893,10 +893,10 @@ export async function getChartData(period = "7d") {
     const startTime = startOfDay.getTime();
     const endTime = startTime + bucketCount * bucketMs;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0, requests: 0 }));
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0, requests: 0, cached: 0, completion: 0 }));
 
     const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
       [new Date(startTime).toISOString()]
     );
     for (const r of rows) {
@@ -907,6 +907,11 @@ export async function getChartData(period = "7d") {
         buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
         buckets[idx].cost += r.cost || 0;
         buckets[idx].requests += 1;
+        // opt41: cached lives only in the JSON tokens blob (same keys the
+        // stats path uses); completion mirrors the column the tokens sum uses.
+        const tk = parseJson(r.tokens, {}) || {};
+        buckets[idx].cached += tk.cached_tokens || tk.cache_read_input_tokens || 0;
+        buckets[idx].completion += r.completionTokens || 0;
       }
     }
     // "Today" stops at the current hour — future hours are not zero-usage,
@@ -920,10 +925,10 @@ export async function getChartData(period = "7d") {
     const bucketMs = 3600000;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
     const startTime = now - bucketCount * bucketMs;
-    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0, requests: 0 }));
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0, requests: 0, cached: 0, completion: 0 }));
 
     const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
       [new Date(startTime).toISOString()]
     );
     for (const r of rows) {
@@ -933,6 +938,10 @@ export async function getChartData(period = "7d") {
       buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
       buckets[idx].cost += r.cost || 0;
       buckets[idx].requests += 1;
+      // opt41: same cached/completion extraction as the "today" path above.
+      const tk = parseJson(r.tokens, {}) || {};
+      buckets[idx].cached += tk.cached_tokens || tk.cache_read_input_tokens || 0;
+      buckets[idx].completion += r.completionTokens || 0;
     }
     return buckets;
   }
@@ -960,6 +969,9 @@ export async function getChartData(period = "7d") {
         tokens: dayData ? (dayData.promptTokens || 0) + (dayData.completionTokens || 0) : 0,
         cost: dayData ? (dayData.cost || 0) : 0,
         requests: dayData ? (dayData.requests || 0) : 0,
+        // opt41: daily rollups already store cached/completion separately.
+        cached: dayData ? (dayData.cachedTokens || 0) : 0,
+        completion: dayData ? (dayData.completionTokens || 0) : 0,
       };
     });
   }
@@ -982,6 +994,9 @@ export async function getChartData(period = "7d") {
       tokens: dayData ? (dayData.promptTokens || 0) + (dayData.completionTokens || 0) : 0,
       cost: dayData ? (dayData.cost || 0) : 0,
       requests: dayData ? (dayData.requests || 0) : 0,
+      // opt41: daily rollups already store cached/completion separately.
+      cached: dayData ? (dayData.cachedTokens || 0) : 0,
+      completion: dayData ? (dayData.completionTokens || 0) : 0,
     };
   });
 }

@@ -372,6 +372,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               requests: buckets.map((b) => b.requests || 0),
               tokens: buckets.map((b) => b.tokens || 0),
               cost: buckets.map((b) => b.cost || 0),
+              // opt41: cached/completion buckets from the same chart endpoint.
+              cached: buckets.map((b) => b.cached || 0),
+              completion: buckets.map((b) => b.completion || 0),
             });
           }
         })

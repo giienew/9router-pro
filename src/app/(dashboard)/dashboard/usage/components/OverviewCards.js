@@ -65,10 +65,12 @@ export default function OverviewCards({ stats, series = null }) {
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Cached Tokens</span>
         <span className="w-full truncate text-lg font-bold text-info xl:text-xl" title={fmt(stats.totalCachedTokens)}>{fmt(stats.totalCachedTokens)}</span>
+        {series?.cached && <span className="w-full text-info"><Sparkline values={series.cached} /></span>}
       </Card>
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Output Tokens</span>
         <span className="w-full truncate text-lg font-bold text-success xl:text-xl" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
+        {series?.completion && <span className="w-full text-success"><Sparkline values={series.completion} /></span>}
       </Card>
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Est. Cost</span>
