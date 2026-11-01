@@ -92,16 +92,20 @@ ProviderNode.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
-// Center 9Router node — flat bordered node, single brand accent.
+// Center 9Router node — the "sun": a flat circle, single brand accent.
+// No glow, no shadow, no animation; the circle + orbit rings carry the
+// solar-system read while the node itself stays a plain bordered disc.
+// Label, logo, and count badge keep their previous sizes.
 function RouterNode({ data }) {
   const powering = (data.activeCount || 0) > 0;
   return (
     <div
-      className={`relative z-[1] flex items-center justify-center px-5 py-3 rounded-xl border-2 min-w-[130px] ${
+      className={`relative z-[1] flex flex-col items-center justify-center gap-1 rounded-full border-2 ${
         powering
           ? "border-primary bg-primary/10"
           : "border-primary bg-primary/5"
       }`}
+      style={{ width: "112px", height: "112px" }}
     >
       <Handle type="source" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
@@ -111,7 +115,7 @@ function RouterNode({ data }) {
       <img
         src="/favicon.svg"
         alt="9Router"
-        className="w-6 h-6 mr-2"
+        className="w-7 h-7"
         loading="lazy"
         decoding="async"
       />
@@ -119,7 +123,7 @@ function RouterNode({ data }) {
         9Router
       </span>
       {data.activeCount > 0 && (
-        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary text-white text-xs font-bold">
+        <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[11px] leading-none font-bold">
           {data.activeCount}
         </span>
       )}
@@ -128,6 +132,34 @@ function RouterNode({ data }) {
 }
 
 RouterNode.propTypes = {
+  data: PropTypes.object.isRequired,
+};
+
+// Orbit ring — a hairline ellipse in flow space, so it pans and zooms with
+// the nodes (a screen-space overlay would drift off the planets). Rendered
+// first in the nodes array so it paints behind every node, and
+// pointer-events-none so it is never interactive. Flat stroke only.
+function OrbitRing({ data }) {
+  const { rx, ry, opacity } = data;
+  return (
+    <div style={{ width: 2 * rx, height: 2 * ry, pointerEvents: "none" }}>
+      <svg width={2 * rx} height={2 * ry} viewBox={`0 0 ${2 * rx} ${2 * ry}`}>
+        <ellipse
+          cx={rx}
+          cy={ry}
+          rx={rx}
+          ry={ry}
+          fill="none"
+          stroke="var(--color-border)"
+          strokeWidth={1}
+          strokeOpacity={opacity}
+        />
+      </svg>
+    </div>
+  );
+}
+
+OrbitRing.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
@@ -167,15 +199,18 @@ TopologyEdge.propTypes = {
   data: PropTypes.object,
 };
 
-const nodeTypes = { provider: ProviderNode, router: RouterNode };
+const nodeTypes = { provider: ProviderNode, router: RouterNode, orbit: OrbitRing };
 const edgeTypes = { topology: TopologyEdge };
 
-// Place N nodes evenly along an ellipse around the router center.
+// Place N nodes evenly along an ellipse around the router center, with
+// two flat hairline orbit rings in the same flow space: the main ring
+// passes through the planet nodes, the inner ring adds depth. Ring extents
+// stay inside the provider nodes' extents, so fitView bounds are unchanged.
 function buildLayout(providers, activeSet, lastSet, errorSet) {
   const nodeW = 180;
   const nodeH = 30;
-  const routerW = 120;
-  const routerH = 44;
+  const routerW = 112;
+  const routerH = 112;
   const nodeGap = 24;
 
   const count = providers.length;
@@ -193,6 +228,25 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
 
   const nodes = [];
   const edges = [];
+
+  // Orbit rings first: they paint behind every node. Positioned so each
+  // ellipse is centered on the router (origin).
+  nodes.push({
+    id: "orbit-main",
+    type: "orbit",
+    position: { x: -rx, y: -ry },
+    data: { rx, ry, opacity: 0.55 },
+    draggable: false,
+    selectable: false,
+  });
+  nodes.push({
+    id: "orbit-inner",
+    type: "orbit",
+    position: { x: -rx * 0.62, y: -ry * 0.62 },
+    data: { rx: rx * 0.62, ry: ry * 0.62, opacity: 0.28 },
+    draggable: false,
+    selectable: false,
+  });
 
   nodes.push({
     id: "router",
