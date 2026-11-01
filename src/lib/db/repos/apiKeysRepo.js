@@ -53,12 +53,25 @@ export async function createApiKey(name, machineId, opts = {}) {
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
-  const result = generateApiKeyWithMachine(machineId, opts.prefix);
+  // opt10: a custom value is stored verbatim (generation skipped); a
+  // generated value retries on (extremely unlikely) collision.
+  let key;
+  if (typeof opts.customKey === "string" && opts.customKey.trim() !== "") {
+    key = opts.customKey.trim();
+  } else {
+    let generated = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = generateApiKeyWithMachine(machineId, opts.prefix);
+      if (!(await getApiKeyByKey(candidate.key))) { generated = candidate; break; }
+    }
+    if (!generated) throw new Error("Failed to generate a unique key");
+    key = generated.key;
+  }
   const expiresAt = opts.expiresAt || null;
   const apiKey = {
     id: uuidv4(),
     name,
-    key: result.key,
+    key,
     machineId,
     isActive: true,
     createdAt: new Date().toISOString(),

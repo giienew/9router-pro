@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey, getApiKeyById, updateApiKey, getAllKeyQuotas, getKeyUsageInWindow, getAllKeyLimits, setKeyQuota, setKeyLimits } from "@/lib/localDb";
+import { getApiKeys, createApiKey, getApiKeyById, updateApiKey, getApiKeyByKey, getAllKeyQuotas, getKeyUsageInWindow, getAllKeyLimits, setKeyQuota, setKeyLimits } from "@/lib/localDb";
 import { getAdapter } from "@/lib/db/driver.js";
 import { recordQuotaPressure } from "@/lib/trustEvents.js";
 import { getKeyLimitUsage } from "@/lib/keyRateLimiter.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { validateCustomKey } from "@/shared/utils/apiKey";
 
 export const dynamic = "force-dynamic";
 
@@ -44,22 +45,44 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, prefix } = body;
+    const { name, prefix, customKey } = body;
 
-    if (!name) {
+    if (!name || !String(name).trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+    const trimmedName = String(name).trim();
+
+    // opt10: key names are unique (case-insensitive) — two keys sharing a
+    // name are indistinguishable in the list, which misleads resellers.
+    const existingKeys = await getApiKeys();
+    if (existingKeys.some((k) => (k.name || "").trim().toLowerCase() === trimmedName.toLowerCase())) {
+      return NextResponse.json({ error: "Nama key sudah dipakai" }, { status: 400 });
+    }
+
+    // opt10: an optional custom value IS the full key (prefix is ignored
+    // entirely — not validated, not prepended). Empty means "generate".
+    const rawCustom = typeof customKey === "string" ? customKey.trim() : "";
+    let customValue = null;
+    if (rawCustom !== "") {
+      const checked = validateCustomKey(rawCustom);
+      if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+      if (await getApiKeyByKey(checked.value)) {
+        return NextResponse.json({ error: "Key sudah dipakai" }, { status: 400 });
+      }
+      customValue = checked.value;
     }
 
     // Custom key prefix (per key, at creation). Default stays "sk".
+    // Skipped entirely when a custom value is given.
     const rawPrefix = typeof prefix === "string" ? prefix.trim() : "";
     const keyPrefix = rawPrefix === "" ? "sk" : rawPrefix;
-    if (!/^[A-Za-z0-9_-]{1,20}$/.test(keyPrefix)) {
+    if (!customValue && !/^[A-Za-z0-9_-]{1,20}$/.test(keyPrefix)) {
       return NextResponse.json({ error: "Invalid prefix: only letters, digits, - and _ allowed, max 20 chars" }, { status: 400 });
     }
 
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId, { prefix: keyPrefix });
+    const apiKey = await createApiKey(trimmedName, machineId, customValue ? { customKey: customValue } : { prefix: keyPrefix });
 
     return NextResponse.json({
       key: apiKey.key,

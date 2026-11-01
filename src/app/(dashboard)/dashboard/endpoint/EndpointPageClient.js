@@ -33,6 +33,7 @@ export default function APIPageClient({ machineId }) {
   // key's Settings panel).
   const emptyKeyDraft = () => ({
     prefix: "sk",
+    customKey: "",
     restricted: false,
     allow: [],
     quotaEnabled: false,
@@ -48,6 +49,11 @@ export default function APIPageClient({ machineId }) {
   const [createPickerAliases, setCreatePickerAliases] = useState({});
   const [createdKey, setCreatedKey] = useState(null);
   const [createdKeyName, setCreatedKeyName] = useState("");
+  // opt10: inline rename (key id + draft) and custom-value edit target.
+  const [editingNameId, setEditingNameId] = useState(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
+  const [customKeyTarget, setCustomKeyTarget] = useState(null);
+  const [customKeyValue, setCustomKeyValue] = useState("");
   const [confirmState, setConfirmState] = useState(null);
   // R11 bulk key edit: checkbox selection + one modal for the selection.
   const [selectedKeyIds, setSelectedKeyIds] = useState([]);
@@ -695,10 +701,11 @@ export default function APIPageClient({ machineId }) {
     if (!newKeyName.trim()) return;
 
     try {
+      const customKeyValue = (newKeyDraft.customKey || "").trim();
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, prefix: (newKeyDraft.prefix || "").trim() || "sk" }),
+        body: JSON.stringify({ name: newKeyName, prefix: (newKeyDraft.prefix || "").trim() || "sk", ...(customKeyValue ? { customKey: customKeyValue } : {}) }),
       });
       const data = await res.json();
 
@@ -741,6 +748,89 @@ export default function APIPageClient({ machineId }) {
     } catch (error) {
       console.log("Error creating key:", error);
       notify.error(error?.message || "Failed to create API key");
+    }
+  };
+
+  // opt10: rename a key inline (unique name enforced server-side).
+  const handleRenameKey = async (key) => {
+    const trimmed = editingNameValue.trim();
+    if (!trimmed) { notify.error("Nama key tidak boleh kosong"); return; }
+    if (trimmed === key.name) { setEditingNameId(null); return; }
+    try {
+      const res = await fetch(`/api/keys/${key.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditingNameId(null);
+        await fetchData();
+      } else {
+        notify.error(data.error || "Failed to rename API key");
+      }
+    } catch (error) {
+      console.log("Error renaming key:", error);
+      notify.error(error?.message || "Failed to rename API key");
+    }
+  };
+
+  // opt10: regenerate the random value (old value dies immediately; the new
+  // one is shown once, like at creation). Settings/quota/limits survive
+  // because they are keyed by the key's internal id, not its value.
+  const handleRegenerateKey = (key) => {
+    setConfirmState({
+      title: "Regenerate API Key",
+      message: `Regenerate API key "${key.name}"?\n\nKey lama akan langsung tidak berlaku. Key baru akan ditampilkan sekali untuk dicopy.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const res = await fetch(`/api/keys/${key.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ regenerate: true }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setCreatedKey(data.key.key);
+            setCreatedKeyName(key.name);
+            await fetchData();
+          } else {
+            notify.error(data.error || "Failed to regenerate API key");
+          }
+        } catch (error) {
+          console.log("Error regenerating key:", error);
+          notify.error(error?.message || "Failed to regenerate API key");
+        }
+      }
+    });
+  };
+
+  // opt10: replace the value with a user-chosen one (same once-modal flow).
+  const handleCustomKeySave = async () => {
+    if (!customKeyTarget) return;
+    const trimmed = customKeyValue.trim();
+    if (!trimmed) { notify.error("Custom key tidak boleh kosong"); return; }
+    try {
+      const res = await fetch(`/api/keys/${customKeyTarget.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customKey: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const targetName = customKeyTarget.name;
+        setCustomKeyTarget(null);
+        setCustomKeyValue("");
+        setCreatedKey(data.key.key);
+        setCreatedKeyName(targetName);
+        await fetchData();
+      } else {
+        notify.error(data.error || "Failed to update API key");
+      }
+    } catch (error) {
+      console.log("Error setting custom key:", error);
+      notify.error(error?.message || "Failed to update API key");
     }
   };
 
@@ -1218,7 +1308,45 @@ export default function APIPageClient({ machineId }) {
                   className="mt-1 shrink-0 accent-indigo-500"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
+                  {editingNameId === key.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={editingNameValue}
+                        onChange={(e) => setEditingNameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameKey(key);
+                          if (e.key === "Escape") setEditingNameId(null);
+                        }}
+                        autoFocus
+                        className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text-main outline-none transition-colors focus:border-brand-500"
+                      />
+                      <button
+                        onClick={() => handleRenameKey(key)}
+                        className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded text-primary transition-all"
+                        title="Save name"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">check</span>
+                      </button>
+                      <button
+                        onClick={() => setEditingNameId(null)}
+                        className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted transition-all"
+                        title="Cancel"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium flex items-center gap-1">
+                      {key.name}
+                      <button
+                        onClick={() => { setEditingNameId(key.id); setEditingNameValue(key.name); }}
+                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                        title="Rename key"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">edit</span>
+                      </button>
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 mt-1 min-w-0 flex-wrap">
                     <code className="text-xs text-text-muted font-mono break-all min-w-0">
                       {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
@@ -1240,6 +1368,20 @@ export default function APIPageClient({ machineId }) {
                         <span className="material-symbols-outlined text-[14px]">
                           {copied === key.id ? "check" : "content_copy"}
                         </span>
+                      </button>
+                      <button
+                        onClick={() => handleRegenerateKey(key)}
+                        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                        title="Regenerate key"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">refresh</span>
+                      </button>
+                      <button
+                        onClick={() => { setCustomKeyTarget(key); setCustomKeyValue(""); }}
+                        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
+                        title="Set custom key"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">key</span>
                       </button>
                     </div>
                   </div>
@@ -1364,6 +1506,15 @@ export default function APIPageClient({ machineId }) {
               placeholder="sk"
             />
             <span className="mt-0.5 block text-[11px] text-text-muted">Ganti dengan inisial/brand kamu, huruf angka - _ saja, default sk.</span>
+          </div>
+          <div>
+            <Input
+              label="Custom Key"
+              value={newKeyDraft.customKey}
+              onChange={(e) => setNewKeyDraft((d) => ({ ...d, customKey: e.target.value }))}
+              placeholder="vio-key-saya-keren"
+            />
+            <span className="mt-0.5 block text-[11px] text-text-muted">Opsional. Jika diisi, nilai ini dipakai apa adanya (prefix diabaikan). Tanpa spasi, hanya huruf, angka, - dan _. Minimal 12 karakter.</span>
           </div>
 
           {/* 9Router Pro: optional settings, applied at creation */}
@@ -1537,6 +1688,32 @@ export default function APIPageClient({ machineId }) {
             closeOnSelect={false}
           />
         )}
+      </Modal>
+
+      {/* opt10: set a user-chosen value for an existing key */}
+      <Modal
+        isOpen={!!customKeyTarget}
+        title="Set Custom Key"
+        onClose={() => { setCustomKeyTarget(null); setCustomKeyValue(""); }}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-text-muted">
+            Key saat ini: <code className="font-mono break-all">{customKeyTarget ? maskKey(customKeyTarget.key) : ""}</code>
+          </p>
+          <div>
+            <Input
+              label="Custom key baru"
+              value={customKeyValue}
+              onChange={(e) => setCustomKeyValue(e.target.value)}
+              placeholder="vio-key-saya-keren"
+            />
+            <span className="mt-0.5 block text-[11px] text-text-muted">Tanpa spasi, hanya huruf, angka, - dan _. Minimal 12 karakter. Key lama langsung tidak berlaku dan key baru ditampilkan sekali untuk dicopy.</span>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => { setCustomKeyTarget(null); setCustomKeyValue(""); }} variant="ghost" fullWidth>Cancel</Button>
+            <Button onClick={handleCustomKeySave} fullWidth disabled={!customKeyValue.trim()}>Save custom key</Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Created Key Modal */}

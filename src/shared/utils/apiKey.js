@@ -42,6 +42,36 @@ export function generateApiKeyWithMachine(machineId, prefix = "sk") {
 }
 
 /**
+ * Validate a user-chosen custom key value (used verbatim, no generation).
+ * Rules: trimmed, no spaces, only letters/digits/-/_ , 12-128 chars.
+ * @param {string} value
+ * @returns {{ ok: boolean, value?: string, error?: string }}
+ */
+export function validateCustomKey(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) return { ok: false, error: "Custom key tidak boleh kosong" };
+  if (/\s/.test(trimmed)) return { ok: false, error: "Custom key tidak boleh mengandung spasi" };
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) return { ok: false, error: "Custom key hanya boleh huruf, angka, - dan _" };
+  if (trimmed.length < 12) return { ok: false, error: "Custom key minimal 12 karakter" };
+  if (trimmed.length > 128) return { ok: false, error: "Custom key maksimal 128 karakter" };
+  return { ok: true, value: trimmed };
+}
+
+/**
+ * Prefix of a standard-format key (multi-dash prefixes included), or null
+ * when the value does not parse as a standard key (custom values, old format).
+ * @param {string} apiKey
+ * @returns {string | null}
+ */
+export function prefixOfStandardKey(apiKey) {
+  const parsed = parseApiKey(apiKey);
+  if (!parsed || !parsed.isNewFormat) return null;
+  const parts = apiKey.split("-");
+  const prefix = parts.slice(0, parts.length - 3).join("-");
+  return prefix || null;
+}
+
+/**
  * Parse API key and extract machineId + keyId
  * Supports both formats, with any non-empty prefix (letters, digits, - _):
  * - New: {prefix}-{machineId}-{keyId}-{crc8} (right-anchored, so a prefix
