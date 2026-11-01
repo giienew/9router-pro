@@ -18,6 +18,15 @@ function isLLMProvider(id) {
 function resolveProviderDisplay(id) {
   return getProviderByAlias(id)?.name || AI_PROVIDERS[id]?.name || id;
 }
+
+// Provider label under the model in Recent Requests: the already-fetched
+// provider-nodes map first (custom node ids → node names), built-in display
+// names second. Unlike resolveProviderDisplay it never falls back to a raw
+// node id — unresolvable ids render "—", never a guess, never a type label.
+function resolveRecentProvider(id, names) {
+  if (!id || id === "unknown") return "—";
+  return names?.[id] || getProviderByAlias(id)?.name || AI_PROVIDERS[id]?.name || "—";
+}
 import Badge from "./Badge";
 import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
@@ -77,7 +86,7 @@ function TimeAgo({ timestamp }) {
   return <>{timeAgo(timestamp)}</>;
 }
 
-function RecentRequests({ requests = [] }) {
+function RecentRequests({ requests = [], providerNames = {} }) {
   return (
     <Card className="flex min-w-0 flex-col overflow-hidden" padding="sm" style={{ height: 480 }}>
       {/* Header */}
@@ -107,12 +116,18 @@ function RecentRequests({ requests = [] }) {
             <tbody className="divide-y divide-border/50">
               {requests.map((r, i) => {
                 const ok = !r.status || r.status === "ok" || r.status === "success";
+                // Serving provider as a dimmed sub-line under the model: no
+                // new column, so the opt35 spacing stays intact on phones.
+                const providerName = resolveRecentProvider(r.provider, providerNames);
                 return (
                   <tr key={i} className="hover:bg-bg-subtle transition-colors">
                     <td className="py-1.5">
                       <span className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`} />
                     </td>
-                    <td className="py-1.5 font-mono truncate max-w-[120px]" title={r.model}>{r.model}</td>
+                    <td className="py-1.5 max-w-[120px]">
+                      <div className="font-mono truncate" title={r.model}>{r.model}</div>
+                      <div className="text-[11px] leading-tight text-text-muted truncate" title={providerName}>{providerName}</div>
+                    </td>
                     <td className="py-1.5 pr-2 text-right whitespace-nowrap">
                       <span className="text-primary">{fmt(r.promptTokens)}↑</span>
                       {" "}
@@ -612,7 +627,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             errorProvider={stats.errorProvider || ""}
             loadError={providersError}
           />
-          <RecentRequests requests={stats.recentRequests || []} />
+          <RecentRequests requests={stats.recentRequests || []} providerNames={providerNames} />
         </div>
       )}
 
