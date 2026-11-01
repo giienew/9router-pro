@@ -120,7 +120,7 @@ export function formatDoneLine({ usage, latency }) {
   return parts.join(" · ");
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false, requestId = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false, requestId = null, latencyMs = null }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -150,5 +150,6 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
     requestId: requestId || undefined,
+    latencyMs: Number.isFinite(latencyMs) ? Math.round(latencyMs) : undefined,
   }).catch(() => {});
 }

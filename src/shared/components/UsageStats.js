@@ -37,6 +37,15 @@ function timeAgo(timestamp) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+// Mirrors the Details tab's fmtMs exactly (RequestDetailsTab) so a latency
+// reads the same in both places. Rows without latency render "—", never 0.
+function fmtMs(n) {
+  const v = Number(n) || 0;
+  if (v < 1000) return `${Math.round(v)}ms`;
+  if (v < 60000) return `${(v / 1000).toFixed(1)}s`;
+  return `${Math.floor(v / 60000)}m ${String(Math.round((v % 60000) / 1000)).padStart(2, "0")}s`;
+}
+
 // m8: one shared 1s ticker for every TimeAgo on the page — the old code
 // ran one interval per Recent Requests row (20 timers). The ticker starts
 // on first subscribe and stops when the last row unmounts.
@@ -84,13 +93,14 @@ function RecentRequests({ requests = [] }) {
           </a>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-auto">
           <table className="w-full min-w-[300px] border-collapse text-xs">
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-border">
                 <th className="py-1.5 text-left font-semibold text-text-muted w-2"></th>
                 <th className="py-1.5 text-left font-semibold text-text-muted">Model</th>
                 <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">In / Out</th>
+                <th className="py-1.5 text-right font-semibold text-text-muted whitespace-nowrap">Latency</th>
                 <th className="py-1.5 text-right font-semibold text-text-muted">When</th>
               </tr>
             </thead>
@@ -108,6 +118,7 @@ function RecentRequests({ requests = [] }) {
                       {" "}
                       <span className="text-success">{fmt(r.completionTokens)}↓</span>
                     </td>
+                    <td className="py-1.5 text-right whitespace-nowrap font-mono">{r.latencyMs != null ? fmtMs(r.latencyMs) : "—"}</td>
                     <td className="py-1.5 text-right text-text-muted whitespace-nowrap"><TimeAgo timestamp={r.timestamp} /></td>
                   </tr>
                 );

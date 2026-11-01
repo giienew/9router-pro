@@ -144,12 +144,16 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
-    recentRing.items = rows.reverse().map((r) => ({
-      timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
-      apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {}),
-    }));
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    recentRing.items = rows.reverse().map((r) => {
+      const m = parseJson(r.meta, {}) || {};
+      return {
+        timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
+        apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
+        tokens: parseJson(r.tokens, {}),
+        latencyMs: Number.isFinite(m.latencyMs) ? m.latencyMs : null,
+      };
+    });
   } catch {}
 }
 
@@ -244,6 +248,7 @@ export async function getActiveRequests() {
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         status: e.status || "ok",
+        latencyMs: Number.isFinite(e.latencyMs) ? e.latencyMs : null,
       };
     })
     .filter((e) => {
@@ -279,6 +284,15 @@ export async function saveRequestUsage(entry) {
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+
+    // Latency rides in the existing meta JSON column (no schema change):
+    // callers that know total time pass latencyMs; rows without it keep
+    // meta exactly as before and read back as null ("—" in the UI).
+    const storedMeta = { ...(entry.meta || {}) };
+    if (Number.isFinite(entry.latencyMs)) {
+      storedMeta.latencyMs = Math.round(entry.latencyMs);
+      entry.latencyMs = storedMeta.latencyMs;
+    }
 
     let inserted = false;
 
@@ -330,7 +344,7 @@ export async function saveRequestUsage(entry) {
           // reported vs cost-only) so a usage row says HOW it was
           // counted; previously meta was always {}. Absent meta still
           // stores {} exactly as before.
-          stringifyJson(tokens), stringifyJson(entry.meta || {}), entry.requestId || null,
+          stringifyJson(tokens), stringifyJson(storedMeta), entry.requestId || null,
         ]
       );
 
@@ -535,17 +549,19 @@ export async function getUsageStats(period = "all", range = null) {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, meta FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows
     .map((r) => {
       const t = parseJson(r.tokens, {}) || {};
+      const m = parseJson(r.meta, {}) || {};
       return {
         timestamp: r.timestamp, model: r.model, provider: r.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
         status: r.status || "ok",
+        latencyMs: Number.isFinite(m.latencyMs) ? m.latencyMs : null,
       };
     })
     .filter((e) => {
