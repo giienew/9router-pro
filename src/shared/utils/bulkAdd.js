@@ -16,6 +16,15 @@
 // the backend upsert — but bulk auto-naming always appends " <n>", so this
 // path is unreachable from the bulk modal. Upgrade path: a backend
 // "skip-if-exists" flag on POST /api/providers if single-add ever needs it.
+//
+// opt21: the gap-fill above is now DISPLAY-ONLY (provisional progress
+// labels). It is NOT authoritative: the [id] page feeds it only the loaded,
+// paginated subset of names, so at provider scale (28k+ connections all
+// named "Key N") it generated colliding names that the backend refused
+// with 409 — and the modal showed only counts, hiding the reason. The
+// server now assigns the final name from DB names (POST autoAllocateName
+// + baseName); the worker sends baseName, never the provisional name, and
+// the server-assigned name from the save response is authoritative.
 
 /**
  * Parse one pipe-separated bulk line into { baseName, apiKey, providerSpecificData? }.
@@ -58,12 +67,13 @@ function parseLine(line, opts = {}) {
 }
 
 /**
- * Plan a bulk add: parse lines, assign collision-free "<base> <n>" names.
+ * Plan a bulk add: parse lines, assign provisional "<base> <n>" display
+ * names.
  *
  * @param {string[]} lines raw paste lines
  * @param {string[]|null|undefined} existingNames connection names already saved
  * @param {{isCloudflareAi?: boolean}} [opts]
- * @returns {{name: string, apiKey: string, skipped: boolean, providerSpecificData?: object}[]}
+ * @returns {{name: string, baseName: string, apiKey: string, skipped: boolean, providerSpecificData?: object}[]}
  */
 export function planBulkAdd(lines, existingNames, opts = {}) {
   const { isCloudflareAi = false } = opts;
@@ -81,8 +91,10 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
 
     const base = parsed.baseName;
 
-    // Gap-fill from 1: smallest free "<base> <n>" not in `used`.
-    // O(batch * existing) — fine for bulk add (tens to low hundreds of keys).
+    // Provisional display label only (opt21): gap-fill against the loaded
+    // subset so progress rows have a readable name. This NEVER decides
+    // uniqueness — the server allocates the final name from DB names, and
+    // the worker sends baseName, not this label.
     let idx = 1;
     let name;
     for (;;) {
@@ -92,7 +104,7 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
     }
     used.add(name.toLowerCase());
 
-    const entry = { name, apiKey: parsed.apiKey, skipped: false };
+    const entry = { name, baseName: base, apiKey: parsed.apiKey, skipped: false };
     if (parsed.providerSpecificData) entry.providerSpecificData = parsed.providerSpecificData;
     out.push(entry);
   }
@@ -111,10 +123,16 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
  * Names in `entries` must already be unique (see planBulkAdd) — that is what
  * makes parallel inserts safe against the backend's upsert-by-name.
  *
+ * Worker result (opt21): a boolean (true = success) or an object
+ * { ok, reason?, assignedName? }. The reason is preserved per failure so
+ * the modal can show WHY entries failed instead of only a count; the
+ * server-assigned name (when present) is authoritative over the entry's
+ * provisional display name.
+ *
  * @param {object[]} entries plan entries (see planBulkAdd)
- * @param {(entry: object) => Promise<boolean>} worker resolves true on success
+ * @param {(entry: object) => Promise<boolean|{ok: boolean, reason?: string, assignedName?: string}>} worker
  * @param {{concurrency?: number, onProgress?: (p: {done: number, total: number, current: string, success: number, failed: number}) => void}} [opts]
- * @returns {Promise<{success: number, failed: number}>}
+ * @returns {Promise<{success: number, failed: number, failures: {name: string, reason: string}[], assigned: string[]}>}
  */
 export async function runBulkPool(entries, worker, opts = {}) {
   const { concurrency = 6, onProgress = null } = opts;
@@ -123,6 +141,8 @@ export async function runBulkPool(entries, worker, opts = {}) {
   let failed = 0;
   let done = 0;
   let next = 0;
+  const failures = [];
+  const assigned = [];
   // Index claim happens synchronously before the first await of each
   // iteration, so no two workers ever grab the same entry.
   const runners = Array.from(
@@ -131,18 +151,33 @@ export async function runBulkPool(entries, worker, opts = {}) {
       while (next < total) {
         const entry = entries[next++];
         let ok = false;
+        let reason = null;
+        let assignedName = null;
         try {
-          ok = (await worker(entry)) === true;
+          const result = await worker(entry);
+          if (result === true) {
+            ok = true;
+          } else if (result && typeof result === "object") {
+            ok = result.ok === true;
+            reason = result.reason || null;
+            assignedName = result.assignedName || null;
+          }
         } catch {
           ok = false;
+          reason = "error";
         }
-        if (ok) success++;
-        else failed++;
+        if (ok) {
+          success++;
+          if (assignedName) assigned.push(assignedName);
+        } else {
+          failed++;
+          failures.push({ name: entry.name, reason: reason || "unknown" });
+        }
         done++;
         if (onProgress) onProgress({ done, total, current: entry.name, success, failed });
       }
     },
   );
   await Promise.all(runners);
-  return { success, failed };
+  return { success, failed, failures, assigned };
 }

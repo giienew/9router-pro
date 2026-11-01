@@ -63,7 +63,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
-  const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+  const [bulkResult, setBulkResult] = useState(null); // { success, failed, failures: [{name, reason}] }
   const [bulkProgress, setBulkProgress] = useState(null); // { done, total, current } while adding
   const bulkCloseTimer = useRef(null);
   // Auto-close timer must not fire after the modal unmounts (e.g. the user
@@ -177,10 +177,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const handleBulkSubmit = async () => {
     const lines = bulkText.split("\n");
     if (!lines.length) return;
-    // Plan collision-free names against existing connections so a generated
-    // "Key N" never matches a saved name (which the backend would upsert /
-    // overwrite instead of inserting). See bulkAdd.js for the full rationale.
-    // Pre-planned unique names are also what makes parallel inserts safe.
+    // Provisional display names only (opt21): the server allocates the
+    // final name from DB names, so the paginated existingNames here can
+    // never produce a false "free" name that then 409s. See bulkAdd.js.
     const plan = planBulkAdd(lines, existingNames, { isCloudflareAi });
     if (!plan.length) return;
     setSaving(true);
@@ -193,6 +192,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       // Validate each key before saving so bulk-added connections get a
       // real status (active/unknown) like single adds, instead of a
       // hardcoded "unknown" that never flips until a manual test.
+      // Validation never gates the save: only the save result decides
+      // success, and the server-assigned name (not the provisional label)
+      // is authoritative.
       let isValid = false;
       try {
         const vres = await fetch("/api/providers/validate", {
@@ -212,24 +214,35 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           body: JSON.stringify({
             provider,
             apiKey: entry.apiKey,
-            name: entry.name,
+            baseName: entry.baseName,
+            autoAllocateName: true,
             priority: 1,
             testStatus: isValid ? "active" : "unknown",
             ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
           }),
         });
-        return res.ok;
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return { ok: true, assignedName: data?.connection?.name || null };
+        }
+        const data = await res.json().catch(() => ({}));
+        return {
+          ok: false,
+          reason: data?.code === "PROVIDER_NAME_CONFLICT"
+            ? "name conflict"
+            : (data?.error ? String(data.error).slice(0, 100) : `HTTP ${res.status}`),
+        };
       } catch {
-        return false;
+        return { ok: false, reason: "network error" };
       }
     };
-    const { success, failed } = await runBulkPool(plan, worker, {
+    const { success, failed, failures } = await runBulkPool(plan, worker, {
       concurrency: 6,
       onProgress: (p) => setBulkProgress({ done: p.done, total: p.total, current: p.current }),
     });
     setSaving(false);
     setBulkProgress(null);
-    setBulkResult({ success, failed });
+    setBulkResult({ success, failed, failures: failures || [] });
     if (success > 0 && onBulkDone) onBulkDone();
     // Auto-close once finished: the result line flashes briefly so the
     // success/failed count is still seen, then the modal closes itself.
@@ -285,9 +298,27 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </div>
             )}
             {bulkResult && (
-              <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-yellow-400" : "text-green-400"}`}>
-                ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
-              </div>
+              <>
+                <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-yellow-400" : "text-green-400"}`}>
+                  ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
+                </div>
+                {bulkResult.failures && bulkResult.failures.length > 0 && (
+                  <div className="text-xs text-text-muted">
+                    <div>
+                      {Object.entries(bulkResult.failures.reduce((acc, f) => {
+                        acc[f.reason] = (acc[f.reason] || 0) + 1;
+                        return acc;
+                      }, {})).map(([reason, count]) => `${reason} (${count})`).join(" · ")}
+                    </div>
+                    {bulkResult.failures.slice(0, 5).map((f, i) => (
+                      <div key={`${f.name}-${i}`}>{f.name} — {f.reason}</div>
+                    ))}
+                    {bulkResult.failures.length > 5 && (
+                      <div>…and {bulkResult.failures.length - 5} more</div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
             <div className="flex gap-2">
               <Button onClick={handleBulkSubmit} fullWidth disabled={saving || !bulkText.trim()}>
