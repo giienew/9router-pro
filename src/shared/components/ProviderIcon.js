@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { getFaviconCandidates, getProviderIconSrc, markFaviconMissing, markProviderIconMissing } from "@/shared/utils/providerIcon";
+import { getBrandIconSrc, getFaviconCandidates, getProviderIconSrc, markFaviconMissing, markProviderIconMissing } from "@/shared/utils/providerIcon";
 
 function resolveSrc(src, providerId) {
   if (providerId) return getProviderIconSrc(providerId);
@@ -23,13 +23,16 @@ export default function ProviderIcon({
   detectBaseUrl,
 }) {
   // Icon chain: the bundled /providers/{id}.png first, then — for
-  // custom providers that pass their API base URL — the site's own
-  // favicon (origin, then parent domain), then the initials fallback.
-  // Purely presentational: plain <img> loads, browser-cached, and a
-  // failed candidate is never retried this session.
+  // custom providers whose API base URL is a known brand host — that
+  // brand's bundled mark, then the site's own apple-touch-icon
+  // (origin, then parent domain), then favicon.ico, then the initials
+  // fallback. Purely presentational: plain <img> loads, browser-cached,
+  // and a failed candidate is never retried this session.
   const localSrc = resolveSrc(src, providerId);
+  const brandSrc = getBrandIconSrc(detectBaseUrl);
   const candidates = [
     ...(localSrc ? [localSrc] : []),
+    ...(brandSrc && brandSrc !== localSrc ? [brandSrc] : []),
     ...getFaviconCandidates(detectBaseUrl),
   ];
   const [attempt, setAttempt] = useState(0);
