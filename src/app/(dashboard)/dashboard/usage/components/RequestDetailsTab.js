@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Card from "@/shared/components/Card";
 import Button from "@/shared/components/Button";
 import Drawer from "@/shared/components/Drawer";
@@ -99,6 +99,15 @@ function getInputTokens(tokens) {
   return prompt < cache ? cache : prompt;
 }
 
+// Same rule as the router's done-line formatter: raw ms is hard to read
+// ("12345ms"), so render seconds/minutes once the value grows.
+function fmtMs(n) {
+  const v = Number(n) || 0;
+  if (v < 1000) return `${Math.round(v)}ms`;
+  if (v < 60000) return `${(v / 1000).toFixed(1)}s`;
+  return `${Math.floor(v / 60000)}m ${String(Math.round((v % 60000) / 1000)).padStart(2, "0")}s`;
+}
+
 export default function RequestDetailsTab() {
   const [details, setDetails] = useState([]);
   const [pagination, setPagination] = useState({
@@ -114,6 +123,11 @@ export default function RequestDetailsTab() {
   const [observabilityEnabled, setObservabilityEnabled] = useState(null);
   const [providerNameCache, setProviderNameCache] = useState(null);
   const [fetchError, setFetchError] = useState("");
+  // Model input text updates instantly for typing, but the fetch uses this
+  // debounced value — otherwise every keystroke fires a request and a slow
+  // stale response can overwrite a newer one.
+  const [debouncedModel, setDebouncedModel] = useState("");
+  const abortRef = useRef(null);
   const [filters, setFilters] = useState({
     provider: "",
     model: "",
@@ -122,20 +136,48 @@ export default function RequestDetailsTab() {
     endDate: ""
   });
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedModel(filters.model.trim()), 400);
+    return () => clearTimeout(t);
+  }, [filters.model]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const fetchProviders = useCallback(async () => {
     try {
       const res = await fetch("/api/usage/providers");
       const data = await res.json();
-      setProviders(data.providers || []);
-
       const cache = await fetchProviderNames(true);
       setProviderNameCache(cache.providerNameCache);
+
+      // Dropdown options = every provider a user could filter by, not only
+      // providers that already have detail rows (which is empty until the
+      // first request lands). Union of the node list + built-in aliases +
+      // distinct row values, deduped by stored id, sorted by display name.
+      const byId = new Map();
+      for (const [id, name] of Object.entries(cache.providerNodesCache || {})) byId.set(id, name);
+      for (const p of Object.values(AI_PROVIDERS)) {
+        if (p.hidden) continue;
+        const id = p.alias || p.id;
+        if (id && !byId.has(id)) byId.set(id, p.name || id);
+      }
+      for (const p of data.providers || []) {
+        if (!byId.has(p.id)) byId.set(p.id, p.name || p.id);
+      }
+      setProviders([...byId.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error("Failed to fetch providers:", error);
     }
   }, []);
 
   const fetchDetails = useCallback(async () => {
+    // Abort the previous in-flight fetch: without this a slow stale response
+    // can overwrite newer results after a filter change.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     // Inverted range: explain inline instead of fetching a guaranteed-empty page.
     if (filters.startDate && filters.endDate && new Date(filters.startDate) > new Date(filters.endDate)) {
@@ -150,14 +192,14 @@ export default function RequestDetailsTab() {
         pageSize: pagination.pageSize.toString()
       });
       if (filters.provider) params.append("provider", filters.provider);
-      const modelQuery = filters.model.trim();
-      if (modelQuery) params.append("model", modelQuery);
+      if (debouncedModel) params.append("model", debouncedModel);
       if (filters.status) params.append("status", filters.status);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
 
-      const res = await fetch(`/api/usage/request-details?${params}`);
+      const res = await fetch(`/api/usage/request-details?${params}`, { signal: controller.signal });
       const data = await res.json();
+      if (controller.signal.aborted) return;
       if (!res.ok) {
         setDetails([]);
         setFetchError(data.error || "Failed to load request details.");
@@ -171,13 +213,14 @@ export default function RequestDetailsTab() {
       }
       setPagination(prev => ({ ...prev, ...data.pagination }));
     } catch (error) {
+      if (error?.name === "AbortError") return;
       console.error("Failed to fetch request details:", error);
       setDetails([]);
       setFetchError("Failed to load request details — check your connection and try again.");
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) setLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, filters]);
+  }, [pagination.page, pagination.pageSize, filters.provider, filters.status, filters.startDate, filters.endDate, debouncedModel]);
 
   useEffect(() => {
     fetchProviders();
@@ -248,7 +291,7 @@ export default function RequestDetailsTab() {
               type="text"
               value={filters.model}
               onChange={(e) => updateFilter({ model: e.target.value })}
-              placeholder="Exact model name"
+              placeholder="Search model name"
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -419,8 +462,8 @@ export default function RequestDetailsTab() {
                     </td>
                     <td className="p-4 text-sm text-text-muted">
                       <div className="flex flex-col gap-0.5">
-                        <div>TTFT: <span className="font-mono">{detail.latency?.ttft || 0}ms</span></div>
-                        <div>Total: <span className="font-mono">{detail.latency?.total || 0}ms</span></div>
+                        <div>TTFT: <span className="font-mono">{fmtMs(detail.latency?.ttft)}</span></div>
+                        <div>Total: <span className="font-mono">{fmtMs(detail.latency?.total)}</span></div>
                       </div>
                     </td>
                     <td className="p-4 text-center">
@@ -489,7 +532,7 @@ export default function RequestDetailsTab() {
               <div>
                 <span className="text-text-muted">Latency:</span>{" "}
                 <span className="text-text-main font-mono">
-                  TTFT {selectedDetail.latency?.ttft || 0}ms / Total {selectedDetail.latency?.total || 0}ms
+                  TTFT {fmtMs(selectedDetail.latency?.ttft)} / Total {fmtMs(selectedDetail.latency?.total)}
                 </span>
               </div>
               <div>
