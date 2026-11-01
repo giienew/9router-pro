@@ -1255,7 +1255,7 @@ export default function PromptInjectionClient() {
   };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-4 sm:p-6">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-3">
         <p className="text-sm text-text-muted">
           Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
@@ -1296,6 +1296,63 @@ export default function PromptInjectionClient() {
         <p className="text-sm text-text-muted">Loading…</p>
       ) : (
         <>
+          <section className="flex flex-col gap-3">
+            <SectionTitle
+              icon="edit_note"
+              title={translate("Templates")}
+              info={{
+                title: "How Templates work",
+                paras: [
+                  "A template is a saved prompt in your library. It never runs on its own and has no target — it is just content, ready to reuse.",
+                  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.",
+                ],
+                bullets: [
+                  "Good for: a persona you reuse across several models.",
+                  "Good for: a prompt you are still drafting — keep it here until it is ready to attach.",
+                  "To change a prompt everywhere, edit the template, then re-apply it to each injection.",
+                ],
+              }}
+              action={
+                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
+                  {translate("New template")}
+                </Button>
+              }
+            >
+              A library of reusable prompts. Using a template copies its content into an
+              injection — the template itself never runs.
+            </SectionTitle>
+            {templates.length === 0 ? (
+              <>
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
+                  <p className="text-sm text-text-muted">
+                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
+                  {translate("Don't have a prompt yet? Browse prompt references at")}{" "}
+                  <a href="https://github.com/togg53192-cmd/jailbreaks" target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
+                    github.com/togg53192-cmd/jailbreaks
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {templates.map((t) => (
+                  <TemplateCard
+                    key={t.id}
+                    template={t}
+                    copiedId={copied}
+                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
+                    onEdit={() => setEditingTemplate(t)}
+                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
+                    usageCount={(usagesByName[t.name] || []).length}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="input"
@@ -1357,66 +1414,12 @@ export default function PromptInjectionClient() {
                 </details>
               )}
               {rows.length === 0 && (
-                <p className="text-sm text-text-muted">No injections yet — create one above.</p>
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
+                  <span className="material-symbols-outlined text-[28px] text-text-muted">input</span>
+                  <p className="text-sm text-text-muted">{translate("No injections yet — create one above.")}</p>
+                </div>
               )}
             </div>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <SectionTitle
-              icon="edit_note"
-              title={translate("Templates")}
-              info={{
-                title: "How Templates work",
-                paras: [
-                  "A template is a saved prompt in your library. It never runs on its own and has no target — it is just content, ready to reuse.",
-                  "When you create an injection From template, the prompt is copied into that injection. Editing the injection afterwards does not change the template, and editing the template does not change injections already made from it.",
-                ],
-                bullets: [
-                  "Good for: a persona you reuse across several models.",
-                  "Good for: a prompt you are still drafting — keep it here until it is ready to attach.",
-                  "To change a prompt everywhere, edit the template, then re-apply it to each injection.",
-                ],
-              }}
-              action={
-                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
-                  New template
-                </Button>
-              }
-            >
-              A library of reusable prompts. Using a template copies its content into an
-              injection — the template itself never runs.
-            </SectionTitle>
-            {templates.length === 0 ? (
-              <>
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
-                  <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
-                  <p className="text-sm text-text-muted">
-                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
-                  {translate("Don't have a prompt yet? Browse prompt references at")}{" "}
-                  <a href="https://github.com/togg53192-cmd/jailbreaks" target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
-                    github.com/togg53192-cmd/jailbreaks
-                  </a>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {templates.map((t) => (
-                  <TemplateCard
-                    key={t.id}
-                    template={t}
-                    copiedId={copied}
-                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
-                    onEdit={() => setEditingTemplate(t)}
-                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
-                    usageCount={(usagesByName[t.name] || []).length}
-                  />
-                ))}
-              </div>
-            )}
           </section>
 
           <section className="flex flex-col gap-3">
