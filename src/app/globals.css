@@ -88,7 +88,7 @@
   /* Surfaces (dark neumorphism — single default theme, owner order
      2026-11-02): near-black base, raised gradient slabs, soft dual
      shadows (dark below-right, faint light above-left). */
-  --color-bg: #0a0a0e;
+  --color-bg: #121214;
   --color-bg-alt: #0d0d12;
   --color-surface: #14141c;
   --color-surface-2: #1a1a24;
@@ -113,12 +113,12 @@
      slab's top edge) + a restrained accent aura on primary actions keep
      it premium-trendy, not halo. Inset stays only for carved fields
      and switch tracks. */
-  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 36px rgba(0, 0, 0, 0.7);
-  --shadow-warm: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 44px rgba(0, 0, 0, 0.7);
-  --shadow-elevated: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 48px rgba(0, 0, 0, 0.75);
-  --shadow-elev: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 48px rgba(0, 0, 0, 0.75);
+  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 20px 44px rgba(0, 0, 0, 0.6);
+  --shadow-warm: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 48px rgba(0, 0, 0, 0.6);
+  --shadow-elevated: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 28px 56px rgba(0, 0, 0, 0.65);
+  --shadow-elev: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 28px 56px rgba(0, 0, 0, 0.65);
   --shadow-neu-inset: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.05);
-  --shadow-neu-btn: 0 8px 18px rgba(0, 0, 0, 0.6);
+  --shadow-neu-btn: 0 10px 22px rgba(0, 0, 0, 0.55);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
 
   color-scheme: dark;
@@ -246,7 +246,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
    dark-only now, so these rules hang off .dark, not data-preset.
    ============================================================ */
 .dark body {
-  background: #0a0a0e;
+  background: #121214;
 }
 
 /* Floating slabs: clearly lighter than the page, thin uniform rim
@@ -254,31 +254,31 @@ input[type="range"].hue-slider::-moz-range-thumb {
    on all sides (an outline, not a bevel) so the slab reads as a sheet
    hovering above the background, never extruded out of it. */
 .dark .bg-surface {
-  background-image: linear-gradient(180deg, #14141e, #101016);
+  background-image: linear-gradient(180deg, #181822, #13131b);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
 }
 .dark .bg-surface-2 {
-  background-image: linear-gradient(180deg, #181820, #131318);
+  background-image: linear-gradient(180deg, #1c1c28, #16161f);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 20px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 24px rgba(0, 0, 0, 0.55);
 }
 .dark .bg-surface-3 {
-  background-image: linear-gradient(180deg, #1c1c26, #16161e);
+  background-image: linear-gradient(180deg, #20202e, #191924);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 12px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 16px rgba(0, 0, 0, 0.5);
 }
 
 /* Carved beds (code/log viewers, segmented tracks): inset, never raised. */
 .neu-inset {
-  background-color: #0a0a0e;
+  background-color: #0e0e12;
   background-image: none;
   border-color: transparent;
   box-shadow: var(--shadow-neu-inset);
 }
 .dark pre[class*="dark:bg-white/5"] {
-  background-color: #0a0a0e;
+  background-color: #0e0e12;
   background-image: none;
   border-color: transparent;
   box-shadow: var(--shadow-neu-inset);
@@ -301,14 +301,14 @@ input[type="range"].hue-slider::-moz-range-thumb {
    Toggle Off) holding a single floating gradient pill for the active
    choice — not two separate slabs with a seam. */
 .dark .seg-track {
-  background-color: #0a0a0e;
+  background-color: #0e0e12;
   box-shadow: var(--shadow-neu-inset);
 }
 
 /* Sidebar + header: same slab treatment, shape unchanged. */
 .dark aside,
 .dark header {
-  background-image: linear-gradient(180deg, #101014, #08080c);
+  background-image: linear-gradient(180deg, #14141a, #0f0f14);
   border-color: transparent;
   box-shadow: 8px 0 20px rgba(0, 0, 0, 0.45);
 }
@@ -326,7 +326,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
 .dark aside nav a:hover {
-  background-image: linear-gradient(180deg, #181820, #131318);
+  background-image: linear-gradient(180deg, #1c1c28, #16161f);
   box-shadow: var(--shadow-soft);
 }
 .dark aside nav a:hover .material-symbols-outlined {
@@ -358,7 +358,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
 .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 .dark textarea,
 .dark select {
-  background-color: #0a0a0e;
+  background-color: #0e0e12;
   border-color: transparent;
   border-radius: 14px;
   box-shadow: var(--shadow-neu-inset);
@@ -426,7 +426,7 @@ html.dark[data-accent="violet"] button[role="switch"][aria-checked="true"] {
 .dark ::-webkit-scrollbar-thumb {
   background: #26262f;
   border-radius: 8px;
-  border: 2px solid #0a0a0e;
+  border: 2px solid #121214;
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-brand-500) 45%, #26262f);
