@@ -252,18 +252,18 @@ input[type="range"].hue-slider::-moz-range-thumb {
    on all sides (an outline, not a bevel) so the slab reads as a sheet
    hovering above the background, never extruded out of it. */
 .dark .bg-surface {
-  background-image: linear-gradient(180deg, #282840, #1f1f2e);
+  background-image: linear-gradient(180deg, #1e1e2c, #14141e);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
 }
 .dark .bg-surface-2 {
-  background-image: linear-gradient(180deg, #2c2c40, #212132);
+  background-image: linear-gradient(180deg, #222230, #181824);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6);
 }
 .dark .bg-surface-3 {
-  background-image: linear-gradient(180deg, #303044, #252536);
+  background-image: linear-gradient(180deg, #262636, #1c1c2a);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55);
 }
@@ -303,7 +303,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
 .dark aside nav a:hover {
-  background-image: linear-gradient(180deg, #2a2a38, #20202a);
+  background-image: linear-gradient(180deg, #222230, #181824);
   box-shadow: var(--shadow-soft);
 }
 .dark aside nav a:hover .material-symbols-outlined {
