@@ -91,15 +91,15 @@ export default function UsageChart({ period = "7d" }) {
           <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradTokens" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.25} />
+                <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.38} />
                 <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradRequests" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.25} />
+                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.38} />
                 <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
+                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.38} />
                 <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
               </linearGradient>
             </defs>
