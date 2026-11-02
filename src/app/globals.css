@@ -248,18 +248,18 @@ input[type="range"].hue-slider::-moz-range-thumb {
 
 /* Floating slabs: top-lit gradient + drop shadow below, no border. */
 .dark .bg-surface {
-  background-image: linear-gradient(180deg, #1a1a22, #121218);
+  background-image: linear-gradient(180deg, #1f1f2c, #0f0f14);
   border-color: transparent;
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
 }
 .dark .bg-surface-2 {
-  background-image: linear-gradient(180deg, #20202a, #16161d);
+  background-image: linear-gradient(180deg, #242432, #13131a);
   border-color: transparent;
   box-shadow: var(--shadow-soft);
 }
 .dark .bg-surface-3 {
-  background-image: linear-gradient(180deg, #282834, #1c1c25);
+  background-image: linear-gradient(180deg, #2c2c3a, #191922);
   border-color: transparent;
   box-shadow: var(--shadow-soft);
 }
@@ -281,7 +281,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
 /* Sidebar + header: same slab treatment, shape unchanged. */
 .dark aside,
 .dark header {
-  background-image: linear-gradient(180deg, #101016, #0c0c11);
+  background-image: linear-gradient(180deg, #13131a, #0a0a0f);
   border-color: transparent;
   box-shadow: 8px 0 20px rgba(0, 0, 0, 0.45);
 }
@@ -299,7 +299,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
 .dark aside nav a:hover {
-  background-image: linear-gradient(180deg, #20202a, #16161d);
+  background-image: linear-gradient(180deg, #242432, #13131a);
   box-shadow: var(--shadow-soft);
 }
 .dark aside nav a:hover .material-symbols-outlined {
