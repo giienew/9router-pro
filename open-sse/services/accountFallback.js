@@ -287,13 +287,22 @@ function lruKey(connection, overlay) {
  * 18k-key fleet the old sort cost ~200ms per pick; this pass costs ~6ms.
  * An optional overlay map (id -> ms) overrides stored timestamps, so a
  * just-picked key immediately leaves the window for concurrent picks.
+ * Opt81: when a latency map (id -> EMA ms) is passed, the choice inside
+ * the window is weighted by 1/latency instead of uniform — faster keys
+ * serve more, but the window cap keeps any one key from monopolizing
+ * (anti-monopoly for sellers: a heavy buyer cannot hog the fastest keys,
+ * because only 32 candidates compete per pick) and unknown keys get the
+ * median weight, so new keys start fair and slow keys still get the
+ * occasional traffic that refreshes their EMA and proves recovery.
+ * Without latency data the pick is exactly the old uniform one.
  * @param {Array} connections - Eligible connections
  * @param {number} windowSize
  * @param {function} rng - Random source returning [0, 1)
  * @param {Map|null} overlay - Optional in-memory last-used overrides
+ * @param {Map|null} latencyMap - Optional in-memory latency EMA (id -> ms)
  * @returns {object|null}
  */
-export function pickWindowedLru(connections, windowSize = 32, rng = Math.random, overlay = null) {
+export function pickWindowedLru(connections, windowSize = 32, rng = Math.random, overlay = null, latencyMap = null) {
   if (!connections?.length) return null;
   const size = Math.max(1, Math.min(windowSize, connections.length));
   const window = []; // [key, connection], ascending by key once filled
@@ -308,7 +317,65 @@ export function pickWindowedLru(connections, windowSize = 32, rng = Math.random,
     }
   }
   if (window.length < size) window.sort((a, b) => a[0] - b[0]);
+  if (latencyMap) {
+    const known = [];
+    for (const [, c] of window) {
+      const v = latencyMap.get(c.id);
+      if (v != null && Number.isFinite(v) && v > 0) known.push(1 / Math.max(v, LATENCY_MIN_MS));
+    }
+    if (known.length > 0) {
+      const sorted = [...known].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      let total = 0;
+      const weights = window.map(([, c]) => {
+        const v = latencyMap.get(c.id);
+        const w = (v != null && Number.isFinite(v) && v > 0) ? 1 / Math.max(v, LATENCY_MIN_MS) : median;
+        total += w;
+        return w;
+      });
+      let roll = rng() * total;
+      for (let i = 0; i < weights.length; i++) {
+        roll -= weights[i];
+        if (roll <= 0) return window[i][1];
+      }
+      return window[window.length - 1][1];
+    }
+  }
   return window[Math.floor(rng() * window.length)][1];
+}
+
+/**
+ * In-memory per-key latency EMA for latency-weighted picks (opt81).
+ * Same philosophy as lastUsedOverlay: a pure accelerator fed by completed
+ * requests (see saveUsageStats), restart-safe (empty on boot, relearns
+ * from live traffic within minutes). Total latency per completed request
+ * (streaming included: measured at stream end) is the sample, because
+ * that is what an interactive client actually waits for.
+ */
+export const latencyOverlay = new Map();
+const LATENCY_EMA_ALPHA = 0.3;
+const LATENCY_MIN_MS = 50;
+const LATENCY_MAX_MS = 300 * 1000;
+const LATENCY_OVERLAY_MAX_ENTRIES = 100000;
+
+export function recordLatencyEma(id, ms) {
+  if (!id || !Number.isFinite(ms) || ms <= 0) return;
+  const clamped = Math.min(Math.max(ms, LATENCY_MIN_MS), LATENCY_MAX_MS);
+  const prev = latencyOverlay.get(id);
+  const ema = prev == null ? clamped : prev + LATENCY_EMA_ALPHA * (clamped - prev);
+  // Re-insert so Map order tracks last update: pruning below then drops
+  // truly stale keys, never a key that is still serving.
+  if (latencyOverlay.has(id)) latencyOverlay.delete(id);
+  latencyOverlay.set(id, ema);
+  if (latencyOverlay.size > LATENCY_OVERLAY_MAX_ENTRIES) {
+    const drop = Math.floor(latencyOverlay.size * 0.1);
+    let i = 0;
+    for (const key of latencyOverlay.keys()) {
+      if (i++ >= drop) break;
+      latencyOverlay.delete(key);
+    }
+  }
 }
 
 /**

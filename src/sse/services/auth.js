@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId, resolveRotationPoolIds } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable, lastUsedOverlay, stampLastUsedOverlay } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable, lastUsedOverlay, stampLastUsedOverlay, latencyOverlay } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS, LAST_USED_FLUSH_DELAY_MS, LAST_USED_FLUSH_MAX_BATCH } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -384,7 +384,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const now = Date.now();
       const clean = availableConnections.filter(c => connectionHealthTier(c, now, SUSPECT_PROBATION_MS) === 0);
       const tier = clean.length > 0 ? clean : availableConnections;
-      connection = pickWindowedLru(tier, BALANCED_WINDOW_SIZE, Math.random, lastUsedOverlay);
+      // Opt81: inside the LRU window, faster keys serve more (latency EMA
+      // from completed requests). The window cap + randomization stay, so
+      // no key monopolizes and unknown keys still start at median weight.
+      connection = pickWindowedLru(tier, BALANCED_WINDOW_SIZE, Math.random, lastUsedOverlay, latencyOverlay);
       if (connection) {
         stampLastUsedOverlay(connection.id, now);
         scheduleLastUsedFlush(connection.id, new Date(now).toISOString(), 1);
