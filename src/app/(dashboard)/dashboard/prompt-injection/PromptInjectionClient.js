@@ -28,7 +28,7 @@ function modelPickValue(m) {
 // The original 9Router opens its model picker from a plain bordered
 // "Select" button (see the CLI tools cards) — same pattern here.
 const SELECT_BTN_CLASS =
-  "shrink-0 cursor-pointer whitespace-nowrap rounded border border-border bg-surface px-2.5 py-2 text-xs text-text-main transition-colors hover:border-primary";
+  "shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-border bg-surface px-2.5 py-2 text-xs text-text-main transition-colors hover:border-primary";
 
 function entryText(entry) {
   if (!entry) return "";
@@ -94,7 +94,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+        <div className="flex overflow-hidden rounded-full border border-border text-sm">
           <button
             type="button"
             onClick={() => setMode("single")}
@@ -176,7 +176,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
 
       <div className="flex flex-wrap items-center gap-3">
         {mode === "single" && (
-          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+          <div className="flex overflow-hidden rounded-full border border-border text-sm">
             <button
               type="button"
               onClick={() => setPosition("append")}
@@ -226,13 +226,18 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   );
 }
 
-function SectionTitle({ icon, title, children, action, info }) {
+function SectionTitle({ icon, title, children, action, info, accent = "#C084FC" }) {
   const [infoOpen, setInfoOpen] = useState(false);
   return (
     <div className="mb-1">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="flex flex-1 items-center gap-2 text-lg font-semibold">
-          <span className="material-symbols-outlined text-primary">{icon}</span>
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: `${accent}26`, color: accent }}
+          >
+            <span className="material-symbols-outlined text-[20px]">{icon}</span>
+          </span>
           {title}
         </h2>
         {info && (
@@ -321,12 +326,21 @@ function ConfirmButton({ label, icon, onConfirm }) {
 function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount = 0 }) {
   const isCopied = copiedId === `tpl:${template.id}`;
   return (
-    <Card padding="sm">
+    <Card padding="sm" className="w-[260px] shrink-0 sm:w-[300px]">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: "#C084FC26", color: "#C084FC" }}
+          >
+            <span className="material-symbols-outlined text-[18px]">bookmarks</span>
+          </span>
           <p className="min-w-0 flex-1 break-words text-sm font-semibold">{template.name}</p>
           <EntryBadge entry={template} />
         </div>
+        <p className="line-clamp-3 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
+          {entryText(template)}
+        </p>
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs text-text-muted">
             ~{estimateTokens(entryText(template))} tokens
@@ -354,6 +368,81 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount
         </div>
       </div>
     </Card>
+  );
+}
+
+// Template carousel: the same cards, same handlers — only the layout
+// moves. Swipe on phone, arrows + dots on laptop; the strip scrolls
+// inside the page, so the page itself never scrolls sideways.
+function TemplateCarousel({ templates, copiedId, onCopy, onEdit, onDelete, usageCount }) {
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
+  const step = () => {
+    const track = trackRef.current;
+    if (!track || !track.children.length) return 280;
+    return track.children[0].getBoundingClientRect().width + 12;
+  };
+  const scrollTo = (i) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const idx = Math.min(Math.max(0, i), templates.length - 1);
+    track.scrollTo({ left: idx * step(), behavior: "smooth" });
+    setActive(idx);
+  };
+  const onScroll = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    setActive(Math.min(templates.length - 1, Math.round(track.scrollLeft / step())));
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <div ref={trackRef} onScroll={onScroll} className="pi-carousel -mx-1 flex gap-3 overflow-x-auto px-1 pb-5 pt-1">
+        {templates.map((t) => (
+          <TemplateCard
+            key={t.id}
+            template={t}
+            copiedId={copiedId}
+            onCopy={() => onCopy(t)}
+            onEdit={() => onEdit(t)}
+            onDelete={() => onDelete(t)}
+            usageCount={usageCount(t)}
+          />
+        ))}
+      </div>
+      {templates.length > 1 && (
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-text-muted">Geser untuk melihat semua</span>
+          <span className="flex-1" />
+          <div className="flex items-center gap-1.5">
+            {templates.map((t, i) => (
+              <button
+                key={t.id}
+                type="button"
+                aria-label={`Template ${i + 1}`}
+                onClick={() => scrollTo(i)}
+                className={`h-2 rounded-full transition-all ${i === active ? "w-5 bg-primary" : "w-2 bg-surface-3"}`}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-label="Previous templates"
+            onClick={() => scrollTo(active - 1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:text-text-main"
+          >
+            <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Next templates"
+            onClick={() => scrollTo(active + 1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition-colors hover:text-text-main"
+          >
+            <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -538,7 +627,7 @@ function InjectionForm({
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-text-muted">Target</span>
-          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+          <div className="flex overflow-hidden rounded-full border border-border text-sm">
             <button
               type="button"
               onClick={() => setScope("variant")}
@@ -638,7 +727,7 @@ function InjectionForm({
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+          <div className="flex overflow-hidden rounded-full border border-border text-sm">
             <button
               type="button"
               onClick={() => setSource("new")}
@@ -1375,11 +1464,25 @@ export default function PromptInjectionClient() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+            style={{ backgroundColor: "#C084FC26", color: "#C084FC" }}
+          >
+            <span className="material-symbols-outlined text-[24px]">edit_note</span>
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold sm:text-2xl">Prompt Injection</h1>
+            <p className="mt-0.5 text-sm text-text-muted">
+              Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
+            </p>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" icon="download" onClick={exportInjections}>
             Export
           </Button>
-          <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-2 rounded-[8px] border border-border px-3 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]">
+          <label className="inline-flex h-7 cursor-pointer items-center justify-center gap-2 rounded-full border border-border px-3 text-xs font-semibold text-text-main transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.97]">
             <span className="material-symbols-outlined text-[18px]">upload</span> Import
             <input
               type="file"
@@ -1392,9 +1495,6 @@ export default function PromptInjectionClient() {
             />
           </label>
         </div>
-        <p className="text-sm text-text-muted">
-          Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
-        </p>
       </div>
       {msg && (
         <div className="fixed bottom-5 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2">
@@ -1417,6 +1517,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="edit_note"
+              accent="#C084FC"
               title={translate("Templates")}
               info={{
                 title: "How Templates work",
@@ -1455,25 +1556,21 @@ export default function PromptInjectionClient() {
                 </div>
               </>
             ) : (
-              <div className="flex flex-col gap-2">
-                {templates.map((t) => (
-                  <TemplateCard
-                    key={t.id}
-                    template={t}
-                    copiedId={copied}
-                    onCopy={() => copyPrompt(t, `tpl:${t.id}`)}
-                    onEdit={() => setEditingTemplate(t)}
-                    onDelete={() => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
-                    usageCount={(usagesByName[t.name] || []).length}
-                  />
-                ))}
-              </div>
+              <TemplateCarousel
+                templates={templates}
+                copiedId={copied}
+                onCopy={(t) => copyPrompt(t, `tpl:${t.id}`)}
+                onEdit={(t) => setEditingTemplate(t)}
+                onDelete={(t) => del(`templateId=${encodeURIComponent(t.id)}`, `template-${t.id}`, "Template deleted")}
+                usageCount={(t) => (usagesByName[t.name] || []).length}
+              />
             )}
           </section>
 
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="input"
+              accent="#F472B6"
               title={translate("Injections")}
               info={{
                 title: "How Injections work",
@@ -1543,6 +1640,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="layers"
+              accent="#2DD4BF"
               title={translate("Stack preview")}
               info={{
                 title: "How Stack Preview works",
@@ -1622,6 +1720,7 @@ export default function PromptInjectionClient() {
           <section className="flex flex-col gap-3">
             <SectionTitle
               icon="science"
+              accent="#60A5FA"
               title={translate("Injection tester")}
               info={{
                 title: "How the Injection Tester works",

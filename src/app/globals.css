@@ -284,6 +284,19 @@ input[type="range"].hue-slider::-moz-range-thumb {
   box-shadow: var(--shadow-neu-inset);
 }
 
+/* Prompt Injection template carousel: swipeable strip, no visible
+   scrollbar, cards snap to the left edge. */
+.pi-carousel {
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+.pi-carousel::-webkit-scrollbar {
+  display: none;
+}
+.pi-carousel > * {
+  scroll-snap-align: start;
+}
+
 /* Sidebar + header: same slab treatment, shape unchanged. */
 .dark aside,
 .dark header {
