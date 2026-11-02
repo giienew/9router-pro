@@ -120,7 +120,7 @@ export default function UsageChart({ period = "7d" }) {
             <Tooltip
               contentStyle={{
                 backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
+                border: "none",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}

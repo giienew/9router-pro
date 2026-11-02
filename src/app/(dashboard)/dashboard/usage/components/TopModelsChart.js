@@ -94,7 +94,7 @@ export default function TopModelsChart({ byModel }) {
             <Tooltip
               contentStyle={{
                 backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
+                border: "none",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}

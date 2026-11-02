@@ -953,3 +953,52 @@ button:disabled,
   backdrop-filter: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 24px 48px rgba(76, 29, 149, 0.45), 0 4px 12px rgba(0, 0, 0, 0.35);
 }
+
+/* ============================================================
+   opt71 — every remaining line goes transparent. opt69 only
+   covered /5 + border + border-subtle, but the codebase also
+   draws outlines with /10 /15 /20 /25, border/40–70, primary +
+   accent + success + error tints, divide utilities, and — the
+   biggest leftover — ring outlines (ring-1/ring-2 + colored
+   rings on cards and selected elements). Focus/hover variants
+   are untouched: they are different class tokens, so keyboard
+   focus and hover feedback survive; only static outlines die.
+   Plain border-primary is deliberately NOT covered: the login
+   spinner draws its arc with it.
+   ============================================================ */
+.dark .border-white\/10,
+.dark .border-black\/10,
+.dark .border-white\/15,
+.dark .border-black\/15,
+.dark .border-white\/20,
+.dark .border-black\/20,
+.dark .border-white\/25,
+.dark .border-border\/50,
+.dark .border-border\/40,
+.dark .border-border\/70,
+.dark .border-border\/60,
+.dark .border-primary\/40,
+.dark .border-primary\/50,
+.dark .border-primary\/30,
+.dark .border-primary\/20,
+.dark .border-accent\/20,
+.dark .border-accent\/30,
+.dark .border-accent\/60,
+.dark .border-success\/40,
+.dark .border-error\/20 {
+  border-color: transparent;
+}
+.dark .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-black\/5 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-border\/50 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-border\/30 > :not([hidden]) ~ :not([hidden]) {
+  border-color: transparent;
+}
+.dark .ring,
+.dark .ring-1,
+.dark .ring-2 {
+  --tw-ring-color: transparent;
+}
+.dark .outline-primary\/60 {
+  outline-color: transparent;
+}
