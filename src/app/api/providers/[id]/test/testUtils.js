@@ -1,4 +1,5 @@
 import { getProviderConnectionById, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { classifyTestError } from "@/shared/utils/testErrorStage";
 import { resolveConnectionProxyConfig, resolveAutoTestProxy } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -521,14 +522,38 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
 async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
-    if (!modelsBase) return { valid: false, error: "Missing base URL" };
+    if (!modelsBase) return { valid: false, stage: "unknown", error: "Missing base URL" };
     try {
       const res = await fetchWithConnectionProxy(`${modelsBase.replace(/\/$/, "")}/models`, {
         headers: { "Authorization": `Bearer ${connection.apiKey}` },
       }, effectiveProxy);
-      return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
+      if (res.ok) return { valid: true, stage: "ok", error: null };
+      // A non-ok /models probe is NOT automatically a bad key: 429/5xx mean
+      // the key was accepted but upstream is busy, 404 means a wrong base.
+      const stage = res.status === 401 || res.status === 403
+        ? "auth"
+        : res.status === 429 || res.status === 402
+          ? "rate_limit"
+          : res.status === 404
+            ? "model"
+            : res.status >= 500
+              ? "upstream"
+              : "unknown";
+      return {
+        valid: false,
+        stage,
+        error: stage === "auth"
+          ? "Invalid API key"
+          : stage === "rate_limit"
+            ? "Rate limited — key accepted but upstream is busy"
+            : stage === "model"
+              ? "Base URL not found (404)"
+              : stage === "upstream"
+                ? `Upstream error (HTTP ${res.status})`
+                : `Upstream returned HTTP ${res.status}`,
+      };
     } catch (err) {
-      return { valid: false, error: err.message };
+      return { valid: false, stage: classifyTestError({ error: err.message }).stage, error: err.message };
     }
   }
 
@@ -556,9 +581,20 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }, effectiveProxy);
       // 400/529 still confirms key accepted; only 401/403 = bad key
       const valid = res.status !== 401 && res.status !== 403;
-      return { valid, error: valid ? null : "Invalid API key or base URL" };
+      const stage = !valid ? "auth" : res.status === 429 ? "rate_limit" : res.status === 529 ? "upstream" : "ok";
+      return {
+        valid,
+        stage,
+        error: !valid
+          ? "Invalid API key"
+          : stage === "rate_limit"
+            ? "Rate limited — key accepted but upstream is busy"
+            : stage === "upstream"
+              ? "Upstream overloaded (529) — key accepted"
+              : null,
+      };
     } catch (err) {
-      return { valid: false, error: err.message };
+      return { valid: false, stage: classifyTestError({ error: err.message }).stage, error: err.message };
     }
   }
 
@@ -1010,7 +1046,7 @@ export async function testSingleConnection(id) {
           lastErrorAt: new Date().toISOString(),
           lastTested: new Date().toISOString(),
         });
-        return { valid: false, error: proxyError, latencyMs: 0, testedAt: new Date().toISOString() };
+        return { valid: false, error: proxyError, stage: "proxy", latencyMs: 0, testedAt: new Date().toISOString() };
       }
     }
   }
@@ -1066,6 +1102,7 @@ export async function testSingleConnection(id) {
   return {
     valid: result.valid,
     error: result.error,
+    stage: result.stage || (result.valid ? "ok" : classifyTestError({ error: result.error }).stage),
     refreshed: !!result.refreshed,
     latencyMs,
     testedAt: new Date().toISOString(),
