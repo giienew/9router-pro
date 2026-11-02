@@ -84,10 +84,12 @@ export default function RootLayout({ children }) {
             __html: `(function(){try{var s=localStorage.getItem('theme');var t=s?(JSON.parse(s).state||{}).theme:'system';t=t||'system';var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t==='system'&&m)){document.documentElement.classList.add('dark')}}catch(e){}})();`,
           }}
         />
-        {/* 9Router Pro: apply the saved accent before first paint (no flash). */}
+        {/* 9Router Pro: theme locked to the violet reference palette before
+            first paint (no flash). Any previously stored custom accent is
+            cleared, so an old red/custom choice can never come back. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a==='custom'){var c=localStorage.getItem('9rp-accent-custom');document.documentElement.setAttribute('data-accent','custom');if(c&&/^#[0-9a-fA-F]{6}$/.test(c)){document.documentElement.style.setProperty('--color-brand-base',c)}}else if(a){if(a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}else{document.documentElement.setAttribute('data-accent','violet')}}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem('9rp-accent');localStorage.removeItem('9rp-accent-custom');document.documentElement.setAttribute('data-accent','violet');document.documentElement.style.removeProperty('--color-brand-base')}catch(e){}})();`,
           }}
         />
         {/* 9Router Pro: dark-only default before first paint (no flash).
