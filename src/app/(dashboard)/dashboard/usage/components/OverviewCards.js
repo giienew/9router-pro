@@ -52,29 +52,29 @@ export function Sparkline({ values = [], className = "" }) {
 export default function OverviewCards({ stats, series = null }) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 sm:gap-4">
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Total Requests</span>
-        <span className="w-full truncate text-lg font-bold xl:text-xl" title={fmt(stats.totalRequests)}>{fmt(stats.totalRequests)}</span>
+      <Card className="flex min-w-0 flex-col items-start text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Total Requests</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalRequests)}>{fmt(stats.totalRequests)}</span>
         {series?.requests && <span className="w-full text-primary"><Sparkline values={series.requests} /></span>}
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Total Input Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-primary xl:text-xl" title={fmt(stats.totalPromptTokens)}>{fmt(stats.totalPromptTokens)}</span>
+      <Card className="flex min-w-0 flex-col items-start text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Total Input Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalPromptTokens)}>{fmt(stats.totalPromptTokens)}</span>
         {series?.tokens && <span className="w-full text-primary"><Sparkline values={series.tokens} /></span>}
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Cached Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-info xl:text-xl" title={fmt(stats.totalCachedTokens)}>{fmt(stats.totalCachedTokens)}</span>
+      <Card className="flex min-w-0 flex-col items-start text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Cached Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalCachedTokens)}>{fmt(stats.totalCachedTokens)}</span>
         {series?.cached && <span className="w-full text-info"><Sparkline values={series.cached} /></span>}
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Output Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-success xl:text-xl" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
+      <Card className="flex min-w-0 flex-col items-start text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Output Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
         {series?.completion && <span className="w-full text-success"><Sparkline values={series.completion} /></span>}
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Est. Cost</span>
-        <span className="w-full truncate text-lg font-bold text-warning xl:text-xl" title={`~${fmtCost(stats.totalCost)}`}>~{fmtCost(stats.totalCost)}</span>
+      <Card className="flex min-w-0 flex-col items-start text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Est. Cost</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={`~${fmtCost(stats.totalCost)}`}>~{fmtCost(stats.totalCost)}</span>
         <span className="text-[10px] text-text-muted">Estimated, not actual billing</span>
         {series?.cost && <span className="w-full text-warning"><Sparkline values={series.cost} /></span>}
       </Card>

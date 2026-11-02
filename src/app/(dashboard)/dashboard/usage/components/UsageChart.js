@@ -7,7 +7,6 @@ import {
   Area,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
@@ -104,7 +103,6 @@ export default function UsageChart({ period = "7d" }) {
                 <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
             <XAxis
               dataKey="label"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}

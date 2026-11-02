@@ -7,7 +7,6 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Cell,
@@ -77,7 +76,6 @@ export default function TopModelsChart({ byModel }) {
             layout="vertical"
             margin={{ top: 4, right: 40, left: 4, bottom: 4 }}
           >
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} horizontal={false} />
             <XAxis
               type="number"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}

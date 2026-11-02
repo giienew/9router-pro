@@ -7,7 +7,6 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Cell,
@@ -70,7 +69,6 @@ export default function ProviderBarChart({ byProvider, providerNames = {} }) {
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} vertical={false} />
             <XAxis
               dataKey="name"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.6 }}
