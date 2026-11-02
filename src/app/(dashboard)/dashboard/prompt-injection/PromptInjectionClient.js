@@ -336,6 +336,11 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount
             <span className="material-symbols-outlined text-[18px]">bookmarks</span>
           </span>
           <p className="min-w-0 flex-1 break-words text-sm font-semibold">{template.name}</p>
+          {template.builtin && (
+            <span className="shrink-0 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-400">
+              Bawaan
+            </span>
+          )}
           <EntryBadge entry={template} />
         </div>
         <p className="line-clamp-3 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
@@ -360,11 +365,15 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount
             <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
             {isCopied ? "Copied" : "Copy"}
           </button>
-          <button type="button" onClick={onEdit} title={translate("Edit template")} className={actionBtnClass}>
-            <span className="material-symbols-outlined text-[16px]">edit</span>
-            Edit
-          </button>
-          <ConfirmButton label="Delete" icon="delete" onConfirm={onDelete} />
+          {!template.builtin && (
+            <>
+              <button type="button" onClick={onEdit} title={translate("Edit template")} className={actionBtnClass}>
+                <span className="material-symbols-outlined text-[16px]">edit</span>
+                Edit
+              </button>
+              <ConfirmButton label="Delete" icon="delete" onConfirm={onDelete} />
+            </>
+          )}
         </div>
       </div>
     </Card>
