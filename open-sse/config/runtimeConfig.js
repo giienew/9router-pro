@@ -60,6 +60,18 @@ export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_M
 // Env: EMPTY_PEEK_DEADLINE_MS.
 export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000);
 
+// Combo member fetch budget (streaming combos only): how long one member's
+// fetch may take to return response headers before the combo abandons it
+// and tries the next member. A hung connect/proxy previously stalled the
+// whole combo until the CLIENT gave up, so no failover ever ran. 60s sits
+// below client patience and above any healthy header wait; it bounds
+// headers only, never a flowing stream (STREAM_STALL_TIMEOUT_MS owns that)
+// and never a non-streaming generation (which has no first token to wait
+// for — its fetch stays bounded by FETCH_CONNECT_TIMEOUT_MS /
+// TOTAL_REQUEST_TIMEOUT_MS). Env: COMBO_FIRST_RESPONSE_TIMEOUT_MS.
+// 0 or invalid disables the timer (old behaviour).
+export const COMBO_FIRST_RESPONSE_TIMEOUT_MS = envMs("COMBO_FIRST_RESPONSE_TIMEOUT_MS", 60 * 1000);
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 

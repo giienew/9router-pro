@@ -145,8 +145,8 @@ export async function dispatchCombo({
   const comboStickyLimit = settings.comboStickyRoundRobinLimit;
   const comboCfg = comboStrategies[comboName] || {};
   log?.info?.("CHAT", `Combo "${comboName}" with ${orderedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-  const inner = (b, m) =>
-    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), undefined, pinFor(m));
+  const inner = (b, m, signal) =>
+    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m));
   return handleComboChat({
     body,
     models: orderedModels,

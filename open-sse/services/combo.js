@@ -9,6 +9,7 @@ import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
 import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
+import { COMBO_FIRST_RESPONSE_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import {
   getStickyComboModel,
   setStickyComboModel,
@@ -372,6 +373,9 @@ export function isZeroContentResponse(data) {
  * @param {boolean} [options.sessionSticky=true] - Keep chosen model across session requests to retain prompt cache
  * @param {number} [options.confidenceThreshold=0.8] - Minimum confidence required for model switch (0-1)
  * @param {Function|null} [options.resolveSmartChoice=null] - Smart router resolver callback: (body, models) => Promise<{ choice, probabilities, confidence } | null>
+ * @param {number} [options.firstResponseTimeoutMs=COMBO_FIRST_RESPONSE_TIMEOUT_MS] - Streaming-only
+ *   fetch budget per member: headers past this abort the attempt and the combo tries the next
+ *   member, instead of stalling until the client gives up. 0 disables.
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -388,6 +392,7 @@ export async function handleComboChat({
   sessionSticky = true,
   confidenceThreshold = 0.8,
   resolveSmartChoice = null,
+  firstResponseTimeoutMs = COMBO_FIRST_RESPONSE_TIMEOUT_MS,
 }) {
   let rotatedModels = models;
   let activeStickyModel = null;
@@ -495,8 +500,24 @@ export async function handleComboChat({
     const modelStr = rotatedModels[i];
     log.info("COMBO", `trying model ${i + 1} of ${rotatedModels.length}: ${modelStr}`);
 
+    // First-response failover (streaming combos only): one member's fetch
+    // must not stall the whole combo past this budget. The timer aborts
+    // only this attempt's fetch signal — the client signal is untouched,
+    // and the member is NOT marked unavailable (slow is not dead). The
+    // timer is cleared the moment the fetch settles; it never bounds a
+    // flowing stream or a non-streaming generation.
+    const attemptBudgetMs = body?.stream ? firstResponseTimeoutMs : 0;
+    const attemptTimed = Number.isFinite(attemptBudgetMs) && attemptBudgetMs > 0;
+    const attemptController = attemptTimed ? new AbortController() : null;
+    const attemptTimer = attemptTimed ? setTimeout(() => attemptController.abort(), attemptBudgetMs) : null;
+
     try {
-      const result = await handleSingleModel(body, modelStr);
+      let result;
+      try {
+        result = await handleSingleModel(body, modelStr, attemptController?.signal);
+      } finally {
+        if (attemptTimer) clearTimeout(attemptTimer);
+      }
       
       // Success (2xx). A 2xx is necessary but NOT sufficient: Gemini aborts (e.g.
       // MALFORMED_FUNCTION_CALL) still return 200 and stream empty content, which would
@@ -577,6 +598,24 @@ export async function handleComboChat({
         clearStickyComboSession(comboName, sessionId);
       }
 
+      // 499 = an abort killed this attempt. Ours (the attempt timer above)
+      // means this member stalled past its fetch budget: fail over with a
+      // 504 that names the cause, not the bare 499. Anyone else's (client
+      // disconnect) means the caller is gone: stop burning upstream
+      // attempts and hand the 499 back at once.
+      if (result.status === 499) {
+        if (attemptController?.signal.aborted) {
+          if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
+            clearStickyComboSession(comboName, sessionId);
+          }
+          log.warn("COMBO", `Model ${modelStr} first response timed out after ${attemptBudgetMs}ms — trying next`);
+          lastError = `First response timed out after ${attemptBudgetMs}ms`;
+          lastStatus = 504;
+          continue;
+        }
+        return result;
+      }
+
       // Extract error info from response
       let errorText = result.statusText || "";
       let retryAfter = null;
@@ -640,6 +679,24 @@ export async function handleComboChat({
       lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed (${result.status}${log.describeStatus?.(result.status) ? ` ${log.describeStatus(result.status)}` : ""}), trying next`);
     } catch (error) {
+      // Same split as the 499 branch, for attempts that threw instead of
+      // returning a Response: our timer → fail over as a timeout; a client
+      // disconnect → stop at once instead of burning the next member.
+      if (error?.name === "AbortError" && !attemptController?.signal.aborted) {
+        return new Response(
+          JSON.stringify({ error: { message: "Request aborted" } }),
+          { status: 499, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (error?.name === "AbortError" && attemptController?.signal.aborted) {
+        if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
+          clearStickyComboSession(comboName, sessionId);
+        }
+        lastError = `First response timed out after ${attemptBudgetMs}ms`;
+        lastStatus = 504;
+        log.warn("COMBO", `Model ${modelStr} first response timed out after ${attemptBudgetMs}ms — trying next`, { error: lastError });
+        continue;
+      }
       // Catch unexpected exceptions to ensure fallback continues
       if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
         clearStickyComboSession(comboName, sessionId);
