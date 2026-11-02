@@ -85,34 +85,36 @@
   --color-primary: #E56A4A;
   --color-primary-hover: #cc5236;
 
-  /* Surfaces (dark - Claude-like neutral warm) */
-  --color-bg: #1a1a1a;
-  --color-bg-alt: #1F1F1E;
-  --color-surface: #262626;
-  --color-surface-2: #303030;
-  --color-surface-3: #3a3a3a;
-  --color-sidebar: rgba(30, 30, 30, 0.85);
+  /* Surfaces (dark neumorphism — single default theme, owner order
+     2026-11-02): near-black base, raised gradient slabs, soft dual
+     shadows (dark below-right, faint light above-left). */
+  --color-bg: #0a0a0e;
+  --color-bg-alt: #0d0d12;
+  --color-surface: #14141c;
+  --color-surface-2: #1a1a24;
+  --color-surface-3: #22222e;
+  --color-sidebar: #0c0c11;
 
-  --color-border: #333333;
-  --color-border-subtle: #2a2a2a;
+  --color-border: #26262f;
+  --color-border-subtle: #1c1c26;
 
-  --color-text: #ededed;
-  --color-text-main: #ededed;
-  --color-text-muted: #9ca3af;
-  --color-text-subtle: #6b7280;
+  --color-text: #f2f2f5;
+  --color-text-main: #f2f2f5;
+  --color-text-muted: #9b9ba8;
+  --color-text-subtle: #6a6a78;
 
   --color-danger: #ef4444;
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.3);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.25);
-  --shadow-elevated: 0 12px 28px -4px rgba(0, 0, 0, 0.45);
-  --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.06),
-    0 1px 2px rgba(0,0,0,0.4),
-    0 16px 48px -8px rgba(0,0,0,0.55);
+  /* Neumorphic shadows — raised, hover, modal, carved-in, button sheen. */
+  --shadow-soft: 6px 6px 12px rgba(0, 0, 0, 0.55), -6px -6px 12px rgba(255, 255, 255, 0.045);
+  --shadow-warm: 8px 8px 18px rgba(0, 0, 0, 0.6), -8px -8px 18px rgba(255, 255, 255, 0.055);
+  --shadow-elevated: 12px 12px 28px rgba(0, 0, 0, 0.65), -12px -12px 28px rgba(255, 255, 255, 0.05);
+  --shadow-elev: 12px 12px 28px rgba(0, 0, 0, 0.65), -12px -12px 28px rgba(255, 255, 255, 0.05);
+  --shadow-neu-inset: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.05);
+  --shadow-neu-btn: 4px 4px 10px rgba(0, 0, 0, 0.55), -4px -4px 10px rgba(255, 255, 255, 0.05), inset 1px 1px 0 rgba(255, 255, 255, 0.18);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
 
   color-scheme: dark;
@@ -229,138 +231,146 @@ input[type="range"].hue-slider::-moz-range-thumb {
 }
 
 /* ============================================================
-   9Router Pro — Dark Pro preset (data-preset="dark-pro" on <html>)
-   Flat modern dark: pitch-black palette, hairline borders, solid
-   surfaces, no embossing or layered shadows — depth comes from
-   tonal steps only, so painting stays cheap and fast. :root[data-preset]
-   outranks both :root and .dark, so the preset wins over the
-   light/dark palettes while the accent scale (data-accent) applies.
+   9Router Pro — Neumorphism default (dark only, owner order 2026-11-02).
+   Premium floating surfaces: raised gradient slabs with soft dual
+   shadows, carved-in fields, pressed nav, gradient brand actions.
+   This replaced the retired flat Dark Pro preset block. The app is
+   dark-only now, so these rules hang off .dark, not data-preset.
    ============================================================ */
-:root[data-preset="dark-pro"] {
-  --color-bg: #000000;
-  --color-bg-alt: #070709;
-  --color-surface: #121218;
-  --color-surface-2: #1c1c24;
-  --color-surface-3: #262632;
-  --color-sidebar: #0a0a0e;
-
-  --color-border: #2e2e3a;
-  --color-border-subtle: #21212b;
-
-  --color-text: #f4f4f5;
-  --color-text-main: #f4f4f5;
-  --color-text-muted: #a1a1aa;
-  --color-text-subtle: #63636b;
-
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-warm: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
-  --shadow-elevated: 0 12px 32px -8px rgba(0, 0, 0, 0.55);
-  --shadow-elev: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
-
-  color-scheme: dark;
+.dark body {
+  background: #0a0a0e;
 }
 
-/* Flat page background — one solid color, nothing to repaint on scroll. */
-:root[data-preset="dark-pro"] body {
-  background: #000000;
+/* Raised slabs: gradient + dual shadow, no hairline border. */
+.dark .bg-surface {
+  background-image: linear-gradient(145deg, #181822, #101016);
+  border-color: transparent;
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+}
+.dark .bg-surface-2 {
+  background-image: linear-gradient(145deg, #1e1e29, #14141b);
+  border-color: transparent;
+  box-shadow: var(--shadow-soft);
+}
+.dark .bg-surface-3 {
+  background-image: linear-gradient(145deg, #262633, #1a1a23);
+  border-color: transparent;
+  box-shadow: var(--shadow-soft);
 }
 
-/* Surfaces are flat: tonal steps + borders separate them, not shadows. */
-:root[data-preset="dark-pro"] .bg-surface,
-:root[data-preset="dark-pro"] .bg-surface-2,
-:root[data-preset="dark-pro"] .bg-surface-3 {
-  background-image: none;
-  box-shadow: none;
+/* Sidebar + header: same slab treatment, shape unchanged. */
+.dark aside,
+.dark header {
+  background-image: linear-gradient(180deg, #101016, #0c0c11);
+  border-color: transparent;
+  box-shadow: 8px 0 20px rgba(0, 0, 0, 0.45);
+}
+.dark header {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
-/* Fields sit flat on the surface — border only, no carved inset. */
-:root[data-preset="dark-pro"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-:root[data-preset="dark-pro"] textarea,
-:root[data-preset="dark-pro"] select {
-  box-shadow: none;
-}
-
-/* Sidebar + header: flat slabs separated by their hairline borders. */
-:root[data-preset="dark-pro"] aside,
-:root[data-preset="dark-pro"] header {
-  background-image: none;
-  box-shadow: none;
-}
-
-/* Sidebar nav: icons carry a flat brand tint instead of flat gray. */
-:root[data-preset="dark-pro"] aside nav a {
+/* Sidebar nav: hover lifts, active presses in. */
+.dark aside nav a {
   color: #bcbcc4;
+  border-radius: 12px;
 }
-:root[data-preset="dark-pro"] aside nav a .material-symbols-outlined,
-:root[data-preset="dark-pro"] aside nav button .material-symbols-outlined {
+.dark aside nav a .material-symbols-outlined,
+.dark aside nav button .material-symbols-outlined {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
-:root[data-preset="dark-pro"] aside nav a:hover .material-symbols-outlined {
+.dark aside nav a:hover {
+  background-image: linear-gradient(145deg, #1e1e29, #14141b);
+  box-shadow: var(--shadow-soft);
+}
+.dark aside nav a:hover .material-symbols-outlined {
   color: var(--color-brand-400);
 }
-/* Active nav item: one flat tinted fill + hairline ring. No pressing in. */
-:root[data-preset="dark-pro"] aside nav a.text-primary {
+.dark aside nav a.text-primary {
   background: color-mix(in srgb, var(--color-brand-500) 13%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 22%, transparent);
+  box-shadow: var(--shadow-neu-inset);
 }
-:root[data-preset="dark-pro"] aside nav a.text-primary .material-symbols-outlined {
+.dark aside nav a.text-primary .material-symbols-outlined {
   color: var(--color-brand-400);
 }
 
 /* Header icons: bright neutral. */
-:root[data-preset="dark-pro"] header .material-symbols-outlined {
+.dark header .material-symbols-outlined {
   color: #c9c9d1;
 }
 
-/* Headings: solid text — gradient-filled type reads as decoration. */
-:root[data-preset="dark-pro"] main h1,
-:root[data-preset="dark-pro"] main h2 {
+/* Headings stay solid — gradient type reads as decoration. */
+.dark main h1,
+.dark main h2 {
   background: none;
   -webkit-text-fill-color: currentColor;
   color: var(--color-text);
 }
 
-/* Brand buttons: flat solid fill. Pressing just dims, never sinks. */
-:root[data-preset="dark-pro"] .bg-brand-500,
-:root[data-preset="dark-pro"] .bg-primary {
-  background-image: none;
-  box-shadow: none;
-}
-:root[data-preset="dark-pro"] .bg-brand-500:active,
-:root[data-preset="dark-pro"] .bg-primary:active {
-  filter: brightness(0.92);
-}
-
-/* Clickable cards: flat hover — one tonal step up, no lift. */
-:root[data-preset="dark-pro"] a.bg-surface,
-:root[data-preset="dark-pro"] button.bg-surface {
-  transition: background-color 0.15s ease;
-}
-:root[data-preset="dark-pro"] a.bg-surface:hover,
-:root[data-preset="dark-pro"] button.bg-surface:hover {
-  background-color: var(--color-surface-2);
+/* Fields carve in: darker bed + inset shadow, no border. */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark textarea,
+.dark select {
+  background-color: #0c0c11;
+  border-color: transparent;
+  border-radius: 14px;
+  box-shadow: var(--shadow-neu-inset);
 }
 
-/* Selection + scrollbar follow the accent, flat. */
-:root[data-preset="dark-pro"] ::selection {
+/* Brand actions: accent gradient + sheen shadow. Pressing sinks in. */
+.dark .bg-brand-500,
+.dark .bg-primary {
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-400));
+  box-shadow: var(--shadow-neu-btn);
+}
+.dark .bg-brand-500:active,
+.dark .bg-primary:active {
+  box-shadow: var(--shadow-neu-inset);
+  filter: brightness(0.95);
+}
+
+/* Clickable cards: hover lifts a touch brighter. */
+.dark a.bg-surface,
+.dark button.bg-surface {
+  transition: box-shadow 0.15s ease, filter 0.15s ease;
+}
+.dark a.bg-surface:hover,
+.dark button.bg-surface:hover {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-warm);
+}
+
+/* Switches: inset track, raised knob. */
+.dark button[role="switch"] {
+  box-shadow: var(--shadow-neu-inset);
+}
+.dark button[role="switch"][aria-checked="true"] {
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-400));
+}
+.dark button[role="switch"] > span {
+  background-image: linear-gradient(145deg, #ffffff, #d4d4d8);
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.55), -1px -1px 3px rgba(255, 255, 255, 0.25);
+}
+
+/* Selection + scrollbar follow the accent. */
+.dark ::selection {
   background: color-mix(in srgb, var(--color-brand-500) 55%, transparent);
   color: #ffffff;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar {
+.dark ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-track {
+.dark ::-webkit-scrollbar-track {
   background: transparent;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb {
-  background: #26262c;
+.dark ::-webkit-scrollbar-thumb {
+  background: #26262f;
   border-radius: 8px;
-  border: 2px solid #000000;
+  border: 2px solid #0a0a0e;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-brand-500) 45%, #26262c);
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-brand-500) 45%, #26262f);
 }
 
 /* ============================================================

@@ -3,38 +3,28 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { THEME_CONFIG } from "@/shared/constants/config";
-import { isDarkProActive, applyPreset } from "@/shared/constants/presets";
 
+// 9Router Pro is dark-only since the neumorphism restyle (owner order
+// 2026-11-02): one default theme, no light/dark toggle, no presets.
+// The store API stays (theme/setTheme/toggleTheme/initTheme) so existing
+// callers keep working — every path lands on dark.
 const useThemeStore = create(
   persist(
-    (set, get) => ({
-      theme: THEME_CONFIG.defaultTheme,
+    (set) => ({
+      theme: "dark",
 
-      setTheme: (theme) => {
-        // 9Router Pro: an explicit light choice exits the Dark Pro preset.
-        if (theme === "light" && isDarkProActive()) applyPreset("ori");
-        set({ theme });
-        applyTheme(theme);
+      setTheme: () => {
+        set({ theme: "dark" });
+        applyTheme();
       },
 
       toggleTheme: () => {
-        // 9Router Pro: toggling while Dark Pro is active leaves the preset
-        // and lands on Ori light (the sun-icon affordance).
-        if (isDarkProActive()) {
-          applyPreset("ori");
-          set({ theme: "light" });
-          applyTheme("light");
-          return;
-        }
-        const currentTheme = get().theme;
-        const newTheme = currentTheme === "dark" ? "light" : "dark";
-        set({ theme: newTheme });
-        applyTheme(newTheme);
+        set({ theme: "dark" });
+        applyTheme();
       },
 
       initTheme: () => {
-        const theme = get().theme;
-        applyTheme(theme);
+        applyTheme();
       },
     }),
     {
@@ -43,24 +33,10 @@ const useThemeStore = create(
   )
 );
 
-// Apply theme to document
-function applyTheme(theme) {
+// Dark, always.
+function applyTheme() {
   if (typeof window === "undefined") return;
-
-  const root = document.documentElement;
-  const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-
-  const effectiveTheme = theme === "system" ? systemTheme : theme;
-
-  // 9Router Pro: the Dark Pro preset is always dark.
-  if (effectiveTheme === "dark" || isDarkProActive()) {
-    root.classList.add("dark");
-  } else {
-    root.classList.remove("dark");
-  }
+  document.documentElement.classList.add("dark");
 }
 
 export default useThemeStore;
-

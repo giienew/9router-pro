@@ -83,11 +83,11 @@ export default function RootLayout({ children }) {
             __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a==='custom'){var c=localStorage.getItem('9rp-accent-custom');document.documentElement.setAttribute('data-accent','custom');if(c&&/^#[0-9a-fA-F]{6}$/.test(c)){document.documentElement.style.setProperty('--color-brand-base',c)}}else if(a){if(a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}else{document.documentElement.setAttribute('data-accent','violet')}}catch(e){}})();`,
           }}
         />
-        {/* 9Router Pro: theme preset before first paint — Dark Pro is the
-            default look; only an explicit "ori" choice opts out of it. */}
+        {/* 9Router Pro: dark-only default before first paint (no flash).
+            Also clears the retired preset choice (ori/dark-pro). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('9rp-preset');if(p!=='ori'){document.documentElement.setAttribute('data-preset','dark-pro');document.documentElement.classList.add('dark')}}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem('9rp-preset');document.documentElement.removeAttribute('data-preset');document.documentElement.classList.add('dark')}catch(e){}})();`,
           }}
         />
         <script
