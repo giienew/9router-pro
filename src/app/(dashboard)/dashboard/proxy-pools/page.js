@@ -1051,7 +1051,7 @@ export default function ProxyPoolsPage() {
                 value={batchImportText}
                 onChange={(e) => { setBatchImportText(e.target.value); setBatchFileInfo(null); }}
                 placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass"}
-                className={`w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all ${isBatchDragging ? "ring-2 ring-primary" : ""}`}
+                className={`w-full min-h-[180px] py-2 px-3 text-sm text-text-main focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all ${isBatchDragging ? "ring-2 ring-primary" : ""}`}
               />
               {isBatchDragging && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 dark:bg-black/80 rounded-md pointer-events-none">
@@ -1205,7 +1205,7 @@ export default function ProxyPoolsPage() {
         onClose={closeDenoModal}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 p-3 flex flex-col gap-1.5">
+          <div className="rounded-lg bg-surface p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Deno Relay?</p>
             <p className="text-xs text-text-muted">
               Deploys a relay worker to Deno Deploy&apos;s global edge network. All AI provider requests are forwarded through Deno&apos;s edge, masking your real IP.
