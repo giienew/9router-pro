@@ -174,7 +174,8 @@ async function launchLoginBrowser(chromium, dir, executablePath) {
       headless: false,
       executablePath,
       viewport: null,
-      args: ["--disable-blink-features=AutomationControlled"],
+      // Headed Chrome refuses to run as root without this (VPS/PM2 runs as root).
+      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
     });
   } catch (error) {
     if (!/ProcessSingleton|SingletonLock/i.test(String(error?.message || ""))) throw error;
@@ -183,7 +184,7 @@ async function launchLoginBrowser(chromium, dir, executablePath) {
       headless: false,
       executablePath,
       viewport: null,
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
     });
   }
 }
