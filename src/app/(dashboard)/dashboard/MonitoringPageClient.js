@@ -226,6 +226,26 @@ export default function MonitoringPageClient() {
               </span>
             )}
           </Card>
+          <Card className="flex min-w-0 flex-1 flex-col gap-1 p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-amber-400">key</span>
+              <span className="text-sm font-semibold text-white">API Key Paling Sering Dipakai</span>
+            </div>
+            {mon?.mostUsedKey ? (
+              <>
+                <span className="text-xl font-extrabold tracking-tight text-white">{mon.mostUsedKey.name}</span>
+                <span className="text-sm text-text-muted">
+                  <span className="font-bold text-white">{fmtInt(mon.mostUsedKey.requests)} request</span>
+                  {mon.mostUsedKey.sharePct !== null ? ` · ${mon.mostUsedKey.sharePct}% dari total` : ""} · {fmtInt(mon.mostUsedKey.tokens)} token · 7 hari
+                  {mon.mostUsedKey.provider ? ` · via ${mon.mostUsedKey.provider}` : ""}
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-text-muted">
+                {loading ? "Memuat…" : "Belum ada pemakaian API key 7 hari terakhir."}
+              </span>
+            )}
+          </Card>
         </div>
       </div>
 

@@ -111,6 +111,7 @@ export async function GET() {
     } catch {}
 
     let mostUsed = null;
+    let mostUsedKey = null;
     try {
       const usage = await getUsageStats("7d");
       const entries = Object.entries(usage?.byProvider || {})
@@ -128,6 +129,28 @@ export async function GET() {
           requests: entries[0].requests,
           tokens: entries[0].tokens,
           sharePct: usage.totalRequests ? Math.round((entries[0].requests / usage.totalRequests) * 100) : null,
+        };
+      }
+      // Most-used API key: name + masked id only — a raw key value must
+      // never leave the server (usage stats already mask it). Local
+      // no-key traffic is not a key, so it is excluded.
+      const keyEntries = Object.values(usage?.byApiKey || {})
+        .map((d) => ({
+          name: d.keyName || d.apiKeyMasked || null,
+          provider: d.provider || null,
+          requests: d.requests || 0,
+          tokens: (d.promptTokens || 0) + (d.completionTokens || 0),
+          isLocal: d.apiKeyKey === "local-no-key",
+        }))
+        .filter((e) => e.requests > 0 && !e.isLocal && e.name);
+      keyEntries.sort((a, b) => b.requests - a.requests);
+      if (keyEntries.length) {
+        mostUsedKey = {
+          name: keyEntries[0].name,
+          provider: keyEntries[0].provider,
+          requests: keyEntries[0].requests,
+          tokens: keyEntries[0].tokens,
+          sharePct: usage.totalRequests ? Math.round((keyEntries[0].requests / usage.totalRequests) * 100) : null,
         };
       }
     } catch {}
@@ -154,6 +177,7 @@ export async function GET() {
       keys: { total: keys.length },
       fastest,
       mostUsed,
+      mostUsedKey,
       providerNames,
       health: { db: dbOk ? "ok" : "error", breakersOpen },
     };
