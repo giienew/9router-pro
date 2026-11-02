@@ -94,12 +94,12 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex overflow-hidden rounded-full border border-border text-sm">
+        <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
           <button
             type="button"
             onClick={() => setMode("single")}
-            className={`px-3 py-1.5 font-medium transition-colors ${
-              mode === "single" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+            className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+              mode === "single" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
             }`}
           >
             Single prompt
@@ -107,8 +107,8 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
           <button
             type="button"
             onClick={() => setMode("chat")}
-            className={`px-3 py-1.5 font-medium transition-colors ${
-              mode === "chat" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+            className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+              mode === "chat" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
             }`}
           >
             Chat script
@@ -176,12 +176,12 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
 
       <div className="flex flex-wrap items-center gap-3">
         {mode === "single" && (
-          <div className="flex overflow-hidden rounded-full border border-border text-sm">
+          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setPosition("append")}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                position === "append" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+                position === "append" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               Append
@@ -189,8 +189,8 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
             <button
               type="button"
               onClick={() => setPosition("prepend")}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                position === "prepend" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+                position === "prepend" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               Prepend
@@ -627,12 +627,12 @@ function InjectionForm({
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-text-muted">Target</span>
-          <div className="flex overflow-hidden rounded-full border border-border text-sm">
+          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setScope("variant")}
-              className={`px-3 py-2 font-medium transition-colors ${
-                scope === "variant" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-2 font-medium transition-colors ${
+                scope === "variant" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               Variant
@@ -640,8 +640,8 @@ function InjectionForm({
             <button
               type="button"
               onClick={() => setScope("global")}
-              className={`px-3 py-2 font-medium transition-colors ${
-                scope === "global" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-2 font-medium transition-colors ${
+                scope === "global" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               Global
@@ -727,12 +727,12 @@ function InjectionForm({
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex overflow-hidden rounded-full border border-border text-sm">
+          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setSource("new")}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                source === "new" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+                source === "new" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               New prompt
@@ -740,8 +740,8 @@ function InjectionForm({
             <button
               type="button"
               onClick={() => setSource("template")}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                source === "template" ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+              className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
+                source === "template" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
               }`}
             >
               From template

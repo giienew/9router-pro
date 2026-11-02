@@ -297,6 +297,14 @@ input[type="range"].hue-slider::-moz-range-thumb {
   scroll-snap-align: start;
 }
 
+/* Prompt Injection segmented toggles: one inset track (like the
+   reference's Toggle Off) holding a single floating gradient pill for
+   the active choice — not two separate slabs with a seam. */
+.dark .pi-seg {
+  background-color: #0a0a0e;
+  box-shadow: var(--shadow-neu-inset);
+}
+
 /* Sidebar + header: same slab treatment, shape unchanged. */
 .dark aside,
 .dark header {
@@ -502,7 +510,7 @@ select {
   --shadow-focus: var(--shadow-focus);
 
   /* Font - Inter primary, Apple system fallback */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  --font-sans: 'Nunito', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
 }
 
 /* Base */
