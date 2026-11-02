@@ -72,6 +72,20 @@ export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000)
 // 0 or invalid disables the timer (old behaviour).
 export const COMBO_FIRST_RESPONSE_TIMEOUT_MS = envMs("COMBO_FIRST_RESPONSE_TIMEOUT_MS", 60 * 1000);
 
+// Combo hedged race (opt82, streaming combos only): how long the first
+// member may stall before the combo starts the next member IN PARALLEL
+// instead of waiting out the full fetch budget. First response wins; the
+// loser is aborted before its body is consumed, so the common case still
+// costs one upstream request and the slow case costs one extra connection,
+// not a second full generation. Env: COMBO_HEDGE_DELAY_MS. 0 disables.
+// (Parsed inline — unlike envMs, 0 must mean "off", not "default".)
+export const COMBO_HEDGE_DELAY_MS = (() => {
+  const raw = process.env.COMBO_HEDGE_DELAY_MS;
+  if (raw == null || raw === "") return 15 * 1000;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 15 * 1000;
+})();
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 

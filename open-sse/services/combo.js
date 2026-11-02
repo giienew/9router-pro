@@ -9,7 +9,8 @@ import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
 import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
-import { COMBO_FIRST_RESPONSE_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { COMBO_FIRST_RESPONSE_TIMEOUT_MS, COMBO_HEDGE_DELAY_MS } from "../config/runtimeConfig.js";
+import { raceWithHedge } from "./comboHedge.js";
 import {
   getStickyComboModel,
   setStickyComboModel,
@@ -376,6 +377,11 @@ export function isZeroContentResponse(data) {
  * @param {number} [options.firstResponseTimeoutMs=COMBO_FIRST_RESPONSE_TIMEOUT_MS] - Streaming-only
  *   fetch budget per member: headers past this abort the attempt and the combo tries the next
  *   member, instead of stalling until the client gives up. 0 disables.
+ * @param {number} [options.hedgeDelayMs=COMBO_HEDGE_DELAY_MS] - Streaming-only
+ *   delayed hedge: if a member has not returned headers by this delay, the
+ *   next member starts in parallel; first response wins, the loser is
+ *   aborted before its body is consumed. 0 disables. Only fires when it
+ *   is shorter than the fetch budget and a next member exists.
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -393,6 +399,7 @@ export async function handleComboChat({
   confidenceThreshold = 0.8,
   resolveSmartChoice = null,
   firstResponseTimeoutMs = COMBO_FIRST_RESPONSE_TIMEOUT_MS,
+  hedgeDelayMs = COMBO_HEDGE_DELAY_MS,
 }) {
   let rotatedModels = models;
   let activeStickyModel = null;
@@ -495,9 +502,14 @@ export async function handleComboChat({
   let earliestRetryAfter = null;
   let lastStatus = null;
   let requestScopedResult = null;
+  // Members already decided by a hedged race (winner, loser, or failed)
+  // are never re-tried when the loop advances: the loop-top skip consumes
+  // them, so every existing `continue` below works unchanged.
+  const tried = new Set();
 
   for (let i = 0; i < rotatedModels.length; i++) {
-    const modelStr = rotatedModels[i];
+    if (tried.has(i)) continue;
+    let modelStr = rotatedModels[i];
     log.info("COMBO", `trying model ${i + 1} of ${rotatedModels.length}: ${modelStr}`);
 
     // First-response failover (streaming combos only): one member's fetch
@@ -507,16 +519,87 @@ export async function handleComboChat({
     // timer is cleared the moment the fetch settles; it never bounds a
     // flowing stream or a non-streaming generation.
     const attemptBudgetMs = body?.stream ? firstResponseTimeoutMs : 0;
-    const attemptTimed = Number.isFinite(attemptBudgetMs) && attemptBudgetMs > 0;
-    const attemptController = attemptTimed ? new AbortController() : null;
-    const attemptTimer = attemptTimed ? setTimeout(() => attemptController.abort(), attemptBudgetMs) : null;
+    // Delayed hedge (opt82): when a member stalls past hedgeDelayMs, the
+    // next member starts in parallel instead of waiting out the budget.
+    // Streaming only (a non-streaming generation has no first token to
+    // race on, and racing it would pay for two full generations), and
+    // only when the delay fits inside the budget and a next member exists.
+    const useHedge = !!body?.stream
+      && Number.isFinite(hedgeDelayMs) && hedgeDelayMs > 0
+      && hedgeDelayMs < attemptBudgetMs
+      && i + 1 < rotatedModels.length;
 
+    // True when the driving failure was caused by OUR budget timer (not
+    // the client): the 499 branch and the catch below key off this
+    // instead of one member's controller, because a hedged race owns
+    // two controllers and the driving member may be the second one.
+    // Declared outside the try: catch cannot see try-block lets.
+    let drivingTimedOut = false;
     try {
       let result;
-      try {
-        result = await handleSingleModel(body, modelStr, attemptController?.signal);
-      } finally {
-        if (attemptTimer) clearTimeout(attemptTimer);
+      let hedgeFailed = [];
+      let hedgeDrivingIndex = 0;
+      if (useHedge) {
+        const raced = await raceWithHedge({
+          run: (signal) => handleSingleModel(body, modelStr, signal),
+          next: (signal) => handleSingleModel(body, rotatedModels[i + 1], signal),
+          hedgeDelayMs,
+          budgetMs: attemptBudgetMs,
+        });
+        // Client disconnect: stop burning upstream attempts at once,
+        // exactly like the bare-499 path below.
+        if (raced.clientAborted) return raced.result;
+        result = raced.result;
+        drivingTimedOut = raced.timedOut;
+        hedgeFailed = raced.failed;
+        hedgeDrivingIndex = raced.drivingIndex;
+        // Both raced members are decided (winner, loser, or failed) —
+        // never re-tried when this iteration falls through.
+        tried.add(i);
+        if (raced.hedged) tried.add(i + 1);
+        for (const f of raced.failed) tried.add(i + f.index);
+        if (raced.winnerIndex != null) {
+          modelStr = rotatedModels[i + raced.winnerIndex];
+          if (raced.hedged) {
+            log.info("COMBO", `hedge won: ${modelStr} answered first, ${rotatedModels[i + (1 - raced.winnerIndex)]} aborted`);
+          }
+        } else {
+          modelStr = rotatedModels[i + raced.drivingIndex];
+        }
+        // A raced member that failed while sticky must clear the session
+        // sticky, same as a sequential failure of the sticky model would.
+        if (comboStrategy === "smart" && sessionId) {
+          for (const f of raced.failed) {
+            if (rotatedModels[i + f.index] === activeStickyModel) clearStickyComboSession(comboName, sessionId);
+          }
+        }
+        // Preserve the tail's first-request-scoped rule for members that
+        // failed EARLIER than the driving member. The driving member's own
+        // request-scoped handling below still runs and wins over later
+        // ones, because it only sets when nothing is set yet.
+        if (!result.ok && !requestScopedResult) {
+          const earlier = [...hedgeFailed]
+            .filter((f) => f.index < hedgeDrivingIndex)
+            .sort((a, b) => a.index - b.index);
+          for (const f of earlier) {
+            const s = f.result?.status;
+            if (Number.isInteger(s) && s >= 400 && s < 500 && ![401, 402, 403, 404, 429].includes(s)) {
+              requestScopedResult = f.result;
+              break;
+            }
+          }
+        }
+      } else {
+        const attemptTimed = Number.isFinite(attemptBudgetMs) && attemptBudgetMs > 0;
+        const attemptController = attemptTimed ? new AbortController() : null;
+        const attemptTimer = attemptTimed ? setTimeout(() => attemptController.abort(), attemptBudgetMs) : null;
+        try {
+          result = await handleSingleModel(body, modelStr, attemptController?.signal);
+        } finally {
+          if (attemptTimer) clearTimeout(attemptTimer);
+        }
+        tried.add(i);
+        drivingTimedOut = attemptController?.signal.aborted ?? false;
       }
       
       // Success (2xx). A 2xx is necessary but NOT sufficient: Gemini aborts (e.g.
@@ -604,7 +687,7 @@ export async function handleComboChat({
       // disconnect) means the caller is gone: stop burning upstream
       // attempts and hand the 499 back at once.
       if (result.status === 499) {
-        if (attemptController?.signal.aborted) {
+        if (drivingTimedOut) {
           if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
             clearStickyComboSession(comboName, sessionId);
           }
@@ -682,13 +765,13 @@ export async function handleComboChat({
       // Same split as the 499 branch, for attempts that threw instead of
       // returning a Response: our timer → fail over as a timeout; a client
       // disconnect → stop at once instead of burning the next member.
-      if (error?.name === "AbortError" && !attemptController?.signal.aborted) {
+      if (error?.name === "AbortError" && !drivingTimedOut) {
         return new Response(
           JSON.stringify({ error: { message: "Request aborted" } }),
           { status: 499, headers: { "Content-Type": "application/json" } },
         );
       }
-      if (error?.name === "AbortError" && attemptController?.signal.aborted) {
+      if (error?.name === "AbortError" && drivingTimedOut) {
         if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
           clearStickyComboSession(comboName, sessionId);
         }
