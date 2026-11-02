@@ -94,7 +94,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
+        <div className="seg-track flex gap-1 rounded-full p-1 text-sm">
           <button
             type="button"
             onClick={() => setMode("single")}
@@ -176,7 +176,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
 
       <div className="flex flex-wrap items-center gap-3">
         {mode === "single" && (
-          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
+          <div className="seg-track flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setPosition("append")}
@@ -627,7 +627,7 @@ function InjectionForm({
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-text-muted">Target</span>
-          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
+          <div className="seg-track flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setScope("variant")}
@@ -727,7 +727,7 @@ function InjectionForm({
 
       {allowTemplateSource && templates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="pi-seg flex gap-1 rounded-full p-1 text-sm">
+          <div className="seg-track flex gap-1 rounded-full p-1 text-sm">
             <button
               type="button"
               onClick={() => setSource("new")}

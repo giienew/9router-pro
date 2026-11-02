@@ -1209,12 +1209,12 @@ export default function ProviderDetailPage() {
       <div className="flex flex-col gap-3">
         {connTotal > connections.length && (
           <div>
-            <div className="flex overflow-hidden rounded-lg border border-border">
+            <div className="seg-track flex gap-1 rounded-full p-1">
               <button
                 type="button"
                 onClick={() => setBulkScope("loaded")}
                 disabled={bulkUpdatingProxy}
-                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
               >
                 Loaded ({connections.length})
               </button>
@@ -1222,7 +1222,7 @@ export default function ProviderDetailPage() {
                 type="button"
                 onClick={() => setBulkScope("all")}
                 disabled={bulkUpdatingProxy}
-                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
               >
                 All ({connTotal})
               </button>
