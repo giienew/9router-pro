@@ -4,6 +4,11 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.17
+
+- **Bulk file import everywhere**: every bulk paste input now also takes files — Bulk Add API key (all API-key providers, `.txt`, one key per line, `name|key` supported), Bulk Import Codex (`.json`), Batch Import Proxies (`.txt`, one proxy per line), joining the GrokCli bulk modal which already had it. File content lands in the textarea, editable before submit; multiple files and drag-drop supported; no server change, existing submit paths handle the lines.
+- **Login via Browser fixes**: headed login now launches as root (`--no-sandbox`) and the on-demand playwright-core import works under ESM (chromium named export resolved via `.default`), so the button works on server installs instead of failing with "No Chrome/Chromium executable found" / "Cannot read properties of undefined (reading 'launchPersistentContext')".
+
 ## v0.5.109-pro.16
 
 - **Re-audit fixes (1 critical + 11 major)**: database export/import now checks the CLI token value instead of its mere presence; the SSO-only test gate also fires when IdP fields change; response-cache and maintenance settings deep-merge instead of wiping nested config; a customized `INITIAL_PASSWORD` is accepted on first password set; quota endpoints refuse inactive connections; bulk-enable wording is honest about unknown quota with a refetch after toggle; import skips empty entries instead of deleting live injections; proxy health checks no longer reactivate operator-disabled pools; translator responses and logs mask credentials; single-key edits merge quota/limits instead of replacing them; the backup card counts variants.
