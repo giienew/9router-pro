@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./images/pro-prompt-injection.png" alt="9Router Pro — Prompt Injection" width="800"/>
+  <img src="./images/pro-dashboard.png" alt="9Router Pro — Monitoring Dashboard" width="800"/>
 
   # 9Router Pro — by Gienetic
 
@@ -34,7 +34,11 @@
 - **Console Log in plain words** — a live request log that reads like sentences (MatLog-style rows), not stack traces.
 - **Backup & restore** — full backups or selective per-section ones (providers, combos, keys, settings) straight from the dashboard.
 - **Fully localized dashboard** — 34 languages, and the Indonesian translation is **100% complete** (1,827 strings — every label, description and help popover).
-- **Themes** — a flat **Dark Pro** theme by default, 7 accent presets plus a free **custom color picker**, switchable in one click from the header.
+- **A dashboard made to be shown off** — a single dark neumorphism theme: floating glass cards, pill buttons and inputs, gradient toggles, hero-style numbers, spectrum charts, an opaque navbar, and Nunito throughout. No preset switching, no light mode — one look, done right on phone and laptop.
+- **Custom colours, dark to light** — pick any hue, then pick its shade: 6 dark-to-light dots per hue, with an exact-colour dot and hex readout. Your accent, your brightness.
+- **Monitoring Dashboard** — a new first sidebar item: VPS specs, fastest and most-used providers, most-used API key, totals for providers, proxies, combos and keys, plus usage charts — all live, nothing fabricated.
+- **Built-in prompt templates** — a library of ready templates, titled by model and marked **Bawaan** (built-in). Read-only: copy or apply one to your own target yourself. Nothing is auto-applied or bound to any model.
+- **Template carousel** — the template library swipes like cards on phone (arrows + dots on laptop), and the Templates header carries an icon-only reference button to an external prompt collection.
 - **Lightweight by design** — no extra services, no database server: one Next.js app and a single SQLite file, the same footprint class as upstream.
 - **Update notifications** that follow *this* repo's releases, and a **Donate** button wired to this project's own channels.
 
@@ -79,18 +83,28 @@ A key that crosses a limit gets **HTTP 429 with a `Retry-After` header** and a m
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="./images/pro-prompt-injection-chat.png" alt="Chat script injection editor" width="800"/>
-  <br/><em>Chat script mode — scripted user/bot turns injected as a conversation that already happened.</em>
+  <img src="./images/pro-dashboard.png" alt="Monitoring Dashboard" width="800"/>
+  <br/><em>Monitoring Dashboard — spectrum usage cards, VPS specs, fastest and most-used providers, most-used API key, and totals.</em>
+</p>
+
+<p align="center">
+  <img src="./images/pro-usage.png" alt="Usage dashboard" width="800"/>
+  <br/><em>Usage — request totals, latency, cached vs output tokens, and a live topology map of providers flowing through the router.</em>
 </p>
 
 <p align="center">
   <img src="./images/pro-providers.png" alt="Providers dashboard" width="800"/>
-  <br/><em>Providers — custom providers, an all-connections shelf, and a Test All in every section. Dark Pro theme, orange accent.</em>
+  <br/><em>Providers — custom providers, an all-connections shelf, and a Test All in every section.</em>
 </p>
 
 <p align="center">
-  <img src="./images/pro-opencode-picker.png" alt="Per-provider proxy rotation picker" width="800"/>
-  <br/><em>Per-provider proxy rotation — pin a provider to a hand-picked subset of your pools; the picker folds away when you're done.</em>
+  <img src="./images/pro-prompt-injection.png" alt="Prompt Injection templates" width="800"/>
+  <br/><em>Prompt Injection — built-in templates (Bawaan) as a swipeable carousel; apply one to your own target yourself.</em>
+</p>
+
+<p align="center">
+  <img src="./images/pro-chat-script.png" alt="Chat script injection editor" width="800"/>
+  <br/><em>Chat script mode — scripted user/bot turns injected as a conversation that already happened.</em>
 </p>
 
 ## 💎 Why Pro?
@@ -99,7 +113,7 @@ The original 9Router is a great router — Pro is what it becomes when you actua
 
 - **Prompt Injection** — the original has *no* custom system prompts at all. Pro gives every target one injection — **global**, **per API key**, and **per model** — each either a system prompt (prepend or append) or a scripted chat primed as fake history, injected wire-aware for OpenAI / Claude / Gemini / Responses bodies.
 - **Per-key token quotas** — upstream *removed* this feature. Pro brings it back: a token budget per API key (24h / 7d / 30d) with live usage and 429 enforcement.
-- **An identity** — a flat Dark Pro theme, 7 accent presets plus a free custom-color picker, and Pro branding throughout.
+- **An identity** — a dark neumorphism dashboard with floating glass cards, pill everything, spectrum charts and a custom colour picker (any hue, dark to light), plus Pro branding throughout.
 - **Fleet care built in** — Balanced health-tiered fallback, the Anti-Flaky Guard, server-side proxy-pool health checks and per-provider rotation subsets keep a big key fleet healthy without babysitting.
 - **An optimized hot path** — injection resolution is snapshot-cached and system prompts run as a single grouped pass per position: identical output, less work per request.
 - **Updates that follow Pro** — release checks and the install command point at this repo's GitHub releases, not upstream's npm package.
@@ -124,7 +138,7 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 | Custom system prompts | ❌ (fixed Caveman/Ponytail only) | per-model fields | ✅ Prompt Injection: global + per-user + per-model, prompt or chat script |
 | Per-API-key system prompt | ❌ | ❌ | ✅ |
 | Prepend/append control | ❌ | ❌ | ✅ |
-| Dashboard accents | coral only | varies | ✅ 7 accents |
+| Dashboard accents | coral only | varies | ✅ custom colours (any hue, dark to light) |
 | Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d budgets |
 | Per-key rate limits (RPM/TPM/RPD/concurrency) | ❌ | ❌ | ✅ per key, 429 + Retry-After |
 | Test All per provider section (incl. custom) | ❌ | ❌ | ✅ |
