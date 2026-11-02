@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
@@ -28,12 +28,17 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [fileCountInfo, setFileCountInfo] = useState(null);
+  const fileInputRef = useRef(null);
 
   const handleClose = () => {
     if (submitting) return;
     setJsonText("");
     setParseError("");
     setResult(null);
+    setFileCountInfo(null);
+    setIsDragging(false);
     onClose();
   };
 
@@ -81,6 +86,64 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
     }
   };
 
+  // File import, same pattern as the GrokCli bulk modal: .json files land
+  // in the textarea so the existing submit path handles them unchanged.
+  const processFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setParseError("");
+    const jsonFiles = Array.from(files).filter(
+      (file) => file.name.endsWith(".json") || file.type === "application/json" || file.type === ""
+    );
+    if (jsonFiles.length === 0) {
+      setParseError(translate("Please select valid .json files"));
+      return;
+    }
+    try {
+      const allAccounts = [];
+      for (const file of jsonFiles) {
+        const text = await file.text();
+        const accountsFromFile = normalizeToArray(JSON.parse(text));
+        if (Array.isArray(accountsFromFile)) {
+          allAccounts.push(...accountsFromFile);
+        } else if (accountsFromFile) {
+          allAccounts.push(accountsFromFile);
+        }
+      }
+      if (allAccounts.length === 0) {
+        setParseError(translate("No accounts found in selected files"));
+        return;
+      }
+      setJsonText(JSON.stringify(allAccounts, null, 2));
+      setFileCountInfo({
+        filesCount: jsonFiles.length,
+        accountsCount: allAccounts.length,
+      });
+    } catch (err) {
+      setParseError(`${translate("Error reading files")}: ${err.message}`);
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    processFiles(e.target.files);
+    if (e.target) e.target.value = "";
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    processFiles(e.dataTransfer.files);
+  };
+
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
 
   return (
@@ -92,13 +155,67 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
           )}
         </p>
 
-        <textarea
-          className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder={PLACEHOLDER}
-          value={jsonText}
-          onChange={(e) => setJsonText(e.target.value)}
-          disabled={submitting}
-        />
+        <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            multiple
+            className="hidden"
+            onChange={handleFileInputChange}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            icon="upload_file"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={submitting}
+          >
+            {translate("Upload JSON Files")}
+          </Button>
+        </div>
+
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative rounded border transition-colors ${
+            isDragging
+              ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+              : "border-accent/30 bg-sidebar"
+          }`}
+        >
+          <textarea
+            className="w-full rounded bg-transparent p-2.5 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder={PLACEHOLDER}
+            value={jsonText}
+            onChange={(e) => {
+              setJsonText(e.target.value);
+              setFileCountInfo(null);
+            }}
+            disabled={submitting}
+          />
+
+          {isDragging && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-sidebar/90 rounded pointer-events-none backdrop-blur-xs">
+              <span className="material-symbols-outlined text-3xl text-primary mb-1">upload_file</span>
+              <span className="text-sm font-medium text-primary">
+                {translate("Drop .json files here")}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {fileCountInfo && (
+          <div className="flex items-center gap-1.5 text-xs text-green-400 font-medium bg-green-500/10 border border-green-500/20 px-2.5 py-1.5 rounded">
+            <span className="material-symbols-outlined text-sm">check_circle</span>
+            <span>
+              {translate("Loaded")} {fileCountInfo.accountsCount} {translate("account(s) from")}{" "}
+              {fileCountInfo.filesCount} {translate("file(s)")}
+            </span>
+          </div>
+        )}
 
         {parseError && (
           <p className="text-xs text-red-500 break-words">{parseError}</p>

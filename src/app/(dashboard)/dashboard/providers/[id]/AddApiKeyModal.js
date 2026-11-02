@@ -65,6 +65,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed, failures: [{name, reason}] }
   const [bulkProgress, setBulkProgress] = useState(null); // { done, total, current } while adding
+  const [bulkFileInfo, setBulkFileInfo] = useState(null); // { filesCount, linesCount } after a .txt upload
+  const [bulkFileError, setBulkFileError] = useState("");
+  const [isBulkDragging, setIsBulkDragging] = useState(false);
+  const bulkFileInputRef = useRef(null);
   const bulkCloseTimer = useRef(null);
   // Auto-close timer must not fire after the modal unmounts (e.g. the user
   // closes it manually during the result flash).
@@ -252,6 +256,60 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
   };
 
+  // File import for bulk mode: same lines as paste, read from .txt files
+  // instead (pasting thousands of lines is painful). Content lands in the
+  // textarea so the existing submit path handles it unchanged.
+  const processBulkFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setBulkFileError("");
+    const txtFiles = Array.from(files).filter(
+      (file) => file.name.endsWith(".txt") || file.type === "text/plain" || file.type === ""
+    );
+    if (txtFiles.length === 0) {
+      setBulkFileError("Please select valid .txt files");
+      return;
+    }
+    try {
+      const parts = [];
+      for (const file of txtFiles) {
+        const text = (await file.text()).replace(/\r\n/g, "\n").replace(/\n+$/, "");
+        if (text.trim()) parts.push(text);
+      }
+      const combined = parts.join("\n");
+      const linesCount = combined.split("\n").filter((line) => line.trim()).length;
+      if (linesCount === 0) {
+        setBulkFileError("No keys found in selected files");
+        return;
+      }
+      setBulkText(combined);
+      setBulkFileInfo({ filesCount: txtFiles.length, linesCount });
+      setBulkResult(null);
+    } catch (err) {
+      setBulkFileError(`Error reading files: ${err.message}`);
+    }
+  };
+
+  const handleBulkFileInputChange = (e) => {
+    processBulkFiles(e.target.files);
+    if (e.target) e.target.value = "";
+  };
+
+  const handleBulkDragOver = (e) => {
+    e.preventDefault();
+    setIsBulkDragging(true);
+  };
+
+  const handleBulkDragLeave = (e) => {
+    e.preventDefault();
+    setIsBulkDragging(false);
+  };
+
+  const handleBulkDrop = (e) => {
+    e.preventDefault();
+    setIsBulkDragging(false);
+    processBulkFiles(e.dataTransfer.files);
+  };
+
   if (!provider) return null;
 
   return (
@@ -262,7 +320,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         {!usesAwsCredentialForm && (
           <div className="flex gap-2">
             <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} disabled={saving} onClick={() => { setMode("single"); setBulkResult(null); }}>Single</Button>
-            <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} disabled={saving} onClick={() => { setMode("bulk"); setBulkResult(null); }}>Bulk Add</Button>
+            <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} disabled={saving} onClick={() => { setMode("bulk"); setBulkResult(null); setBulkFileInfo(null); setBulkFileError(""); }}>Bulk Add</Button>
           </div>
         )}
 
@@ -276,13 +334,63 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
                   : <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
               }
             </p>
-            <textarea
-              className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-              placeholder={bulkPlaceholder}
-              value={bulkText}
-              disabled={saving}
-              onChange={(e) => setBulkText(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <input
+                ref={bulkFileInputRef}
+                type="file"
+                accept=".txt,text/plain"
+                multiple
+                className="hidden"
+                onChange={handleBulkFileInputChange}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon="upload_file"
+                onClick={() => bulkFileInputRef.current?.click()}
+                disabled={saving}
+              >
+                Upload .txt File
+              </Button>
+            </div>
+            <div
+              onDragOver={handleBulkDragOver}
+              onDragLeave={handleBulkDragLeave}
+              onDrop={handleBulkDrop}
+              className={`relative rounded border transition-colors ${
+                isBulkDragging
+                  ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                  : "border-accent/30 bg-sidebar"
+              }`}
+            >
+              <textarea
+                className="w-full rounded bg-transparent p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                placeholder={bulkPlaceholder}
+                value={bulkText}
+                disabled={saving}
+                onChange={(e) => { setBulkText(e.target.value); setBulkFileInfo(null); }}
+              />
+              {isBulkDragging && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-sidebar/90 rounded pointer-events-none backdrop-blur-xs">
+                  <span className="material-symbols-outlined text-3xl text-primary mb-1">upload_file</span>
+                  <span className="text-sm font-medium text-primary">
+                    Drop .txt files here
+                  </span>
+                </div>
+              )}
+            </div>
+            {bulkFileInfo && (
+              <div className="flex items-center gap-1.5 text-xs text-green-400 font-medium bg-green-500/10 border border-green-500/20 px-2.5 py-1.5 rounded">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                <span>
+                  Loaded {bulkFileInfo.linesCount} line(s) from {bulkFileInfo.filesCount} file(s)
+                </span>
+              </div>
+            )}
+            {bulkFileError && (
+              <p className="text-xs text-red-500 break-words">{bulkFileError}</p>
+            )}
             {saving && bulkProgress && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs text-text-muted">
