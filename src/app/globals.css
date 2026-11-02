@@ -109,12 +109,14 @@
   --color-info: #60a5fa;
 
   /* Floating shadows — big soft drop shadows below the slab only, never
-     the embossed dual-light look (no light edge top-left). Inset stays
-     only for carved fields and switch tracks. */
-  --shadow-soft: 0 18px 36px rgba(0, 0, 0, 0.7);
-  --shadow-warm: 0 22px 44px rgba(0, 0, 0, 0.7);
-  --shadow-elevated: 0 24px 48px rgba(0, 0, 0, 0.75);
-  --shadow-elev: 0 24px 48px rgba(0, 0, 0, 0.75);
+     the embossed dual-light look. A faint top sheen (light catching the
+     slab's top edge) + a restrained accent aura on primary actions keep
+     it premium-trendy, not halo. Inset stays only for carved fields
+     and switch tracks. */
+  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 36px rgba(0, 0, 0, 0.7);
+  --shadow-warm: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 44px rgba(0, 0, 0, 0.7);
+  --shadow-elevated: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 48px rgba(0, 0, 0, 0.75);
+  --shadow-elev: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 48px rgba(0, 0, 0, 0.75);
   --shadow-neu-inset: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.05);
   --shadow-neu-btn: 0 8px 18px rgba(0, 0, 0, 0.6);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
@@ -260,12 +262,12 @@ input[type="range"].hue-slider::-moz-range-thumb {
 .dark .bg-surface-2 {
   background-image: linear-gradient(180deg, #1c1c28, #14141c);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 20px rgba(0, 0, 0, 0.6);
 }
 .dark .bg-surface-3 {
   background-image: linear-gradient(180deg, #20202e, #181822);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 12px rgba(0, 0, 0, 0.55);
 }
 
 /* Carved beds (code/log viewers, segmented tracks): inset, never raised. */
@@ -345,17 +347,17 @@ input[type="range"].hue-slider::-moz-range-thumb {
    the slab (shadow shrinks) instead of sinking it in. */
 .dark .bg-brand-500,
 .dark .bg-primary {
-  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-400));
-  box-shadow: var(--shadow-neu-btn);
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500) 50%, var(--color-brand-400));
+  box-shadow: var(--shadow-neu-btn), 0 0 24px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
 }
-/* Default violet accent: primary actions blend violet → pink, like the
-   reference image. Other accents keep their own family gradient. */
+/* Default violet accent: primary actions blend violet → fuchsia → pink,
+   like the reference image. Other accents keep their own family gradient. */
 html.dark[data-accent="violet"] .bg-brand-500,
 html.dark[data-accent="violet"] .bg-primary {
-  background-image: linear-gradient(135deg, #7C3AED, #EC4899);
+  background-image: linear-gradient(135deg, #7C3AED, #C026D3 50%, #EC4899);
 }
 html.dark[data-accent="violet"] button[role="switch"][aria-checked="true"] {
-  background-image: linear-gradient(135deg, #7C3AED, #EC4899);
+  background-image: linear-gradient(135deg, #7C3AED, #C026D3 50%, #EC4899);
 }
 .dark .bg-brand-500:active,
 .dark .bg-primary:active {
@@ -374,12 +376,14 @@ html.dark[data-accent="violet"] button[role="switch"][aria-checked="true"] {
   box-shadow: var(--shadow-warm);
 }
 
-/* Switches: inset track, floating knob (drop shadow below only). */
+/* Switches: inset track, floating knob (drop shadow below only).
+   The ON track keeps its inset + a restrained accent aura. */
 .dark button[role="switch"] {
   box-shadow: var(--shadow-neu-inset);
 }
 .dark button[role="switch"][aria-checked="true"] {
-  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-400));
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500) 50%, var(--color-brand-400));
+  box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.5), 0 0 16px color-mix(in srgb, var(--color-brand-500) 35%, transparent);
 }
 .dark button[role="switch"] > span {
   background-image: linear-gradient(180deg, #ffffff, #d4d4d8);
