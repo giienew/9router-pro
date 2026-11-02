@@ -19,6 +19,7 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt", "syste
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard", color: "#E879F9" },
   { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api", color: "#A78BFA" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns", color: "#60A5FA" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers", color: "#F472B6" },
@@ -88,8 +89,11 @@ export default function Sidebar({ onClose }) {
   }, [checkVersion]);
 
   const isActive = (href) => {
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
+    }
     if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
+      return pathname.startsWith("/dashboard/endpoint");
     }
     return pathname.startsWith(href);
   };
@@ -128,7 +132,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 h-full max-h-dvh overflow-hidden">
+      <aside className="flex w-72 flex-col border-r border-border-subtle transition-colors duration-300 h-full max-h-dvh overflow-hidden">
         {/* Traffic lights + modder credit, one aligned row */}
         <div className="flex items-center gap-2 px-4 sm:px-6 pt-5 pb-2">
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
