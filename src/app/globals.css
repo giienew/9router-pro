@@ -108,15 +108,15 @@
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  /* Floating shadows — drop shadow below the slab only, never the
-     embossed dual-light look (no light edge top-left). Inset stays only
-     for carved fields and switch tracks. */
-  --shadow-soft: 0 8px 16px rgba(0, 0, 0, 0.55);
-  --shadow-warm: 0 12px 24px rgba(0, 0, 0, 0.6);
-  --shadow-elevated: 0 16px 32px rgba(0, 0, 0, 0.65);
-  --shadow-elev: 0 16px 32px rgba(0, 0, 0, 0.65);
+  /* Floating shadows — big soft drop shadows below the slab only, never
+     the embossed dual-light look (no light edge top-left). Inset stays
+     only for carved fields and switch tracks. */
+  --shadow-soft: 0 18px 36px rgba(0, 0, 0, 0.7);
+  --shadow-warm: 0 22px 44px rgba(0, 0, 0, 0.7);
+  --shadow-elevated: 0 24px 48px rgba(0, 0, 0, 0.75);
+  --shadow-elev: 0 24px 48px rgba(0, 0, 0, 0.75);
   --shadow-neu-inset: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.05);
-  --shadow-neu-btn: 0 6px 14px rgba(0, 0, 0, 0.55);
+  --shadow-neu-btn: 0 8px 18px rgba(0, 0, 0, 0.6);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
 
   color-scheme: dark;
@@ -235,9 +235,10 @@ input[type="range"].hue-slider::-moz-range-thumb {
 /* ============================================================
    9Router Pro — Neumorphism default (dark only, owner order 2026-11-02,
    refined same day: FLOATING, not embossed).
-   Premium floating slabs: top-lit vertical gradient + one soft drop
-   shadow below — the slab hovers above the background, it is never
-   extruded out of it (no light edge top-left, no diagonal gradient).
+   Premium floating slabs: lighter-than-page surface + thin uniform rim
+   + one big soft drop shadow below — the slab hovers above the
+   background, it is never extruded out of it (no light edge top-left,
+   no diagonal gradient, bottom edge never melts into the page).
    Carved-in treatment stays only for fields and switch tracks.
    This replaced the retired flat Dark Pro preset block. The app is
    dark-only now, so these rules hang off .dark, not data-preset.
@@ -246,22 +247,25 @@ input[type="range"].hue-slider::-moz-range-thumb {
   background: #0a0a0e;
 }
 
-/* Floating slabs: top-lit gradient + drop shadow below, no border. */
+/* Floating slabs: clearly lighter than the page, thin uniform rim
+   outlining the sheet, big soft drop shadow below. The rim is the same
+   on all sides (an outline, not a bevel) so the slab reads as a sheet
+   hovering above the background, never extruded out of it. */
 .dark .bg-surface {
-  background-image: linear-gradient(180deg, #1f1f2c, #0f0f14);
-  border-color: transparent;
+  background-image: linear-gradient(180deg, #262633, #1d1d28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
 }
 .dark .bg-surface-2 {
-  background-image: linear-gradient(180deg, #242432, #13131a);
-  border-color: transparent;
-  box-shadow: var(--shadow-soft);
+  background-image: linear-gradient(180deg, #2a2a38, #20202a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6);
 }
 .dark .bg-surface-3 {
-  background-image: linear-gradient(180deg, #2c2c3a, #191922);
-  border-color: transparent;
-  box-shadow: var(--shadow-soft);
+  background-image: linear-gradient(180deg, #2e2e3e, #24242f);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55);
 }
 
 /* Carved beds (code/log viewers, segmented tracks): inset, never raised. */
@@ -299,7 +303,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
 .dark aside nav a:hover {
-  background-image: linear-gradient(180deg, #242432, #13131a);
+  background-image: linear-gradient(180deg, #2a2a38, #20202a);
   box-shadow: var(--shadow-soft);
 }
 .dark aside nav a:hover .material-symbols-outlined {
@@ -308,7 +312,7 @@ input[type="range"].hue-slider::-moz-range-thumb {
 /* Active nav item: a lifted pill, not a pressed hole. */
 .dark aside nav a.text-primary {
   background: color-mix(in srgb, var(--color-brand-500) 13%, transparent);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
 }
 .dark aside nav a.text-primary .material-symbols-outlined {
   color: var(--color-brand-400);
@@ -350,14 +354,14 @@ input[type="range"].hue-slider::-moz-range-thumb {
   filter: brightness(0.95);
 }
 
-/* Clickable cards: hover lifts a touch brighter. */
+/* Clickable cards: hover lifts the slab higher off the page. */
 .dark a.bg-surface,
 .dark button.bg-surface {
-  transition: box-shadow 0.15s ease, filter 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 .dark a.bg-surface:hover,
 .dark button.bg-surface:hover {
-  filter: brightness(1.05);
+  transform: translateY(-2px);
   box-shadow: var(--shadow-warm);
 }
 
