@@ -80,6 +80,16 @@ export function hslToHex(h, s, l) {
   return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
 }
 
+export function hexToLight(hex) {
+  if (!isValidHexColor(hex)) return 58;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  return Math.round(((mx + mn) / 2) * 100);
+}
+
 export function hexToHue(hex) {
   if (!isValidHexColor(hex)) return 262;
   const r = parseInt(hex.slice(1, 3), 16) / 255;

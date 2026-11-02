@@ -1,11 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Card from "@/shared/components/Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
-import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart";
-import TopModelsChart from "@/app/(dashboard)/dashboard/usage/components/TopModelsChart";
-import ProviderBarChart from "@/app/(dashboard)/dashboard/usage/components/ProviderBarChart";
+// Audit fix: recharts charts render client-only in this codebase (the Usage
+// page loads them with ssr:false); static imports here risked an SSR crash
+// on the dashboard home, so match that pattern.
+const UsageChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/UsageChart"), { ssr: false });
+const TopModelsChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/TopModelsChart"), { ssr: false });
+const ProviderBarChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderBarChart"), { ssr: false });
 
 const PERIOD = "7d";
 

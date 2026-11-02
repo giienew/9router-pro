@@ -5,7 +5,12 @@ import PropTypes from "prop-types";
 import ChangelogModal from "./ChangelogModal";
 import { ConfirmModal } from "./Modal";
 import { cn } from "@/shared/utils/cn";
-import { ACCENT_STORAGE_KEY, PRO_DEFAULT_ACCENT, isValidAccent, applyCustomAccent, getStoredCustomAccent, hslToHex, hexToHue, CUSTOM_ACCENT_ID } from "@/shared/constants/accents";
+import { ACCENT_STORAGE_KEY, PRO_DEFAULT_ACCENT, isValidAccent, applyCustomAccent, getStoredCustomAccent, hslToHex, hexToHue, hexToLight, CUSTOM_ACCENT_ID } from "@/shared/constants/accents";
+
+// Quick dark → light shades for the current hue (custom colors used to
+// sit at one fixed lightness, so dark and light variants were unreachable
+// from the slider — these dots multiply the choice per hue).
+const CUSTOM_SHADES = [20, 33, 46, 59, 72, 85];
 
 function MenuItem({ icon, label, onClick, trailing, danger }) {
   return (
@@ -47,6 +52,7 @@ export default function HeaderMenu({ onLogout }) {
   const [accent, setAccent] = useState(PRO_DEFAULT_ACCENT);
   const [customHex, setCustomHex] = useState("#8B5CF6");
   const [hue, setHue] = useState(262);
+  const [light, setLight] = useState(58);
 
   useEffect(() => {
     try {
@@ -57,6 +63,7 @@ export default function HeaderMenu({ onLogout }) {
           setAccent(CUSTOM_ACCENT_ID);
           setCustomHex(c);
           setHue(hexToHue(c));
+          setLight(hexToLight(c));
         }
       } else if (saved && isValidAccent(saved)) {
         setAccent(saved);
@@ -66,21 +73,29 @@ export default function HeaderMenu({ onLogout }) {
 
   // Free color choice: slide the hue (or tap the dot for an exact color) and
   // the whole brand scale is derived from it live — see constants/accents.js.
-  const onHue = (e) => {
-    const h = Number(e.target.value);
-    const hex = hslToHex(h, 84, 58);
-    setHue(h);
+  // Lightness is preserved across hue slides, so a dark pick stays dark.
+  const applyHex = (hex) => {
     setCustomHex(hex);
     setAccent(CUSTOM_ACCENT_ID);
     applyCustomAccent(hex);
   };
 
+  const onHue = (e) => {
+    const h = Number(e.target.value);
+    setHue(h);
+    applyHex(hslToHex(h, 84, light));
+  };
+
   const onPickColor = (e) => {
     const hex = e.target.value;
-    setCustomHex(hex);
     setHue(hexToHue(hex));
-    setAccent(CUSTOM_ACCENT_ID);
-    applyCustomAccent(hex);
+    setLight(hexToLight(hex));
+    applyHex(hex);
+  };
+
+  const onShade = (l) => {
+    setLight(l);
+    applyHex(hslToHex(hue, 84, l));
   };
 
   const handleShutdown = async () => {
@@ -151,6 +166,23 @@ export default function HeaderMenu({ onLogout }) {
               <span className="w-14 shrink-0 font-mono text-[11px] uppercase text-text-muted">
                 {accent === CUSTOM_ACCENT_ID ? customHex : "—"}
               </span>
+            </div>
+            <div className="flex items-center gap-1.5 px-4 pb-2">
+              {CUSTOM_SHADES.map((l) => {
+                const hex = hslToHex(hue, 84, l);
+                const active = accent === CUSTOM_ACCENT_ID && light === l;
+                return (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => onShade(l)}
+                    title={`Lightness ${l}%`}
+                    aria-label={`Custom accent lightness ${l} percent`}
+                    className={`size-6 shrink-0 rounded-full transition-transform hover:scale-110 ${active ? "ring-2 ring-white/70" : "border border-white/25"}`}
+                    style={{ backgroundColor: hex }}
+                  />
+                );
+              })}
             </div>
 
             <div className="my-1 border-t border-black/5 dark:border-white/5" />
