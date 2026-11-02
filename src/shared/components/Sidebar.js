@@ -19,25 +19,25 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt", "syste
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage" },
-  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
-  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", badge: "PRO" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
+  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api", color: "#A78BFA" },
+  { href: "/dashboard/providers", label: "Providers", icon: "dns", color: "#60A5FA" },
+  { href: "/dashboard/combos", label: "Combos", icon: "layers", color: "#F472B6" },
+  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart", color: "#34D399" },
+  { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage", color: "#2DD4BF" },
+  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings", color: "#FBBF24" },
+  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", color: "#C084FC", badge: "PRO" },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", color: "#22D3EE" },
 ];
 
 const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "monitor" },
-  { href: "/dashboard/translator", label: "Translator (debug)", icon: "translate" },
+  { href: "/dashboard/console-log", label: "Console Log", icon: "monitor", color: "#FB923C" },
+  { href: "/dashboard/translator", label: "Translator (debug)", icon: "translate", color: "#818CF8" },
 ];
 
 const systemItems = [
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
-  { href: "/dashboard/automation", label: "Automation", icon: "tune" },
-  { href: "/dashboard/skills", label: "Skills", icon: "extension" },
+  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan", color: "#38BDF8" },
+  { href: "/dashboard/automation", label: "Automation", icon: "tune", color: "#FB923C" },
+  { href: "/dashboard/skills", label: "Skills", icon: "extension", color: "#34D399" },
 ];
 
 export default function Sidebar({ onClose }) {
@@ -212,6 +212,7 @@ export default function Sidebar({ onClose }) {
                   "material-symbols-outlined text-[18px]",
                   isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                 )}
+                style={item.color ? { color: item.color } : undefined}
               >
                 {item.icon}
               </span>
@@ -298,6 +299,7 @@ export default function Sidebar({ onClose }) {
                     "material-symbols-outlined text-[18px]",
                     isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                   )}
+                style={item.color ? { color: item.color } : undefined}
                 >
                   {item.icon}
                 </span>
@@ -325,6 +327,7 @@ export default function Sidebar({ onClose }) {
                       "material-symbols-outlined text-[18px]",
                       isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                     )}
+                  style={item.color ? { color: item.color } : undefined}
                   >
                     {item.icon}
                   </span>
@@ -349,6 +352,7 @@ export default function Sidebar({ onClose }) {
                   "material-symbols-outlined text-[18px]",
                   isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
                 )}
+              style={item.color ? { color: item.color } : undefined}
               >
                 settings
               </span>
