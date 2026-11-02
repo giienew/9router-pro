@@ -8,6 +8,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity, normalizeGeminiContents } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
+import { getModelUpstreamId } from "../config/providerModels.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -171,6 +172,13 @@ export class AntigravityExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     const projectId = credentials?.projectId || this.generateProjectId();
+
+    // Antigravity tier suffixes are part of the upstream model id
+    // (e.g. gemini-3.7-flash-tiered(high)). The generic thinking pipeline
+    // strips "(tier)" from body.model before it reaches us, so re-resolve
+    // the full upstream id from the router model id here — sending the
+    // stripped base id makes Google 404 with "Requested entity was not found".
+    const upstreamModel = getModelUpstreamId("ag", model, body) || body.model || model;
 
     // OpenAI clients may include stream_options even for non-streaming calls.
     // Google generateContent rejects that combination before processing the request.
@@ -343,7 +351,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return {
       ...body,
       project: projectId,
-      model: body.model || model,
+      model: upstreamModel,
       userAgent: "antigravity",
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
       request: transformedRequest
