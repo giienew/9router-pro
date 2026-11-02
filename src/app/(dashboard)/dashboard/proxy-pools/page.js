@@ -41,6 +41,10 @@ export default function ProxyPoolsPage() {
   const [editingProxyPool, setEditingProxyPool] = useState(null);
   const [formData, setFormData] = useState(normalizeFormData());
   const [batchImportText, setBatchImportText] = useState("");
+  const [batchFileInfo, setBatchFileInfo] = useState(null); // { filesCount, linesCount } after a .txt upload
+  const [batchFileError, setBatchFileError] = useState("");
+  const [isBatchDragging, setIsBatchDragging] = useState(false);
+  const batchFileInputRef = useRef(null);
   const [vercelForm, setVercelForm] = useState({ vercelToken: "", projectName: "vercel-relay" });
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
   const [denoForm, setDenoForm] = useState({ denoToken: "", orgDomain: "", projectName: "" });
@@ -437,12 +441,68 @@ export default function ProxyPoolsPage() {
 
   const openBatchImportModal = () => {
     setBatchImportText("");
+    setBatchFileInfo(null);
+    setBatchFileError("");
+    setIsBatchDragging(false);
     setShowBatchImportModal(true);
   };
 
   const closeBatchImportModal = () => {
     if (importing) return;
     setShowBatchImportModal(false);
+  };
+
+  // File import for batch proxies: same lines as paste, read from .txt
+  // files instead (pasting thousands of lines is painful). Content lands
+  // in the textarea so the existing import path handles it unchanged.
+  const processBatchFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setBatchFileError("");
+    const txtFiles = Array.from(files).filter(
+      (file) => file.name.endsWith(".txt") || file.type === "text/plain" || file.type === ""
+    );
+    if (txtFiles.length === 0) {
+      setBatchFileError("Please select valid .txt files");
+      return;
+    }
+    try {
+      const parts = [];
+      for (const file of txtFiles) {
+        const text = (await file.text()).replace(/\r\n/g, "\n").replace(/\n+$/, "");
+        if (text.trim()) parts.push(text);
+      }
+      const combined = parts.join("\n");
+      const linesCount = combined.split("\n").filter((line) => line.trim()).length;
+      if (linesCount === 0) {
+        setBatchFileError("No proxies found in selected files");
+        return;
+      }
+      setBatchImportText(combined);
+      setBatchFileInfo({ filesCount: txtFiles.length, linesCount });
+    } catch (err) {
+      setBatchFileError(`Error reading files: ${err.message}`);
+    }
+  };
+
+  const handleBatchFileInputChange = (e) => {
+    processBatchFiles(e.target.files);
+    if (e.target) e.target.value = "";
+  };
+
+  const handleBatchDragOver = (e) => {
+    e.preventDefault();
+    setIsBatchDragging(true);
+  };
+
+  const handleBatchDragLeave = (e) => {
+    e.preventDefault();
+    setIsBatchDragging(false);
+  };
+
+  const handleBatchDrop = (e) => {
+    e.preventDefault();
+    setIsBatchDragging(false);
+    processBatchFiles(e.dataTransfer.files);
   };
 
   const openVercelModal = () => {
@@ -968,12 +1028,49 @@ export default function ProxyPoolsPage() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="text-sm font-medium text-text-main mb-1 block">Paste Proxy List (One per line)</label>
-            <textarea
-              value={batchImportText}
-              onChange={(e) => setBatchImportText(e.target.value)}
-              placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass"}
-              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
-            />
+            <div className="flex gap-2 mb-2">
+              <input
+                ref={batchFileInputRef}
+                type="file"
+                accept=".txt,text/plain"
+                multiple
+                className="hidden"
+                onChange={handleBatchFileInputChange}
+              />
+              <Button size="sm" variant="secondary" icon="upload_file" onClick={() => batchFileInputRef.current?.click()} disabled={importing}>
+                Upload .txt File
+              </Button>
+            </div>
+            <div
+              className="relative"
+              onDragOver={handleBatchDragOver}
+              onDragLeave={handleBatchDragLeave}
+              onDrop={handleBatchDrop}
+            >
+              <textarea
+                value={batchImportText}
+                onChange={(e) => { setBatchImportText(e.target.value); setBatchFileInfo(null); }}
+                placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass"}
+                className={`w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all ${isBatchDragging ? "ring-2 ring-primary" : ""}`}
+              />
+              {isBatchDragging && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 dark:bg-black/80 rounded-md pointer-events-none">
+                  <span className="material-symbols-outlined text-3xl text-primary mb-1">upload_file</span>
+                  <span className="text-sm font-medium text-primary">Drop .txt files here</span>
+                </div>
+              )}
+            </div>
+            {batchFileInfo && (
+              <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium bg-green-500/10 border border-green-500/20 px-2.5 py-1.5 rounded mt-2">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                <span>
+                  Loaded {batchFileInfo.linesCount} line(s) from {batchFileInfo.filesCount} file(s)
+                </span>
+              </div>
+            )}
+            {batchFileError && (
+              <p className="text-xs text-red-500 break-words mt-1">{batchFileError}</p>
+            )}
             <p className="text-xs text-text-muted mt-1">
               Supported formats: protocol://user:pass@host:port, host:port:user:pass
             </p>
