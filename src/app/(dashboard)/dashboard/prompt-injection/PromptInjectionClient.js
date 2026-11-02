@@ -1541,9 +1541,21 @@ export default function PromptInjectionClient() {
                 ],
               }}
               action={
-                <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
-                  {translate("New template")}
-                </Button>
+                <>
+                  <a
+                    href="https://github.com/togg53192-cmd/jailbreaks"
+                    target="_blank"
+                    rel="noopener"
+                    title="Referensi prompt"
+                    aria-label="Referensi prompt"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border text-text-muted transition-colors hover:text-text-main"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                  </a>
+                  <Button size="sm" icon="add" onClick={() => setEditingTemplate(null)} className="shrink-0 whitespace-nowrap">
+                    {translate("New template")}
+                  </Button>
+                </>
               }
             >
               A library of reusable prompts. Using a template copies its content into an
