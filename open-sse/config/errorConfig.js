@@ -41,6 +41,14 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
+// Balance-dead park (opt80): a key whose balance is exhausted is not
+// rate-limited, it is dead until topped up. The old rules gave it a
+// 2-minute lock (402) or a backoff capped at 5 minutes, so a dead key
+// was re-sampled forever and every pick wasted a full upstream attempt.
+// Park it long instead; the lock expires on its own, so a topped-up key
+// returns to rotation without manual action.
+export const DEAD_KEY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
 // Balanced selection (9Router Pro): how many least-recently-used candidates
 // the picker randomizes over. Big enough to smooth bursts, small enough to
 // keep the fleet's rest gradient steep.
@@ -104,14 +112,23 @@ const COOLDOWN = {
 /**
  * Unified error classification rules.
  * Checked top-to-bottom: text rules first (by order), then status rules.
- * Each rule: { text?, status?, cooldownMs?, backoff? }
+ * Each rule: { text?, status?, cooldownMs?, backoff?, dead? }
  *   - text: substring match (case-insensitive) on error message
  *   - status: HTTP status code match
  *   - cooldownMs: fixed cooldown duration
  *   - backoff: true = use exponential backoff (rate limit)
+ *   - dead: true = balance exhausted, park DEAD_KEY_COOLDOWN_MS (opt80).
+ *     Only unambiguous balance language parks a key: "quota exceeded"
+ *     stays on backoff because it is also used for rate windows.
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
+  // --- Balance-dead rules (checked before the backoff texts below) ---
+  { text: "insufficient credit",      dead: true },
+  { text: "insufficient balance",     dead: true },
+  { text: "credit balance is too low", dead: true },
+  { text: "out of credit",            dead: true },
+  // --- Other text rules ---
   { provider: "codex", text: "model is not supported when using codex with a chatgpt account", cooldownMs: MAX_RATE_LIMIT_COOLDOWN_MS },
   // Intl gateway blocks affect the account/IP, so let the connection back off.
   { provider: "codebuddy-intl", text: "request illegal", backoff: true },
@@ -122,14 +139,12 @@ export const ERROR_RULES = [
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },
-  { text: "insufficient credit",      backoff: true },
-  { text: "credit balance is too low", backoff: true },
   { text: "capacity",                 backoff: true },
   { text: "overloaded",               backoff: true },
 
   // --- Status-based rules (fallback when text doesn't match) ---
   { status: 401, cooldownMs: COOLDOWN.long },
-  { status: 402, cooldownMs: COOLDOWN.long },
+  { status: 402, dead: true },
   { status: 403, cooldownMs: COOLDOWN.long },
   { status: 404, cooldownMs: COOLDOWN.long },
   { status: 429, backoff: true },

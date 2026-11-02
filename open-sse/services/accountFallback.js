@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, LRU_NEVER_USED_BASE, LRU_PRIORITY_CAP, LAST_USED_OVERLAY_MAX_ENTRIES, LAST_USED_OVERLAY_PRUNE_AGE_MS } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, DEAD_KEY_COOLDOWN_MS, LRU_NEVER_USED_BASE, LRU_PRIORITY_CAP, LAST_USED_OVERLAY_MAX_ENTRIES, LAST_USED_OVERLAY_PRUNE_AGE_MS } from "../config/errorConfig.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -31,6 +31,9 @@ export function getQuotaCooldown(backoffLevel = 0) {
 const STATUS_RULE_STATUSES = new Set(ERROR_RULES.filter((r) => r.status).map((r) => r.status));
 
 function applyRule(rule, backoffLevel) {
+  if (rule.dead) {
+    return { shouldFallback: true, cooldownMs: DEAD_KEY_COOLDOWN_MS };
+  }
   if (rule.backoff) {
     const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
     return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };

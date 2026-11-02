@@ -1,4 +1,4 @@
-import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES, MAX_RATE_LIMIT_COOLDOWN_MS } from "../config/errorConfig.js";
 import { emitErrorWebhook } from "@/lib/webhookEvents.js";
 
 /**
@@ -52,6 +52,43 @@ export async function writeStreamError(writer, statusCode, message) {
 }
 
 /**
+ * Parse an upstream Retry-After value (opt80) into a cooldown in ms.
+ * Accepts delay-seconds ("120") or an HTTP-date. Returns null for a
+ * missing, unparseable, or already-past value (the caller then falls back
+ * to its normal backoff). Capped at MAX_RATE_LIMIT_COOLDOWN_MS, the same
+ * cap the codebase already applies to provider-reported resets.
+ * @param {string|null|undefined} value
+ * @param {number} now - ms epoch, injectable for tests
+ * @returns {number|null}
+ */
+export function parseRetryAfterMs(value, now = Date.now()) {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const seconds = Number(str);
+  if (Number.isFinite(seconds)) {
+    if (seconds < 0) return null;
+    return Math.min(Math.floor(seconds * 1000), MAX_RATE_LIMIT_COOLDOWN_MS);
+  }
+  const dateMs = Date.parse(str);
+  if (!Number.isFinite(dateMs)) return null;
+  const delta = dateMs - now;
+  if (delta <= 0) return null;
+  return Math.min(delta, MAX_RATE_LIMIT_COOLDOWN_MS);
+}
+
+function readRetryAfterMs(response) {
+  try {
+    const headers = response?.headers;
+    if (!headers) return null;
+    const raw = typeof headers.get === "function" ? headers.get("retry-after") : headers["retry-after"];
+    return parseRetryAfterMs(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
@@ -71,7 +108,14 @@ export async function parseUpstreamError(response, executor = null) {
       const parsed = executor.parseError(response, bodyText);
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
+        // An executor-provided resetsAtMs wins; otherwise the generic
+        // Retry-After header fills it (429 only).
+        let resetsAtMs = parsed.resetsAtMs;
+        if (resetsAtMs == null && response.status === 429) {
+          const retryMs = readRetryAfterMs(response);
+          if (retryMs != null) resetsAtMs = Date.now() + retryMs;
+        }
+        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs };
       }
     } catch { /* fall through to default parsing */ }
   }
@@ -87,7 +131,16 @@ export async function parseUpstreamError(response, executor = null) {
   const messageStr = typeof message === "string" ? message : JSON.stringify(message);
   const finalMessage = messageStr || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
 
-  return { statusCode: response.status, message: finalMessage };
+  // Generic Retry-After (opt80): a 429 that carries the header parks the
+  // key for exactly that long (capped) instead of the blind backoff.
+  // chatCore already forwards resetsAtMs into markAccountUnavailable.
+  let resetsAtMs;
+  if (response.status === 429) {
+    const retryMs = readRetryAfterMs(response);
+    if (retryMs != null) resetsAtMs = Date.now() + retryMs;
+  }
+
+  return { statusCode: response.status, message: finalMessage, resetsAtMs };
 }
 
 /**
