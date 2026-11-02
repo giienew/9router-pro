@@ -352,7 +352,7 @@ export default function Sidebar({ onClose }) {
                   "material-symbols-outlined text-[18px]",
                   isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
                 )}
-              style={item.color ? { color: item.color } : undefined}
+                style={{ color: "#60A5FA" }}
               >
                 settings
               </span>
