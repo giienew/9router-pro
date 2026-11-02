@@ -62,7 +62,7 @@ export default function HeaderMenu({ onLogout }) {
         setAccent(saved);
       }
     } catch { /* private mode */ }
-  }, [];
+  }, []);
 
   // Free color choice: slide the hue (or tap the dot for an exact color) and
   // the whole brand scale is derived from it live — see constants/accents.js.
