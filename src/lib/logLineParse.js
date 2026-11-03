@@ -97,3 +97,31 @@ export function parseConsoleLine(raw) {
 
   return { time, level, tag, dot, message: rest.trim() || line.trim() };
 }
+
+// Tags that are NOT provider calls: credential maintenance (the 5-minute
+// background refresh that spams the panel when a credential is dead),
+// auth/system/quota bookkeeping. Everything else with a tag — COMBO, CHAT,
+// REQ, DONE, ERR, routing/fetch/fusion/fallback, modality calls, provider
+// names from the "NAME [402]:" shape — is call traffic.
+const NON_CALL_TAGS = new Set([
+  "TOKEN_REFRESH",
+  "TOKEN",
+  "BG_TOKEN_REFRESH",
+  "AUTH",
+  "SYSTEMONE",
+  "QUOTA",
+  "AG_QUOTA",
+  "LIMIT",
+]);
+
+// Provider-call view for the Console Log panel: keep per-request rows
+// (session dot) and call tags; server HTTP rows count only when they are
+// the router's own chat API; untagged system noise is dropped.
+export function isProviderCallLine(raw) {
+  const p = parseConsoleLine(raw);
+  if (p.dot) return true;
+  if (p.tag === "HTTP") return p.message.includes("/api/v1/chat/completions");
+  if (!p.tag) return false;
+  if (NON_CALL_TAGS.has(p.tag)) return false;
+  return true;
+}
