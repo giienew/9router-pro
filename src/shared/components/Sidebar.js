@@ -57,7 +57,12 @@ export default function Sidebar({ onClose }) {
 
   const mainNavItems = navItems;
 
-  const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+  // Manual-update command: pin the exact version the panel title promises when the
+  // version check already knows it; otherwise fall back to registry latest. Never a
+  // GitHub install — master lags the release, so it would land users on the old version.
+  const INSTALL_CMD = updateInfo?.latestVersion
+    ? `npm i -g 9router-pro@${updateInfo.latestVersion} --prefer-online`
+    : UPDATER_CONFIG.installCmdLatest;
 
   useEffect(() => {
     useSettingsStore.getState().fetchSettings().then((data) => {
