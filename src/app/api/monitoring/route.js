@@ -155,6 +155,31 @@ export async function GET() {
       }
     } catch {}
 
+    // Provider with the most API keys (opt83): count providerConnections
+    // per provider from the already-loaded list — no new DB query. Only
+    // counts leave the server (names + numbers, never key values).
+    let mostKeys = null;
+    try {
+      const byProvider = new Map();
+      for (const c of connections) {
+        const id = c?.provider || "unknown";
+        const entry = byProvider.get(id) || { id, total: 0, active: 0 };
+        entry.total += 1;
+        if (c.isActive !== false) entry.active += 1;
+        byProvider.set(id, entry);
+      }
+      const ranked = [...byProvider.values()].sort((a, b) => b.total - a.total);
+      if (ranked.length && ranked[0].total > 0) {
+        mostKeys = {
+          id: ranked[0].id,
+          name: resolveName(ranked[0].id),
+          total: ranked[0].total,
+          active: ranked[0].active,
+          sharePct: connections.length ? Math.round((ranked[0].total / connections.length) * 100) : null,
+        };
+      }
+    } catch {}
+
     let breakersOpen = 0;
     try {
       for (const b of Object.values(getProviderBreakerSnapshot())) {
@@ -178,6 +203,7 @@ export async function GET() {
       fastest,
       mostUsed,
       mostUsedKey,
+      mostKeys,
       providerNames,
       health: { db: dbOk ? "ok" : "error", breakersOpen },
     };

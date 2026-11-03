@@ -250,6 +250,26 @@ export default function MonitoringPageClient() {
               </span>
             )}
           </Card>
+          <Card className="flex min-w-0 flex-1 flex-col gap-1 p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-emerald-400">database</span>
+              <span className="text-sm font-semibold text-white">Provider dengan API Key Terbanyak</span>
+            </div>
+            {mon?.mostKeys ? (
+              <>
+                <span className="text-xl font-extrabold tracking-tight text-white">{mon.mostKeys.name}</span>
+                <span className="text-sm text-text-muted">
+                  <span className="font-bold text-white">{fmtInt(mon.mostKeys.total)} koneksi</span>
+                  {` · ${fmtInt(mon.mostKeys.active)} aktif`}
+                  {mon.mostKeys.sharePct !== null ? ` · ${mon.mostKeys.sharePct}% dari total` : ""}
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-text-muted">
+                {loading ? "Memuat…" : "Belum ada koneksi provider."}
+              </span>
+            )}
+          </Card>
         </div>
       </div>
 
