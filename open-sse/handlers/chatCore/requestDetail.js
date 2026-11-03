@@ -1,7 +1,6 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
-import { recordLatencyEma } from "../../services/accountFallback.js";
 
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
@@ -141,11 +140,6 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
   };
-
-  // Opt81: feed the latency EMA used by latency-weighted picks. Only
-  // completed requests with tokens reach here, so failures never poison
-  // the EMA; a slow key's weight drops on its own as its EMA rises.
-  if (connectionId && Number.isFinite(latencyMs)) recordLatencyEma(connectionId, latencyMs);
 
   saveRequestUsage({
     provider: provider || "unknown",
