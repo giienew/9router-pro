@@ -9,7 +9,7 @@ import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
 import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
-import { COMBO_FIRST_RESPONSE_TIMEOUT_MS, COMBO_HEDGE_DELAY_MS } from "../config/runtimeConfig.js";
+import { COMBO_FIRST_RESPONSE_TIMEOUT_MS, COMBO_HEDGE_DELAY_MS, EMPTY_PEEK_DEADLINE_MS } from "../config/runtimeConfig.js";
 import { raceWithHedge } from "./comboHedge.js";
 import {
   getStickyComboModel,
@@ -653,6 +653,24 @@ export async function handleComboChat({
         if (peeked.outcome === "content") {
           log.info("COMBO", `Model ${modelStr} succeeded${peeked.timedOut ? " (peek deadline; committed)" : ""}`);
           return peeked.response;
+        }
+
+        // Peek deadline with zero content: the member is too slow for THIS request, not
+        // dead — fail over like a fetch timeout. Never hand the client an open stream
+        // that may never yield text: the old fail-open committed it as success, which
+        // clients render as typing forever. The member is NOT marked unavailable and
+        // rotation is untouched (same rule as fetch timeouts). When every member times
+        // out this way, the tail below returns the 504 envelope instead of an empty stream.
+        if (peeked.timedOut) {
+          log.warn("COMBO", `Model ${modelStr} first content timed out after ${EMPTY_PEEK_DEADLINE_MS}ms — trying next`);
+          if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
+            clearStickyComboSession(comboName, sessionId);
+          }
+          // Drain/close the discarded stream in the background so its usage logging still runs.
+          peeked.response.body?.cancel?.().catch(() => {});
+          lastError = `First content timed out after ${EMPTY_PEEK_DEADLINE_MS}ms`;
+          lastStatus = 504;
+          continue;
         }
 
         // Empty generation. Fall through to the next candidate unless this is a legitimately
