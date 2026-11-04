@@ -1,17 +1,17 @@
 # Database files - NEVER publish
-data/
+/data/
 **/data/
 **/db.json
 
 # Development
-src/
-docs/
-agents/
-scripts/
-worker/
-shared-sse/
-copilot-api/
-CLIProxyAPI/
+/src/
+/docs/
+/agents/
+/scripts/
+/worker/
+/shared-sse/
+/copilot-api/
+/CLIProxyAPI/
 
 # Config files
 *.md
