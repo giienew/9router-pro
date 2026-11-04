@@ -6,7 +6,6 @@ data/
 # Development
 src/
 docs/
-test/
 agents/
 scripts/
 worker/
