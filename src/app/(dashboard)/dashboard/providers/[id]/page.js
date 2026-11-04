@@ -15,6 +15,7 @@ import { translate } from "@/i18n/runtime";
 import { useNotificationStore } from "@/store/notificationStore";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { classifyTestError, getStageLabel } from "@/shared/utils/testErrorStage";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -793,7 +794,7 @@ export default function ProviderDetailPage() {
             ...prev,
             [connection.id]: {
               state: valid ? "success" : "failed",
-              error: valid ? null : (data.error || null),
+              error: valid ? null : (data.stage ? `${getStageLabel(data.stage)}: ${data.error || ""}` : (data.error || null)),
             },
           }));
         } catch (error) {
@@ -1209,12 +1210,12 @@ export default function ProviderDetailPage() {
       <div className="flex flex-col gap-3">
         {connTotal > connections.length && (
           <div>
-            <div className="flex overflow-hidden rounded-lg border border-border">
+            <div className="seg-track flex gap-1 rounded-full p-1">
               <button
                 type="button"
                 onClick={() => setBulkScope("loaded")}
                 disabled={bulkUpdatingProxy}
-                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
               >
                 Loaded ({connections.length})
               </button>
@@ -1222,7 +1223,7 @@ export default function ProviderDetailPage() {
                 type="button"
                 onClick={() => setBulkScope("all")}
                 disabled={bulkUpdatingProxy}
-                className={`flex-1 px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"}`}
+                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
               >
                 All ({connTotal})
               </button>
@@ -1302,10 +1303,20 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      setModelsTestError(data.ok ? "" : (data.error || "Model not reachable"));
+      // Store the full detail, not just ok/error: the card shows the real
+      // cause (auth / rate limit / upstream / network / timeout) instead
+      // of a bare red X.
+      const detail = {
+        status: data.ok ? "ok" : "error",
+        stage: data.stage || classifyTestError({ status: data.status, error: data.error }).stage,
+        message: data.error || "",
+        latencyMs: data.latencyMs ?? null,
+        testedAt: new Date().toISOString(),
+      };
+      setModelTestResults((prev) => ({ ...prev, [modelId]: detail }));
+      setModelsTestError(data.ok ? "" : (detail.stage !== "unknown" && detail.message ? `${getStageLabel(detail.stage)}: ${detail.message}` : (data.error || "Model not reachable")));
     } catch {
-      setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
+      setModelTestResults((prev) => ({ ...prev, [modelId]: { status: "error", stage: "unknown", message: "Network error", latencyMs: null, testedAt: new Date().toISOString() } }));
       setModelsTestError("Network error");
     } finally {
       setTestingModelIds((prev) => { const n = new Set(prev); n.delete(modelId); return n; });
@@ -1367,7 +1378,8 @@ export default function ProviderDetailPage() {
                 handleDeleteAlias(model.alias);
               }
             }}
-            testStatus={modelTestResults[model.id]}
+            testStatus={modelTestResults[model.id]?.status}
+            testDetail={modelTestResults[model.id]}
             onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
             isTesting={testingModelIds.has(model.id)}
             isCustom
@@ -1393,7 +1405,8 @@ export default function ProviderDetailPage() {
               onCopy={copy}
               onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
               onDeleteAlias={() => handleDeleteAlias(existingAlias)}
-              testStatus={modelTestResults[model.id]}
+              testStatus={modelTestResults[model.id]?.status}
+              testDetail={modelTestResults[model.id]}
               onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}

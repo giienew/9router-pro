@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, Button, ConfirmModal } from "@/shared/components";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
-import { parseConsoleLine } from "@/lib/logLineParse";
+import { parseConsoleLine, isProviderCallLine } from "@/lib/logLineParse";
 
 // MatLog-style rows (9Router Pro): every line renders as time + level
 // badge + short tag + one plain message, so the panel scans like a
@@ -45,7 +45,23 @@ export default function ConsoleLogClient() {
   const [retries, setRetries] = useState(0);
   const [connectKey, setConnectKey] = useState(0);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [providerOnly, setProviderOnly] = useState(false);
   const logRef = useRef(null);
+
+  // Remember the filter choice across visits (read after mount so the
+  // server render stays identical and hydration does not mismatch).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("consoleLogProviderOnly") === "1") setProviderOnly(true);
+    } catch (_) {}
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("consoleLogProviderOnly", providerOnly ? "1" : "0");
+    } catch (_) {}
+  }, [providerOnly]);
+
+  const visibleLogs = providerOnly ? logs.filter(isProviderCallLine) : logs;
 
   const handleClear = async () => {
     try {
@@ -118,6 +134,22 @@ export default function ConsoleLogClient() {
                 : "Connecting…"}
           </span>
           <div className="flex items-center gap-2">
+            <span className="flex items-center rounded-md border border-white/10 p-[2px] text-[11px]">
+              <button
+                type="button"
+                onClick={() => setProviderOnly(false)}
+                className={`rounded px-2 py-1 ${!providerOnly ? "bg-white/10 text-white" : "text-text-muted"}`}
+              >
+                Semua
+              </button>
+              <button
+                type="button"
+                onClick={() => setProviderOnly(true)}
+                className={`rounded px-2 py-1 ${providerOnly ? "bg-white/10 text-white" : "text-text-muted"}`}
+              >
+                Hanya provider
+              </button>
+            </span>
             {!connected && (
               <Button size="sm" variant="outline" icon="refresh" onClick={() => setConnectKey((k) => k + 1)}>
                 Reconnect
@@ -132,9 +164,9 @@ export default function ConsoleLogClient() {
           ref={logRef}
           className="bg-black rounded-b-lg px-3 py-2 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
         >
-          {logs.length === 0 ? (
+          {visibleLogs.length === 0 ? (
             <div className="text-text-muted space-y-1">
-              <p>No console logs yet.</p>
+              <p>{providerOnly ? "No provider calls yet." : "No console logs yet."}</p>
               <p>
                 Logs stream here live while the server runs — send a request
                 through the router and entries appear. If this stays empty
@@ -144,7 +176,7 @@ export default function ConsoleLogClient() {
             </div>
           ) : (
             <div>
-              {logs.map((line, i) => (
+              {visibleLogs.map((line, i) => (
                 <LogRow key={i} line={line} />
               ))}
             </div>

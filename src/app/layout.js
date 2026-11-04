@@ -1,4 +1,4 @@
-import { Inter, Space_Grotesk, Playfair_Display, Pacifico, Poppins, Montserrat, Bebas_Neue, Anton, Orbitron, Lobster, Bangers, Zilla_Slab, Great_Vibes, Caveat, JetBrains_Mono, Special_Elite, Press_Start_2P, Audiowide, Monoton, Rubik_Glitch, Michroma, VT323 } from "next/font/google";
+import { Inter, Space_Grotesk, Playfair_Display, Pacifico, Poppins, Montserrat, Bebas_Neue, Anton, Orbitron, Lobster, Bangers, Zilla_Slab, Great_Vibes, Caveat, JetBrains_Mono, Special_Elite, Press_Start_2P, Audiowide, Monoton, Rubik_Glitch, Michroma, VT323, Nunito } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "material-symbols/outlined.css";
 import "./globals.css";
@@ -53,6 +53,13 @@ const glitch = Rubik_Glitch({ subsets: ["latin"], weight: ["400"], variable: "--
 const michroma = Michroma({ subsets: ["latin"], weight: ["400"], variable: "--font-michroma" });
 const vt323 = VT323({ subsets: ["latin"], weight: ["400"], variable: "--font-vt323" });
 
+// Body font following the reference image: rounded geometric sans.
+const nunito = Nunito({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-nunito",
+});
+
 export const metadata = {
   title: "9Router Pro - AI Infrastructure Management",
   description: "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.",
@@ -83,11 +90,11 @@ export default function RootLayout({ children }) {
             __html: `(function(){try{var a=localStorage.getItem('9rp-accent');if(a==='custom'){var c=localStorage.getItem('9rp-accent-custom');document.documentElement.setAttribute('data-accent','custom');if(c&&/^#[0-9a-fA-F]{6}$/.test(c)){document.documentElement.style.setProperty('--color-brand-base',c)}}else if(a){if(a!=='coral'){document.documentElement.setAttribute('data-accent',a)}}else{document.documentElement.setAttribute('data-accent','violet')}}catch(e){}})();`,
           }}
         />
-        {/* 9Router Pro: theme preset before first paint — Dark Pro is the
-            default look; only an explicit "ori" choice opts out of it. */}
+        {/* 9Router Pro: dark-only default before first paint (no flash).
+            Also clears the retired preset choice (ori/dark-pro). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('9rp-preset');if(p!=='ori'){document.documentElement.setAttribute('data-preset','dark-pro');document.documentElement.classList.add('dark')}}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem('9rp-preset');document.documentElement.removeAttribute('data-preset');document.documentElement.classList.add('dark')}catch(e){}})();`,
           }}
         />
         <script
@@ -96,7 +103,7 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} ${poppins.variable} ${montserrat.variable} ${bebas.variable} ${anton.variable} ${orbitron.variable} ${lobster.variable} ${bangers.variable} ${zilla.variable} ${vibes.variable} ${caveat.variable} ${jetbrains.variable} ${special.variable} ${pixel.variable} ${audiowide.variable} ${monoton.variable} ${glitch.variable} ${michroma.variable} ${vt323.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${spaceGrotesk.variable} ${playfair.variable} ${pacifico.variable} ${poppins.variable} ${montserrat.variable} ${bebas.variable} ${anton.variable} ${orbitron.variable} ${lobster.variable} ${bangers.variable} ${zilla.variable} ${vibes.variable} ${caveat.variable} ${jetbrains.variable} ${special.variable} ${pixel.variable} ${audiowide.variable} ${monoton.variable} ${glitch.variable} ${michroma.variable} ${vt323.variable} ${nunito.variable} font-sans antialiased`}>
         <ThemeProvider>
           <RuntimeI18nProvider>
             {children}

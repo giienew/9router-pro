@@ -85,34 +85,40 @@
   --color-primary: #E56A4A;
   --color-primary-hover: #cc5236;
 
-  /* Surfaces (dark - Claude-like neutral warm) */
-  --color-bg: #1a1a1a;
-  --color-bg-alt: #1F1F1E;
-  --color-surface: #262626;
-  --color-surface-2: #303030;
-  --color-surface-3: #3a3a3a;
-  --color-sidebar: rgba(30, 30, 30, 0.85);
+  /* Surfaces (dark neumorphism — single default theme, owner order
+     2026-11-02): near-black base, raised gradient slabs, soft dual
+     shadows (dark below-right, faint light above-left). */
+  --color-bg: #121214;
+  --color-bg-alt: #0d0d12;
+  --color-surface: #14141c;
+  --color-surface-2: #1a1a24;
+  --color-surface-3: #22222e;
+  --color-sidebar: #0c0c11;
 
-  --color-border: #333333;
-  --color-border-subtle: #2a2a2a;
+  --color-border: #26262f;
+  --color-border-subtle: #1c1c26;
 
-  --color-text: #ededed;
-  --color-text-main: #ededed;
-  --color-text-muted: #9ca3af;
-  --color-text-subtle: #6b7280;
+  --color-text: #f2f2f5;
+  --color-text-main: #f2f2f5;
+  --color-text-muted: #9b9ba8;
+  --color-text-subtle: #6a6a78;
 
   --color-danger: #ef4444;
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.3);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.25);
-  --shadow-elevated: 0 12px 28px -4px rgba(0, 0, 0, 0.45);
-  --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.06),
-    0 1px 2px rgba(0,0,0,0.4),
-    0 16px 48px -8px rgba(0,0,0,0.55);
+  /* Floating shadows — big soft drop shadows below the slab only, never
+     the embossed dual-light look. A faint top sheen (light catching the
+     slab's top edge) + a restrained accent aura on primary actions keep
+     it premium-trendy, not halo. Inset stays only for carved fields
+     and switch tracks. */
+  --shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 16px 32px rgba(0, 0, 0, 0.5);
+  --shadow-warm: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 20px 40px rgba(0, 0, 0, 0.55);
+  --shadow-elevated: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 24px 48px rgba(0, 0, 0, 0.6);
+  --shadow-elev: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 24px 48px rgba(0, 0, 0, 0.6);
+  --shadow-neu-inset: inset 3px 3px 6px rgba(0, 0, 0, 0.55), inset -3px -3px 6px rgba(255, 255, 255, 0.04);
+  --shadow-neu-btn: 0 8px 18px rgba(0, 0, 0, 0.5);
   --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
 
   color-scheme: dark;
@@ -229,138 +235,219 @@ input[type="range"].hue-slider::-moz-range-thumb {
 }
 
 /* ============================================================
-   9Router Pro — Dark Pro preset (data-preset="dark-pro" on <html>)
-   Flat modern dark: pitch-black palette, hairline borders, solid
-   surfaces, no embossing or layered shadows — depth comes from
-   tonal steps only, so painting stays cheap and fast. :root[data-preset]
-   outranks both :root and .dark, so the preset wins over the
-   light/dark palettes while the accent scale (data-accent) applies.
+   9Router Pro — Neumorphism default (dark only, owner order 2026-11-02,
+   refined same day: FLOATING, not embossed).
+   Premium floating slabs: lighter-than-page surface + thin uniform rim
+   + one big soft drop shadow below — the slab hovers above the
+   background, it is never extruded out of it (no light edge top-left,
+   no diagonal gradient, bottom edge never melts into the page).
+   Carved-in treatment stays only for fields and switch tracks.
+   This replaced the retired flat Dark Pro preset block. The app is
+   dark-only now, so these rules hang off .dark, not data-preset.
    ============================================================ */
-:root[data-preset="dark-pro"] {
-  --color-bg: #000000;
-  --color-bg-alt: #070709;
-  --color-surface: #121218;
-  --color-surface-2: #1c1c24;
-  --color-surface-3: #262632;
-  --color-sidebar: #0a0a0e;
-
-  --color-border: #2e2e3a;
-  --color-border-subtle: #21212b;
-
-  --color-text: #f4f4f5;
-  --color-text-main: #f4f4f5;
-  --color-text-muted: #a1a1aa;
-  --color-text-subtle: #63636b;
-
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-warm: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 30%, transparent);
-  --shadow-elevated: 0 12px 32px -8px rgba(0, 0, 0, 0.55);
-  --shadow-elev: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
-
-  color-scheme: dark;
+.dark body {
+  background: #121214;
 }
 
-/* Flat page background — one solid color, nothing to repaint on scroll. */
-:root[data-preset="dark-pro"] body {
-  background: #000000;
+/* Floating slabs: clearly lighter than the page, thin uniform rim
+   outlining the sheet, big soft drop shadow below. The rim is the same
+   on all sides (an outline, not a bevel) so the slab reads as a sheet
+   hovering above the background, never extruded out of it. */
+.dark .bg-surface {
+  background-image: linear-gradient(180deg, rgba(26, 26, 36, 0.72), rgba(18, 18, 25, 0.82));
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid transparent;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 24px 48px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.dark .bg-surface-2 {
+  background-image: linear-gradient(180deg, rgba(30, 30, 42, 0.60), rgba(22, 22, 30, 0.70));
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 20px rgba(0, 0, 0, 0.45);
+}
+.dark .bg-surface-3 {
+  background-image: linear-gradient(180deg, rgba(32, 32, 44, 0.55), rgba(24, 24, 32, 0.65));
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 14px rgba(0, 0, 0, 0.40);
 }
 
-/* Surfaces are flat: tonal steps + borders separate them, not shadows. */
-:root[data-preset="dark-pro"] .bg-surface,
-:root[data-preset="dark-pro"] .bg-surface-2,
-:root[data-preset="dark-pro"] .bg-surface-3 {
+/* Carved beds (code/log viewers, segmented tracks): inset, never raised. */
+.neu-inset {
+  background-color: #0e0e12;
   background-image: none;
-  box-shadow: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-neu-inset);
 }
-
-/* Fields sit flat on the surface — border only, no carved inset. */
-:root[data-preset="dark-pro"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-:root[data-preset="dark-pro"] textarea,
-:root[data-preset="dark-pro"] select {
-  box-shadow: none;
-}
-
-/* Sidebar + header: flat slabs separated by their hairline borders. */
-:root[data-preset="dark-pro"] aside,
-:root[data-preset="dark-pro"] header {
+.dark pre[class*="dark:bg-white/5"] {
+  background-color: #0e0e12;
   background-image: none;
-  box-shadow: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-neu-inset);
 }
 
-/* Sidebar nav: icons carry a flat brand tint instead of flat gray. */
-:root[data-preset="dark-pro"] aside nav a {
+/* Prompt Injection template carousel: swipeable strip, no visible
+   scrollbar, cards snap to the left edge. */
+.pi-carousel {
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+.pi-carousel::-webkit-scrollbar {
+  display: none;
+}
+.pi-carousel > * {
+  scroll-snap-align: start;
+}
+
+/* Segmented toggles, global: one inset track (like the reference's
+   Toggle Off) holding a single floating gradient pill for the active
+   choice — not two separate slabs with a seam. */
+.dark .seg-track {
+  background-color: #0e0e12;
+  box-shadow: var(--shadow-neu-inset);
+}
+
+/* Sidebar + header: same slab treatment, shape unchanged. */
+.dark aside,
+.dark header {
+  background-image: linear-gradient(180deg, #1c1c28, #13131a);
+  border-color: transparent;
+}
+.dark aside {
+  margin: 12px;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 24px 48px rgba(0, 0, 0, 0.50);
+}
+.dark header {
+  margin: 12px 12px 0;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Sidebar nav: hover lifts, active presses in. */
+.dark aside nav a {
   color: #bcbcc4;
+  border-radius: 16px;
 }
-:root[data-preset="dark-pro"] aside nav a .material-symbols-outlined,
-:root[data-preset="dark-pro"] aside nav button .material-symbols-outlined {
+.dark aside nav a .material-symbols-outlined,
+.dark aside nav button .material-symbols-outlined {
   color: color-mix(in srgb, var(--color-brand-500) 52%, #d9d9e4);
 }
-:root[data-preset="dark-pro"] aside nav a:hover .material-symbols-outlined {
+.dark aside nav a:hover {
+  background-image: linear-gradient(180deg, #1c1c28, #16161f);
+  box-shadow: var(--shadow-soft);
+}
+.dark aside nav a:hover .material-symbols-outlined {
   color: var(--color-brand-400);
 }
-/* Active nav item: one flat tinted fill + hairline ring. No pressing in. */
-:root[data-preset="dark-pro"] aside nav a.text-primary {
+/* Active nav item: a lifted pill, not a pressed hole. */
+.dark aside nav a.text-primary {
   background: color-mix(in srgb, var(--color-brand-500) 13%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-brand-500) 22%, transparent);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
 }
-:root[data-preset="dark-pro"] aside nav a.text-primary .material-symbols-outlined {
+.dark aside nav a.text-primary .material-symbols-outlined {
   color: var(--color-brand-400);
 }
 
 /* Header icons: bright neutral. */
-:root[data-preset="dark-pro"] header .material-symbols-outlined {
+.dark header .material-symbols-outlined {
   color: #c9c9d1;
 }
 
-/* Headings: solid text — gradient-filled type reads as decoration. */
-:root[data-preset="dark-pro"] main h1,
-:root[data-preset="dark-pro"] main h2 {
+/* Headings stay solid — gradient type reads as decoration. */
+.dark main h1,
+.dark main h2 {
   background: none;
   -webkit-text-fill-color: currentColor;
   color: var(--color-text);
 }
 
-/* Brand buttons: flat solid fill. Pressing just dims, never sinks. */
-:root[data-preset="dark-pro"] .bg-brand-500,
-:root[data-preset="dark-pro"] .bg-primary {
-  background-image: none;
-  box-shadow: none;
+/* Fields carve in: darker bed + inset shadow, no border. */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark select {
+  background-color: #0e0e12;
+  border-color: transparent;
+  border-radius: 999px;
+  box-shadow: var(--shadow-neu-inset);
 }
-:root[data-preset="dark-pro"] .bg-brand-500:active,
-:root[data-preset="dark-pro"] .bg-primary:active {
-  filter: brightness(0.92);
-}
-
-/* Clickable cards: flat hover — one tonal step up, no lift. */
-:root[data-preset="dark-pro"] a.bg-surface,
-:root[data-preset="dark-pro"] button.bg-surface {
-  transition: background-color 0.15s ease;
-}
-:root[data-preset="dark-pro"] a.bg-surface:hover,
-:root[data-preset="dark-pro"] button.bg-surface:hover {
-  background-color: var(--color-surface-2);
+.dark textarea {
+  background-color: #0e0e12;
+  border-color: transparent;
+  border-radius: 20px;
+  box-shadow: var(--shadow-neu-inset);
 }
 
-/* Selection + scrollbar follow the accent, flat. */
-:root[data-preset="dark-pro"] ::selection {
+/* Brand actions: accent gradient slab + drop shadow. Pressing lowers
+   the slab (shadow shrinks) instead of sinking it in. */
+.dark .bg-brand-500,
+.dark .bg-primary {
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500) 50%, var(--color-brand-400));
+  box-shadow: var(--shadow-neu-btn);
+}
+/* Default violet accent: primary actions blend violet → fuchsia → pink,
+   like the reference image. Other accents keep their own family gradient. */
+html.dark[data-accent="violet"] .bg-brand-500,
+html.dark[data-accent="violet"] .bg-primary {
+  background-image: linear-gradient(135deg, #7C3AED, #C026D3 50%, #EC4899);
+}
+html.dark[data-accent="violet"] button[role="switch"][aria-checked="true"] {
+  background-image: linear-gradient(135deg, #7C3AED, #C026D3 50%, #EC4899);
+}
+.dark .bg-brand-500:active,
+.dark .bg-primary:active {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  filter: brightness(0.95);
+}
+
+/* Clickable cards: hover lifts the slab higher off the page. */
+.dark a.bg-surface,
+.dark button.bg-surface {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.dark a.bg-surface:hover,
+.dark button.bg-surface:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-warm);
+}
+
+/* Switches, reference-style: OFF = inset dark track + gray knob,
+   ON = clean gradient track + white knob, no glow. */
+.dark button[role="switch"] {
+  box-shadow: var(--shadow-neu-inset);
+}
+.dark button[role="switch"][aria-checked="true"] {
+  background-image: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-500) 50%, var(--color-brand-400));
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.dark button[role="switch"] > span {
+  background-image: linear-gradient(180deg, #d4d4d8, #a1a1aa);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+html.dark button[role="switch"][aria-checked="true"] > span {
+  background-image: linear-gradient(180deg, #ffffff, #e4e4e7);
+}
+
+/* Selection + scrollbar follow the accent. */
+.dark ::selection {
   background: color-mix(in srgb, var(--color-brand-500) 55%, transparent);
   color: #ffffff;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar {
+.dark ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-track {
+.dark ::-webkit-scrollbar-track {
   background: transparent;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb {
-  background: #26262c;
+.dark ::-webkit-scrollbar-thumb {
+  background: #26262f;
   border-radius: 8px;
-  border: 2px solid #000000;
+  border: 2px solid #121214;
 }
-:root[data-preset="dark-pro"] ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-brand-500) 45%, #26262c);
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-brand-500) 45%, #26262f);
 }
 
 /* ============================================================
@@ -441,7 +528,7 @@ select {
   --shadow-focus: var(--shadow-focus);
 
   /* Font - Inter primary, Apple system fallback */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  --font-sans: 'Nunito', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
 }
 
 /* Base */
@@ -725,4 +812,189 @@ button:disabled,
   border: none;
   border-top: 1px solid var(--color-border);
   margin: 1.5rem 0;
+}
+
+/* ============================================================
+   opt67 — full-element reference match (CSS only, logic untouched).
+   Reference language: every element is a pill or a big-radius slab,
+   faces barely lighter than the page, float from a soft diffused
+   shadow, no outlines, no glow. Cards/sidebar/header float with
+   gaps; buttons + single-line fields are full pills; toggles are
+   gradient-track pills; sliders are thin tracks + white knobs.
+   ============================================================ */
+/* All buttons are pills — except switches (own geometry) and
+   card-buttons (slabs, keep 24px). */
+.dark button:not([role="switch"]):not(.bg-surface) {
+  border-radius: 999px;
+}
+.dark a.bg-brand-500,
+.dark a.bg-primary {
+  border-radius: 999px;
+}
+.dark .react-flow-controls-custom button {
+  border-radius: 8px;
+}
+/* Reusable elevated cards follow the reference radius. */
+.card-soft,
+.card-elev {
+  border-radius: 24px;
+}
+/* Sliders: thin dark track + white knob with drop shadow. The custom
+   color hue slider keeps its own rainbow styling — it is excluded. */
+.dark input[type="range"]:not(.hue-slider) {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  height: 24px;
+}
+.dark input[type="range"]:not(.hue-slider)::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #26262f;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.dark input[type="range"]:not(.hue-slider)::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(180deg, #ffffff, #e4e4e7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.dark input[type="range"]:not(.hue-slider)::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #26262f;
+}
+.dark input[type="range"]:not(.hue-slider)::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+/* Native progress: thin track + gradient fill. */
+.dark progress {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: #26262f;
+  overflow: hidden;
+}
+.dark progress::-webkit-progress-bar {
+  background: #26262f;
+  border-radius: 999px;
+}
+.dark progress::-webkit-progress-value {
+  background-image: linear-gradient(90deg, #7C3AED, #C026D3, #EC4899);
+  border-radius: 999px;
+}
+.dark progress::-moz-progress-bar {
+  background-image: linear-gradient(90deg, #7C3AED, #C026D3, #EC4899);
+  border-radius: 999px;
+}
+/* Tables: hairline rows only, small gray headers — no boxes. */
+.dark table th {
+  color: #9b9ba8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.dark table td,
+.dark table th {
+  border-color: transparent;
+}
+/* Dialogs + menus float as reference slabs. */
+.dark [role="dialog"] {
+  border-radius: 24px;
+  box-shadow: var(--shadow-elev);
+}
+.dark [role="menu"],
+.dark [role="listbox"] {
+  border-radius: 20px;
+  box-shadow: var(--shadow-elev);
+}
+
+/* ============================================================
+   opt69 — no lines, like the reference. Every outline, rim and
+   divider goes transparent: card borders, menu/table dividers,
+   bordered control boxes. Separation comes from soft shadows
+   and spacing only, never from a drawn line.
+   ============================================================ */
+.dark .border-white\/5,
+.dark .border-black\/5,
+.dark .border-border,
+.dark .border-border-subtle {
+  border-color: transparent;
+}
+.dark .react-flow-controls-custom {
+  border-color: transparent;
+}
+.dark .react-flow-controls-custom button {
+  border-bottom-color: transparent;
+}
+
+/* opt70 — featured gradient card, like the reference's purple hero
+   card: violet → fuchsia → deep purple, white content, violet glow
+   shadow. No tilt: the grid stays aligned on phone + laptop. */
+.dark .overview-hero {
+  background-image: linear-gradient(150deg, #7C3AED, #C026D3 55%, #4C1D95);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 24px 48px rgba(76, 29, 149, 0.45), 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ============================================================
+   opt71 — every remaining line goes transparent. opt69 only
+   covered /5 + border + border-subtle, but the codebase also
+   draws outlines with /10 /15 /20 /25, border/40–70, primary +
+   accent + success + error tints, divide utilities, and — the
+   biggest leftover — ring outlines (ring-1/ring-2 + colored
+   rings on cards and selected elements). Focus/hover variants
+   are untouched: they are different class tokens, so keyboard
+   focus and hover feedback survive; only static outlines die.
+   Plain border-primary is deliberately NOT covered: the login
+   spinner draws its arc with it.
+   ============================================================ */
+.dark .border-white\/10,
+.dark .border-black\/10,
+.dark .border-white\/15,
+.dark .border-black\/15,
+.dark .border-white\/20,
+.dark .border-black\/20,
+.dark .border-white\/25,
+.dark .border-border\/50,
+.dark .border-border\/40,
+.dark .border-border\/70,
+.dark .border-border\/60,
+.dark .border-primary\/40,
+.dark .border-primary\/50,
+.dark .border-primary\/30,
+.dark .border-primary\/20,
+.dark .border-accent\/20,
+.dark .border-accent\/30,
+.dark .border-accent\/60,
+.dark .border-success\/40,
+.dark .border-error\/20 {
+  border-color: transparent;
+}
+.dark .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-black\/5 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-border\/50 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-border\/30 > :not([hidden]) ~ :not([hidden]) {
+  border-color: transparent;
+}
+.dark .ring,
+.dark .ring-1,
+.dark .ring-2 {
+  --tw-ring-color: transparent;
+}
+.dark .outline-primary\/60 {
+  outline-color: transparent;
 }

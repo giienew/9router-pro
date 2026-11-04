@@ -7,14 +7,13 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Cell,
 } from "recharts";
 import Card from "@/shared/components/Card";
 
-const COLORS = ["#6366f1", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#10b981", "#f97316"];
+const COLORS = ["#8b5cf6", "#a855f7", "#c026d3", "#e879f9", "#ec4899", "#3b82f6", "#06b6d4", "#14b8a6"];
 
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -70,7 +69,6 @@ export default function ProviderBarChart({ byProvider, providerNames = {} }) {
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} vertical={false} />
             <XAxis
               dataKey="name"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.6 }}
@@ -89,7 +87,7 @@ export default function ProviderBarChart({ byProvider, providerNames = {} }) {
             <Tooltip
               contentStyle={{
                 backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
+                border: "none",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}

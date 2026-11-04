@@ -49,34 +49,69 @@ export function Sparkline({ values = [], className = "" }) {
   );
 }
 
+// Decorative line-art motif, like the reference cards: faint outline
+// artwork floating at the card's right edge. Pure decoration, no data.
+function Deco({ children, className = "" }) {
+  return (
+    <span aria-hidden="true" className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 ${className}`} style={{ opacity: 0.16 }}>
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-16 w-16">
+        {children}
+      </svg>
+    </span>
+  );
+}
+
 export default function OverviewCards({ stats, series = null }) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 sm:gap-4">
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Total Requests</span>
-        <span className="w-full truncate text-lg font-bold xl:text-xl" title={fmt(stats.totalRequests)}>{fmt(stats.totalRequests)}</span>
-        {series?.requests && <span className="w-full text-primary"><Sparkline values={series.requests} /></span>}
+      <Card className="overview-hero relative flex min-w-0 flex-col items-start overflow-hidden text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-white/70 text-xs">Total Requests</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalRequests)}>{fmt(stats.totalRequests)}</span>
+        {series?.requests && <span className="w-full text-white/90"><Sparkline values={series.requests} /></span>}
+        <Deco className="text-white">
+          <circle cx="32" cy="32" r="22" />
+          <path d="M32 32 L44 22" />
+          <path d="M32 18 v-4 M18 32 h-4 M46 32 h4" />
+        </Deco>
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Total Input Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-primary xl:text-xl" title={fmt(stats.totalPromptTokens)}>{fmt(stats.totalPromptTokens)}</span>
+      <Card className="relative flex min-w-0 flex-col items-start overflow-hidden text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Total Input Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalPromptTokens)}>{fmt(stats.totalPromptTokens)}</span>
         {series?.tokens && <span className="w-full text-primary"><Sparkline values={series.tokens} /></span>}
+        <Deco className="text-primary">
+          <path d="M32 12 L52 24 L32 36 L12 24 Z" />
+          <path d="M12 32 L32 44 L52 32" />
+          <path d="M12 40 L32 52 L52 40" />
+        </Deco>
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Cached Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-info xl:text-xl" title={fmt(stats.totalCachedTokens)}>{fmt(stats.totalCachedTokens)}</span>
+      <Card className="relative flex min-w-0 flex-col items-start overflow-hidden text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Cached Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalCachedTokens)}>{fmt(stats.totalCachedTokens)}</span>
         {series?.cached && <span className="w-full text-info"><Sparkline values={series.cached} /></span>}
+        <Deco className="text-info">
+          <ellipse cx="32" cy="16" rx="18" ry="6" />
+          <path d="M14 16 v28 c0 3.3 8 6 18 6 s18-2.7 18-6 V16" />
+          <path d="M14 30 c0 3.3 8 6 18 6 s18-2.7 18-6" />
+        </Deco>
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Output Tokens</span>
-        <span className="w-full truncate text-lg font-bold text-success xl:text-xl" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
+      <Card className="relative flex min-w-0 flex-col items-start overflow-hidden text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Output Tokens</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
         {series?.completion && <span className="w-full text-success"><Sparkline values={series.completion} /></span>}
+        <Deco className="text-success">
+          <path d="M14 50 V34 M26 50 V26 M38 50 V18 M50 50 V30" />
+          <path d="M10 54 H54" />
+        </Deco>
       </Card>
-      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
-        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Est. Cost</span>
-        <span className="w-full truncate text-lg font-bold text-warning xl:text-xl" title={`~${fmtCost(stats.totalCost)}`}>~{fmtCost(stats.totalCost)}</span>
+      <Card className="relative flex min-w-0 flex-col items-start overflow-hidden text-left gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs">Est. Cost</span>
+        <span className="w-full truncate text-3xl font-extrabold tracking-tight" title={`~${fmtCost(stats.totalCost)}`}>~{fmtCost(stats.totalCost)}</span>
         <span className="text-[10px] text-text-muted">Estimated, not actual billing</span>
         {series?.cost && <span className="w-full text-warning"><Sparkline values={series.cost} /></span>}
+        <Deco className="text-warning">
+          <circle cx="32" cy="32" r="20" />
+          <text x="32" y="41" textAnchor="middle" fontSize="26" fill="currentColor" stroke="none">$</text>
+        </Deco>
       </Card>
     </div>
   );

@@ -19,25 +19,26 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt", "syste
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage" },
-  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
-  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", badge: "PRO" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard", color: "#E879F9" },
+  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api", color: "#A78BFA" },
+  { href: "/dashboard/providers", label: "Providers", icon: "dns", color: "#60A5FA" },
+  { href: "/dashboard/combos", label: "Combos", icon: "layers", color: "#F472B6" },
+  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart", color: "#34D399" },
+  { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage", color: "#2DD4BF" },
+  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings", color: "#FBBF24" },
+  { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", color: "#C084FC", badge: "PRO" },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", color: "#22D3EE" },
 ];
 
 const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "monitor" },
-  { href: "/dashboard/translator", label: "Translator (debug)", icon: "translate" },
+  { href: "/dashboard/console-log", label: "Console Log", icon: "monitor", color: "#FB923C" },
+  { href: "/dashboard/translator", label: "Translator (debug)", icon: "translate", color: "#818CF8" },
 ];
 
 const systemItems = [
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
-  { href: "/dashboard/automation", label: "Automation", icon: "tune" },
-  { href: "/dashboard/skills", label: "Skills", icon: "extension" },
+  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan", color: "#38BDF8" },
+  { href: "/dashboard/automation", label: "Automation", icon: "tune", color: "#FB923C" },
+  { href: "/dashboard/skills", label: "Skills", icon: "extension", color: "#34D399" },
 ];
 
 export default function Sidebar({ onClose }) {
@@ -56,7 +57,12 @@ export default function Sidebar({ onClose }) {
 
   const mainNavItems = navItems;
 
-  const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+  // Manual-update command: pin the exact version the panel title promises when the
+  // version check already knows it; otherwise fall back to registry latest. Never a
+  // GitHub install — master lags the release, so it would land users on the old version.
+  const INSTALL_CMD = updateInfo?.latestVersion
+    ? `npm i -g 9router-pro@${updateInfo.latestVersion} --prefer-online`
+    : UPDATER_CONFIG.installCmdLatest;
 
   useEffect(() => {
     useSettingsStore.getState().fetchSettings().then((data) => {
@@ -88,8 +94,11 @@ export default function Sidebar({ onClose }) {
   }, [checkVersion]);
 
   const isActive = (href) => {
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
+    }
     if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
+      return pathname.startsWith("/dashboard/endpoint");
     }
     return pathname.startsWith(href);
   };
@@ -128,7 +137,7 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 h-full max-h-dvh overflow-hidden">
+      <aside className="flex w-72 flex-col border-r border-border-subtle transition-colors duration-300 h-full max-h-dvh overflow-hidden">
         {/* Traffic lights + modder credit, one aligned row */}
         <div className="flex items-center gap-2 px-4 sm:px-6 pt-5 pb-2">
           <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
@@ -212,6 +221,7 @@ export default function Sidebar({ onClose }) {
                   "material-symbols-outlined text-[18px]",
                   isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                 )}
+                style={item.color ? { color: item.color } : undefined}
               >
                 {item.icon}
               </span>
@@ -298,6 +308,7 @@ export default function Sidebar({ onClose }) {
                     "material-symbols-outlined text-[18px]",
                     isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                   )}
+                style={item.color ? { color: item.color } : undefined}
                 >
                   {item.icon}
                 </span>
@@ -325,6 +336,7 @@ export default function Sidebar({ onClose }) {
                       "material-symbols-outlined text-[18px]",
                       isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
                     )}
+                  style={item.color ? { color: item.color } : undefined}
                   >
                     {item.icon}
                   </span>
@@ -349,6 +361,7 @@ export default function Sidebar({ onClose }) {
                   "material-symbols-outlined text-[18px]",
                   isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
                 )}
+                style={{ color: "#60A5FA" }}
               >
                 settings
               </span>

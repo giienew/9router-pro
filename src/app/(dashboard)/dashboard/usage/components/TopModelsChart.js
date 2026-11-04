@@ -7,14 +7,13 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Cell,
 } from "recharts";
 import Card from "@/shared/components/Card";
 
-const COLORS = ["#6366f1", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6"];
+const COLORS = ["#8b5cf6", "#a855f7", "#c026d3", "#e879f9", "#ec4899"];
 
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -77,7 +76,6 @@ export default function TopModelsChart({ byModel }) {
             layout="vertical"
             margin={{ top: 4, right: 40, left: 4, bottom: 4 }}
           >
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} horizontal={false} />
             <XAxis
               type="number"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}
@@ -96,7 +94,7 @@ export default function TopModelsChart({ byModel }) {
             <Tooltip
               contentStyle={{
                 backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
+                border: "none",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}

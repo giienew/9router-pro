@@ -16,10 +16,13 @@ export const GITHUB_CONFIG = {
 };
 
 // Updater configuration
+// Manual-update panel commands MUST come from the npm registry, never from GitHub
+// master: master still carries the previous pro.N, so a GitHub install lands users on
+// the old version while the panel title promises the new one (pro.18 complaint).
 export const UPDATER_CONFIG = {
   npmPackageName: "9router-pro",
-  installCmd: "npm i -g github:giienew/9router-pro",
-  installCmdLatest: "npm i -g github:giienew/9router-pro --prefer-online",
+  installCmd: "npm i -g 9router-pro",
+  installCmdLatest: "npm i -g 9router-pro --prefer-online",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,

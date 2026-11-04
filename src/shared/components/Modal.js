@@ -63,7 +63,7 @@ export default function Modal({
         className={cn(
           "relative flex max-h-[calc(100dvh-2rem)] w-full flex-col bg-surface",
           "border border-border-subtle",
-          "rounded-[14px] shadow-[var(--shadow-elev)]",
+          "rounded-[24px] shadow-[var(--shadow-elev)]",
           "fade-in",
           sizes[size],
           className

@@ -5,7 +5,8 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+import { classifyTestError, getStageLabel } from "@/shared/utils/testErrorStage";
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, testDetail, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -60,6 +61,9 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
             </div>
           )}
         </div>
+        {testStatus === "error" && testDetail?.message ? (
+          <p className="mt-1 text-xs text-red-500 break-words">{getStageLabel(testDetail.stage)}: {testDetail.message}{testDetail.latencyMs != null ? ` (${testDetail.latencyMs} ms)` : ""}</p>
+        ) : null}
       </div>
       <button
         onClick={onDeleteAlias}
@@ -99,9 +103,16 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
+      const detail = {
+        status: data.ok ? "ok" : "error",
+        stage: data.stage || classifyTestError({ status: data.status, error: data.error }).stage,
+        message: data.error || "",
+        latencyMs: data.latencyMs ?? null,
+        testedAt: new Date().toISOString(),
+      };
+      setModelTestResults((prev) => ({ ...prev, [modelId]: detail }));
     } catch {
-      setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
+      setModelTestResults((prev) => ({ ...prev, [modelId]: { status: "error", stage: "unknown", message: "Network error", latencyMs: null, testedAt: new Date().toISOString() } }));
     } finally {
       setTestingModelId(null);
     }
@@ -310,7 +321,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               onCopy={onCopy}
               onDeleteAlias={() => source === "custom" ? onDeleteCustomModel(id) : onDeleteAlias(alias)}
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
-              testStatus={modelTestResults[id]}
+              testStatus={modelTestResults[id]?.status}
+              testDetail={modelTestResults[id]}
               isTesting={testingModelId === id}
             />
           ))}

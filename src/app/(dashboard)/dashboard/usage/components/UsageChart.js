@@ -7,7 +7,6 @@ import {
   Area,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
@@ -29,7 +28,7 @@ const VIEW_MODES = [
 ];
 
 const VIEW_CONFIG = {
-  tokens:   { dataKey: "tokens",   color: "#6366f1", gradId: "gradTokens",   formatter: fmtTokens,   label: "Tokens" },
+  tokens:   { dataKey: "tokens",   color: "#8B5CF6", gradId: "gradTokens",   formatter: fmtTokens,   label: "Tokens" },
   requests: { dataKey: "requests", color: "#14b8a6", gradId: "gradRequests", formatter: fmtRequests, label: "Requests" },
   cost:     { dataKey: "cost",     color: "#f59e0b", gradId: "gradCost",     formatter: fmtCost,     label: "Cost (est.)" },
 };
@@ -92,19 +91,18 @@ export default function UsageChart({ period = "7d" }) {
           <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradTokens" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.38} />
+                <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradRequests" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.25} />
+                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.38} />
                 <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
+                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.38} />
                 <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
             <XAxis
               dataKey="label"
               tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}
@@ -122,7 +120,7 @@ export default function UsageChart({ period = "7d" }) {
             <Tooltip
               contentStyle={{
                 backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
+                border: "none",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}

@@ -186,8 +186,8 @@ export function InjectionTester() {
   const verdictColor = running ? "opacity-60 pointer-events-none" : "";
 
   const segBtn = (active) =>
-    `px-3 py-1.5 font-medium transition-colors ${
-      active ? "bg-primary text-white" : "bg-surface text-text-muted hover:text-text-main"
+    `rounded-full px-3 py-1.5 font-medium transition-colors ${
+      active ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
     }`;
   const modelField = (label, value, setValue, which) => (
     <label className="flex flex-col gap-1 text-sm">
@@ -215,7 +215,7 @@ export function InjectionTester() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
-          <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+          <div className="seg-track flex gap-1 rounded-full p-1 text-sm">
             <button type="button" onClick={() => setMode("single")} className={segBtn(mode === "single")}>
               Single
             </button>

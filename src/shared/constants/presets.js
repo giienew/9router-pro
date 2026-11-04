@@ -1,43 +1,38 @@
-// 9Router Pro — UI theme presets.
-// "dark-pro" is the Pro signature look: a flat, modern pitch-black
-// palette (tonal surface steps + hairline borders, no embossing). "ori" restores the
-// exact original upstream palette and light/dark behavior.
-// The preset lives on <html data-preset="dark-pro">; colors are CSS variable
-// overrides in globals.css. Absence of a stored choice means Dark Pro.
+// 9Router Pro — single default theme.
+// The Ori and Dark Pro presets were removed (owner order 2026-11-02): the
+// dashboard now has exactly one look — dark neumorphism, premium floating
+// surfaces. The module stays so old imports keep working: every stored
+// preset choice migrates to the default, and the legacy localStorage key is
+// cleared on read.
 export const PRESETS = [
-  { id: "ori", name: "Ori", hint: "Original 9Router look" },
-  { id: "dark-pro", name: "Dark Pro", hint: "Pitch black · Flat modern" },
+  { id: "neu", name: "Neumorphism", hint: "Dark · Premium floating" },
 ];
 
 export const PRESET_STORAGE_KEY = "9rp-preset";
-export const DEFAULT_PRESET = "dark-pro";
+export const DEFAULT_PRESET = "neu";
 
 export function isValidPreset(id) {
-  return PRESETS.some((p) => p.id === id);
+  return id === DEFAULT_PRESET;
 }
 
 export function getStoredPreset() {
-  if (typeof localStorage === "undefined") return DEFAULT_PRESET;
-  try {
-    const saved = localStorage.getItem(PRESET_STORAGE_KEY);
-    return isValidPreset(saved) ? saved : DEFAULT_PRESET;
-  } catch {
-    return DEFAULT_PRESET;
+  if (typeof localStorage !== "undefined") {
+    try {
+      // One-time migration: drop the retired ori/dark-pro choice.
+      const saved = localStorage.getItem(PRESET_STORAGE_KEY);
+      if (saved && saved !== DEFAULT_PRESET) {
+        localStorage.removeItem(PRESET_STORAGE_KEY);
+      }
+    } catch { /* private mode */ }
   }
+  return DEFAULT_PRESET;
 }
 
-export function isDarkProActive() {
-  return getStoredPreset() === "dark-pro";
-}
-
-export function applyPreset(id) {
+export function applyPreset() {
+  // Single theme: nothing to switch. Clear any legacy stored choice.
   if (typeof document === "undefined") return;
-  if (id === "dark-pro") {
-    document.documentElement.setAttribute("data-preset", "dark-pro");
-  } else {
-    document.documentElement.removeAttribute("data-preset");
-  }
+  document.documentElement.removeAttribute("data-preset");
   try {
-    localStorage.setItem(PRESET_STORAGE_KEY, id);
+    localStorage.removeItem(PRESET_STORAGE_KEY);
   } catch { /* private mode */ }
 }

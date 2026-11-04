@@ -19,6 +19,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       valid: result.valid,
       error: result.error,
+      stage: result.stage || null,
       refreshed: result.refreshed || false,
     });
   } catch (error) {

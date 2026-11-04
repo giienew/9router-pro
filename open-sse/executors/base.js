@@ -174,8 +174,16 @@ export class BaseExecutor {
         // Connect timeout is internal — convert to retryable network error, don't propagate AbortError
         if (error.name === "AbortError" && !isConnectTimeout) throw error;
 
-        // Map network/fetch exceptions to 502 retry config
-        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
+        // A connect timeout means NO headers arrived within the budget. The
+        // abort reason carries the exact message (AbortSignal.any propagates
+        // the first abort reason, so this surfaces as Error, not AbortError).
+        // Retrying the SAME url would just burn another full budget per
+        // retry — 4 x 60s + delays = ~250s per request, exactly the
+        // tokenjuice signature of 2026-11-02 — while the combo / client
+        // retry layers are the proper fallback. Fail this attempt fast; a
+        // different fallback URL (if any) is still tried below.
+        const isFetchConnectTimeout = error?.message === "fetch connect timeout";
+        if (!isFetchConnectTimeout && await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
 
         if (urlIndex + 1 < fallbackCount) {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);

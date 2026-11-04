@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { BUILTIN_PROMPT_TEMPLATES } from "@/shared/constants/builtinPromptTemplates";
 import {
   getInjectModelPrompts, getInjectUserPrompts, getInjectGlobal, getInjectKeyModelPrompts,
   setInjectModelPrompt, setInjectUserPrompt, setInjectGlobal, setInjectKeyModelPrompt,
@@ -71,7 +73,17 @@ export async function GET(request) {
       );
       return NextResponse.json({ stack });
     }
-    return NextResponse.json({ global, userPrompts, prompts, keyModelPrompts, variants, templates });
+    // Built-in templates ship first, library-only. A stored template with
+    // identical content hides its built-in twin, so the owner's own copy
+    // never shows twice. Built-ins carry builtin:true; the client hides
+    // Edit/Delete for them (Copy/apply still work).
+    const hashContent = (s) => createHash("sha256").update(typeof s === "string" ? s : "").digest("hex");
+    const storedHashes = new Set(templates.map((t) => hashContent(t.content || "")));
+    const mergedTemplates = [
+      ...BUILTIN_PROMPT_TEMPLATES.filter((b) => !storedHashes.has(hashContent(b.content))),
+      ...templates,
+    ];
+    return NextResponse.json({ global, userPrompts, prompts, keyModelPrompts, variants, templates: mergedTemplates });
   } catch (error) {
     console.log("Error fetching prompt injections:", error);
     return NextResponse.json({ error: "Failed to fetch prompt injections" }, { status: 500 });
