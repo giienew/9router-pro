@@ -50,7 +50,7 @@ export async function POST(request, { params }) {
     console.log("Error restoring backup snapshot:", error);
     return NextResponse.json(
       { error: error?.message || "Failed to restore snapshot" },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

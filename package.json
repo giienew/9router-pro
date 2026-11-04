@@ -1,6 +1,9 @@
 {
   "name": "9router-pro",
-  "version": "0.5.109-pro.22",
+  "version": "0.5.109-pro.23",
+  "bin": {
+    "9router-pro": "./cli/cli.js"
+  },
   "description": "9Router Pro by Gienetic \u2014 AI router with a Prompt Inject engine (per-model / per-key / global system prompts), based on 9Router by decolua",
   "author": "Gienetic",
   "repository": {

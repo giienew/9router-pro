@@ -11,6 +11,11 @@ export const OIDC_COOKIE_NAMES = {
 const DEFAULT_SCOPES = "openid profile email";
 const DEFAULT_LOGIN_LABEL = "Sign in with OIDC";
 
+// OIDC fetch timeout: matches the other dashboard test routes (10–30s).
+// Without it a black-holed IdP hangs the OIDC test route — and login,
+// which shares these helpers — indefinitely.
+const OIDC_FETCH_TIMEOUT_MS = 15000;
+
 function trimTrailingSlashes(value) {
   return (value || "").trim().replace(/\/+$/, "");
 }
@@ -64,7 +69,7 @@ export async function getOidcRuntimeConfig() {
 
 export async function fetchOidcDiscovery(issuerUrl) {
   const discoveryUrl = `${trimTrailingSlashes(issuerUrl)}/.well-known/openid-configuration`;
-  const res = await fetch(discoveryUrl, { cache: "no-store" });
+  const res = await fetch(discoveryUrl, { cache: "no-store", signal: AbortSignal.timeout(OIDC_FETCH_TIMEOUT_MS) });
   if (!res.ok) {
     throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);
   }
@@ -130,6 +135,7 @@ export async function exchangeOidcCode({
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(OIDC_FETCH_TIMEOUT_MS),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -168,6 +174,7 @@ export async function probeOidcClientSecret({
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(OIDC_FETCH_TIMEOUT_MS),
   });
 
   const data = await res.json().catch(() => ({}));

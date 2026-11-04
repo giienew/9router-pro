@@ -488,6 +488,7 @@ export class GeminiWebExecutor extends BaseExecutor {
 
     let browser = null;
     let context = null;
+    let page = null;
     let abortBrowser = null;
     try {
       if (signal?.aborted) {
@@ -510,7 +511,8 @@ export class GeminiWebExecutor extends BaseExecutor {
 
       await context.addCookies(toPlaywrightCookies(cookie, ".google.com"));
 
-      const page = await context.newPage();
+      page = await context.newPage();
+
 
       const readQuota = await openGeminiApp(page);
       if (signal?.aborted) {
@@ -704,10 +706,11 @@ export class GeminiWebExecutor extends BaseExecutor {
         };
       }
       // Playwright selector/click timeout errors are terminal — they indicate
-      // the page DOM does not match expectations (e.g. Gemini changed their UI
-      // or the session is so expired it lands on a different page). Return 400
-      // so the account-fallback system does NOT retry this request as a
-      // transient 5xx.
+      // the page DOM does not match expectations (e.g. Gemini changed their UI).
+      // EXCEPTION: a session so expired it lands on a different page (login /
+      // consent / any non-app page) is an AUTH failure, not a DOM mismatch:
+      // return 401 so account fallback retries with another account instead
+      // of showing the user a raw Playwright timeout as a terminal 400.
       if (
         error instanceof Error &&
         (error.name === "TimeoutError" ||
@@ -716,6 +719,33 @@ export class GeminiWebExecutor extends BaseExecutor {
           rawMessage.includes("actionability") ||
           rawMessage.includes("interception"))
       ) {
+        let landedOutsideApp = false;
+        try {
+          const currentUrl = page?.url?.() || "";
+          if (currentUrl && !currentUrl.startsWith(GEMINI_URL)) {
+            landedOutsideApp =
+              currentUrl.includes("accounts.google.com") ||
+              currentUrl.includes("myaccount.google.com") ||
+              currentUrl.includes("consent") ||
+              currentUrl.startsWith("https://gemini.google.com/") ||
+              currentUrl.startsWith("https://one.google.com/");
+          }
+        } catch { /* page closed mid-error; fall through to message sniffing */ }
+        if (!landedOutsideApp) {
+          const lower = rawMessage.toLowerCase();
+          landedOutsideApp =
+            lower.includes("accounts.google.com") ||
+            lower.includes("signin") ||
+            lower.includes("sign-in");
+        }
+        if (landedOutsideApp) {
+          return {
+            response: errorResponse(401, "Gemini Web session expired or signed out — sign in again or try another account."),
+            url: GEMINI_URL,
+            headers: {},
+            transformedBody: body,
+          };
+        }
         return {
           response: errorResponse(400, rawMessage),
           url: GEMINI_URL,

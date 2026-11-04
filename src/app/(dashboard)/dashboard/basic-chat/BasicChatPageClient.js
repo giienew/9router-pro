@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
   activeSessionId: "basic-chat.activeSessionId",
   activeProviderId: "basic-chat.activeProviderId",
+  apiKeyId: "basic-chat.apiKeyId",
   draft: "basic-chat.draft",
 };
 
@@ -189,6 +190,11 @@ export default function BasicChatPageClient() {
     return globalThis.localStorage.getItem(STORAGE_KEYS.activeProviderId) || "";
   });
   const [activeModelId, setActiveModelId] = useState("");
+  const [apiKeys, setApiKeys] = useState([]);
+  const [activeApiKeyId, setActiveApiKeyId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return globalThis.localStorage.getItem(STORAGE_KEYS.apiKeyId) || "";
+  });
   const [draft, setDraft] = useState(() => {
     if (typeof window === "undefined") return "";
     return globalThis.localStorage.getItem(STORAGE_KEYS.draft) || "";
@@ -208,6 +214,28 @@ export default function BasicChatPageClient() {
 
   useEffect(() => {
     setIsHydrated(true);
+  }, []);
+
+  // API keys for sending: Basic Chat talks to the public LLM pipeline
+  // (/v1/chat/completions), which authenticates by API key — the same
+  // pattern as the prompt-injection tester. The old code posted to
+  // /api/dashboard/chat/completions, a route that never existed (404 on
+  // every send). Keys are dashboard-gated; only names + last 4 chars are
+  // ever rendered, the value itself only goes into the Authorization header.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/keys", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !Array.isArray(data.keys)) return;
+        const usable = data.keys.filter((k) => k?.key);
+        setApiKeys(usable);
+        const saved = globalThis.localStorage.getItem(STORAGE_KEYS.apiKeyId) || "";
+        if (!saved && usable.length > 0) setActiveApiKeyId(usable[0].id);
+      } catch { /* keys optional; send surfaces the error */ }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -380,11 +408,12 @@ export default function BasicChatPageClient() {
       globalThis.localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(sessions));
       globalThis.localStorage.setItem(STORAGE_KEYS.activeSessionId, activeSessionId);
       globalThis.localStorage.setItem(STORAGE_KEYS.activeProviderId, activeProviderId);
+      globalThis.localStorage.setItem(STORAGE_KEYS.apiKeyId, activeApiKeyId);
       globalThis.localStorage.setItem(STORAGE_KEYS.draft, draft);
     } catch {
       // Ignore storage errors.
     }
-  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft]);
+  }, [isHydrated, sessions, activeSessionId, activeProviderId, activeApiKeyId, draft]);
 
   useEffect(() => {
     if (!isHydrated || loadingData || initializedRef.current) return;
@@ -585,6 +614,17 @@ export default function BasicChatPageClient() {
     const model = activeModel || activeProviderGroup?.models?.[0] || null;
     if (!model) return;
 
+    // The LLM pipeline authenticates by API key (requireApiKey defaults
+    // true). With keys available but none picked, fail here with a clear
+    // message instead of a bare 401 mid-stream. With no keys at all, send
+    // without a header and let the server decide (local mode works when
+    // requireApiKey is off; otherwise its 401 surfaces below).
+    const apiKey = apiKeys.find((k) => k.id === activeApiKeyId)?.key || null;
+    if (apiKeys.length > 0 && !apiKey) {
+      setLoadError("Pilih API key dulu untuk mengirim (buat di Endpoint & Key bila belum ada).");
+      return;
+    }
+
     const userText = draft.trim();
     if (!userText && attachments.length === 0) return;
 
@@ -647,11 +687,12 @@ export default function BasicChatPageClient() {
       }));
 
     try {
-      const response = await fetch("/api/dashboard/chat/completions", {
+      const response = await fetch("/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify({
           model: model.requestModel || model.id,
@@ -810,6 +851,22 @@ export default function BasicChatPageClient() {
           </div>
 
           <div className="flex items-center gap-2">
+            <select
+              value={activeApiKeyId}
+              onChange={(event) => setActiveApiKeyId(event.target.value)}
+              aria-label="API key"
+              className="max-w-[180px] truncate rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white/80 transition hover:bg-white/8"
+            >
+              {apiKeys.length === 0 ? (
+                <option value="">Buat API key dulu di Endpoint &amp; Key</option>
+              ) : (
+                apiKeys.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.name || k.id} (…{String(k.key).slice(-4)})
+                  </option>
+                ))
+              )}
+            </select>
             <button
               type="button"
               onClick={() => setHistoryOpen((value) => !value)}

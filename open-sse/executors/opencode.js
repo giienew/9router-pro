@@ -16,13 +16,15 @@ import {
   coerceResponsesOutput,
 } from "../translator/formats/responsesApi.js";
 
-// Shape as of the 1.19.x CLI (reverse-engineered 2026-10-23 via mitmproxy):
-// "opencode/<version> ai-sdk/provider-utils/<v> runtime/bun/<v>" with
-// x-opencode-client: cli, x-opencode-project, and a per-message
-// x-opencode-request: msg_<...>. The executor must keep mirroring whatever
-// the current CLI sends: a stale UA is how the free tier tells a relay apart
-// from the real client (upstream #5107).
-const OPENCODE_UA = "opencode/1.19.4 ai-sdk/provider-utils/4.0.23 runtime/bun/1.4.4";
+// Shape as of the v2 CLI (upstream decolua/9router master v0.5.112 pins
+// 2.0.26; Pro pins the newer stable 2.2.5): "opencode/<channel>/<version>/cli"
+// with x-opencode-session + x-opencode-session-id + x-session-affinity +
+// x-session-id. The v1 form ("opencode/<version> ai-sdk/... runtime/bun/...",
+// x-opencode-request) is retired — upstream rejects x-opencode-request with
+// 403, and v1 no longer serves free models. Paths stay the catalog-advertised
+// Pro paths (/inference/openai/v1/...) until a fresh-IP probe decides the
+// endpoint question; only the wire identity changes here.
+const OPENCODE_UA = "opencode/latest/2.2.5/cli";
 const OPENCODE_CLIENT = "cli";
 const MAX_SESSION_LENGTH = 256;
 const MAX_TOOL_NAME_LEN = 128;
@@ -32,13 +34,14 @@ export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 function hasValidOpencodeVersion(ua) {
-  // Only the real current CLI shape passes through: the v2 channel shape
-  // ("opencode/<channel>/<major>.<minor>.<patch>/<client>") was the previous
-  // generation and now reads as a stale relay UA, so anything that is not the
-  // current "opencode/<version> ai-sdk/provider-utils/<v> runtime/bun/<v>"
-  // form is replaced with the current UA. Anything else (curl, python, a
-  // pinned UA) is not the CLI.
-  return /^opencode\/\d+\.\d+\.\d+ ai-sdk\/provider-utils\/[\d.]+ runtime\/bun\/[\d.]+$/i.test(String(ua || ""));
+  // The current CLI shape is the v2 channel form
+  // ("opencode/<channel>/<major>.<minor>.<patch>/<client>"); only major >= 2
+  // passes through. Anything else (the retired 1.19.x form, curl, python, a
+  // pinned UA) is replaced with the current UA. This mirrors upstream ori
+  // (decolua/9router master): the old 1.19-only validator read the channel
+  // shape backwards and rejected the real client.
+  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
+  return !!m && parseInt(m[1], 10) >= 2;
 }
 // Models served by /inference/v1/responses; every other model stays on /chat/completions.
 const RESPONSES_MODELS = new Set([
@@ -460,7 +463,9 @@ export class OpenCodeExecutor extends BaseExecutor {
     });
   }
 
-  // Free tier endpoints matching OpenCode 1.19+ CLI:
+  // Free tier endpoints (paths kept intentionally — see the UA comment at
+  // the top: only the wire identity moved to v2; the endpoint-path question
+  // is decided by a fresh-IP probe, not by this port):
   // OpenAI chat format routes to /inference/openai/v1/chat/completions,
   // Anthropic messages format routes to /inference/anthropic/v1/messages.
   buildUrl(model) {
@@ -480,9 +485,10 @@ export class OpenCodeExecutor extends BaseExecutor {
 
     const session = credentials?.[SESSION_FIELD] || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
 
-    // Mirrors the current CLI (OpenCode 1.19.4). The official client sends
-    // x-opencode-request alongside x-opencode-session / session-id, and omits
-    // x-session-affinity and x-session-id (which are only for non-opencode providers).
+    // Mirrors the v2 CLI. Upstream needs x-opencode-session-id next to
+    // x-opencode-session, plus the x-session-affinity / x-session-id pair,
+    // and rejects any x-opencode-request (v1 only) with 403 — so it is
+    // never sent here.
     const headers = {
       "Content-Type": "application/json",
       "Authorization": "Bearer public",
@@ -490,7 +496,8 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": lower["x-opencode-client"] || OPENCODE_CLIENT,
       "x-opencode-session": session,
       "x-opencode-session-id": session,
-      "x-opencode-request": generateRequestId(),
+      "x-session-affinity": session,
+      "x-session-id": session,
       "x-opencode-project": lower["x-opencode-project"] || "global",
       "Accept": stream ? "text/event-stream" : "*/*",
     };

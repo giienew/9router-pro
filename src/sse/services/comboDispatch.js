@@ -166,5 +166,6 @@ export async function dispatchCombo({
     resolveSmartChoice: comboStrategy === "smart"
       ? (b, m) => resolveSmartChoice({ body: b, models: m, routerModel: comboCfg.routerModel, log })
       : null,
+    signal: request?.signal || null,
   });
 }

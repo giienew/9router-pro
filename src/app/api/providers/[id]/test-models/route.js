@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { fetchCompatibleProviderModels } from "@/lib/compatibleModels";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { pingModelByKind } from "@/app/api/models/test/ping";
 
@@ -26,13 +27,17 @@ export async function POST(request, { params }) {
 
     const baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
 
-    // Compatible providers: fetch live model list
+    // Compatible providers: list live models directly from the connection's
+    // own upstream endpoint. The old code self-fetched this server's
+    // /api/providers/:id/models over HTTP without credentials, which the
+    // dashboard proxy 401s under requireLogin — surfacing as a bogus 400
+    // "No models configured" even though the provider has a live list.
+    // Direct listing removes the loopback (and its auth) entirely.
     if (isCompatible && models.length === 0) {
       try {
-        const modelsRes = await fetch(`${baseUrl}/api/providers/${id}/models`);
-        if (modelsRes.ok) {
-          const data = await modelsRes.json();
-          models = (data.models || []).map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
+        const result = await fetchCompatibleProviderModels(connection);
+        if (result.ok) {
+          models = result.models.map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
         }
       } catch { /* fallback to empty */ }
     }

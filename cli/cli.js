@@ -551,19 +551,33 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server (bundled in bin/app for published package).
-// Prefer custom-server.js (injects real socket IP) when present.
-const standaloneDir = path.join(__dirname, "app");
-const customServerPath = path.join(standaloneDir, "custom-server.js");
-const serverPath = fs.existsSync(customServerPath)
-  ? customServerPath
-  : path.join(standaloneDir, "server.js");
-
-if (!fs.existsSync(serverPath)) {
+// Find standalone server. Prefer the CLI-bundled app/ build (pack:cli
+// flow), but fall back to the root pack's .next/standalone build — that
+// build ships in every root npm install, while cli/app only exists when
+// the CLI bundle was built separately. Without the fallback a clean
+// root-pack install could start the CLI but never serve. Prefer
+// custom-server.js (injects real socket IP) when present in either dir.
+function resolveServerEntry() {
+  const candidates = [
+    path.join(__dirname, "app"),
+    path.join(__dirname, "..", ".next", "standalone"),
+  ];
+  for (const dir of candidates) {
+    const custom = path.join(dir, "custom-server.js");
+    if (fs.existsSync(custom)) return { dir, serverPath: custom };
+    const server = path.join(dir, "server.js");
+    if (fs.existsSync(server)) return { dir, serverPath: server };
+  }
+  return null;
+}
+const serverEntry = resolveServerEntry();
+if (!serverEntry) {
   console.error("Error: Standalone build not found.");
-  console.error("Please run 'npm run build:cli' first.");
+  console.error("Reinstall 9router-pro (npm i -g 9router-pro) or build the CLI bundle first (npm run build inside cli/).");
   process.exit(1);
 }
+const standaloneDir = serverEntry.dir;
+const serverPath = serverEntry.serverPath;
 
 // Start server immediately; run update check in parallel (not on the critical path).
 const updatePromise = checkForUpdate();

@@ -39,6 +39,18 @@ function envMs(name, def) {
   return Number.isFinite(n) && n > 0 ? n : def;
 }
 
+// Like envMs, but 0 is a real value (disables the timer) instead of falling
+// back to the default. Only for variables whose documented contract is
+// "0 disables" — other timers keep envMs so a stray 0 can't silently
+// remove a safety bound.
+function envMsAllowZero(name, def) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return def;
+  const n = parseInt(raw, 10);
+  if (Number.isFinite(n) && n >= 0) return n;
+  return def;
+}
+
 function envUrl(name, def) {
   const raw = process.env[name]?.trim();
   return raw || def;
@@ -69,8 +81,8 @@ export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000)
 // and never a non-streaming generation (which has no first token to wait
 // for — its fetch stays bounded by FETCH_CONNECT_TIMEOUT_MS /
 // TOTAL_REQUEST_TIMEOUT_MS). Env: COMBO_FIRST_RESPONSE_TIMEOUT_MS.
-// 0 or invalid disables the timer (old behaviour).
-export const COMBO_FIRST_RESPONSE_TIMEOUT_MS = envMs("COMBO_FIRST_RESPONSE_TIMEOUT_MS", 60 * 1000);
+// 0 disables the timer; an invalid value falls back to the default.
+export const COMBO_FIRST_RESPONSE_TIMEOUT_MS = envMsAllowZero("COMBO_FIRST_RESPONSE_TIMEOUT_MS", 60 * 1000);
 
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);

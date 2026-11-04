@@ -44,8 +44,15 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // Malformed JSON is a client error; everything past parsing (importDb,
+  // snapshot reads) is server work and must not masquerade as one.
+  let body;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  try {
     // Preview mode: summarize the file without importing anything, so the
     // UI can show exactly what an import would replace before it happens.
     if (body && body.preview === true) {
@@ -74,7 +81,7 @@ export async function POST(request) {
     console.log("Error importing database:", error);
     return NextResponse.json(
       { error: error?.message || "Failed to import database" },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

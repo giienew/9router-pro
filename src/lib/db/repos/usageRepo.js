@@ -4,14 +4,7 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
 import { emitUsageWebhook, maskApiKeyForWebhook } from "@/lib/webhookEvents.js";
-
-function maskApiKey(key) {
-  if (!key || typeof key !== "string") return null;
-  const trimmed = key.trim();
-  if (trimmed.length <= 12) return trimmed.charAt(0) + "***";
-  // Keep the tail: keys sharing a machine-id prefix (team keys) must not collide.
-  return trimmed.slice(0, 8) + "***" + trimmed.slice(-4);
-}
+import { maskApiKey } from "@/shared/utils/maskApiKey.js";
 
 // Output bucket key for byApiKey stats. The full API key must never leave the
 // server inside a stats payload, but a bare mask can still collide between

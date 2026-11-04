@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { maskApiKey as maskSharedApiKey } from "@/shared/utils/maskApiKey";
 
 const STORAGE_KEY = "9router.cliToolEndpointPresets";
 
 function maskApiKey(apiKey) {
   if (!apiKey) return "No API key";
-  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}...`;
-  return `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+  return maskSharedApiKey(apiKey) || "No API key";
 }
 
 function normalizePresets(value) {

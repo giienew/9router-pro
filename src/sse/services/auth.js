@@ -242,8 +242,17 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     if (availableConnections.length === 0) {
       // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
-      const lockedConns = connections.filter(c => isModelLockActive(c, model));
-      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
+      const lockedConns = connections.filter(c => isModelLockActive(c, model) && !excludeSet.has(c.id));
+      // C-6: only locks this request can still use count toward rescue
+      // timing — a lock owned by an already-tried (excluded) account can
+      // never free anything here, so waiting on it burns up to 45s.
+      // C-7: pair each expiry with its owning connection so the reported
+      // error belongs to the earliest lock, not to DB order.
+      const lockedByExpiry = lockedConns
+        .map(c => ({ conn: c, until: getEarliestModelLockUntil(c) }))
+        .filter(e => e.until)
+        .sort((a, b) => new Date(a.until) - new Date(b.until));
+      const expiries = lockedByExpiry.map(e => e.until);
       if (isAntigravity && model && antigravityQuotaCache) {
         connections.forEach((c) => {
           const connQuotas = antigravityQuotaCache.get(c.id);
@@ -267,7 +276,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (!isAntigravity && earliest && connections.length <= SMALL_FLEET_RESCUE_MAX_CONNECTIONS) {
         const waitMs = new Date(earliest).getTime() - Date.now();
         if (waitMs <= SMALL_FLEET_RESCUE_MAX_WAIT_MS) {
+          // C-3: never hold the sticky mutex across the rescue wait — a
+          // 45s wait would queue every other sticky/round-robin pick for
+          // every provider behind it. Resolve now, re-acquire after the
+          // wait (same promise-chain discipline; the finally still
+          // resolves the re-acquired link).
+          if (resolveStickyMutex) resolveStickyMutex();
           if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+          if (strategy === "round-robin" || strategy === "sticky-random") {
+            const currentMutex = stickySelectionMutex;
+            stickySelectionMutex = new Promise(resolve => { resolveStickyMutex = resolve; });
+            await currentMutex;
+          }
           availableConnections = connections.filter(isAvailable);
           if (availableConnections.length > 0) {
             log.warn("AUTH", `${provider} | small-fleet rescue: waited ${Math.max(0, waitMs)}ms for lock, ${availableConnections.length} account(s) free`);
@@ -281,7 +301,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         }
       }
       if (availableConnections.length === 0 && earliest) {
-        const earliestConn = lockedConns[0];
+        const earliestConn = lockedByExpiry[0]?.conn || lockedConns[0];
         log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
         return {
           allRateLimited: true,
@@ -441,13 +461,6 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
-  // Sticky-random: a locked key stops being current for its route, so the
-  // next pick re-rolls instead of re-sticking to it. Only the entry that
-  // actually points at this key is dropped.
-  if (provider) {
-    const routeKey = stickyRouteKey(resolveProviderId(provider), model);
-    if (stickyCurrentByRoute.get(routeKey) === connectionId) stickyCurrentByRoute.delete(routeKey);
-  }
   // Fail open: a locked or busy DB must not kill the request. If the read
   // fails, the lock just won't persist — the caller still falls back on
   // the cooldown computed from the status alone.
@@ -471,15 +484,30 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     newBackoffLevel = 0;
   } else if (resetsAtMs && resetsAtMs > Date.now()) {
     shouldFallback = true;
-    // Antigravity quota API provides exact per-model resetAt. Do not truncate it.
-    cooldownMs = resolveProviderId(provider) === "antigravity"
+    // C-5 (decision): an executor reset never SHORTENS the blind backoff —
+    // the cooldown is max(reset, backoff), and the backoff level keeps
+    // escalating instead of resetting to 0. Antigravity quota resets keep
+    // their exact, uncapped value as the reset side of the max.
+    const resetCooldownMs = resolveProviderId(provider) === "antigravity"
       ? resetsAtMs - Date.now()
       : Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
-    newBackoffLevel = 0;
+    const backoff = checkFallbackError(status, errorText, backoffLevel, resolveProviderId(provider));
+    cooldownMs = Math.max(resetCooldownMs, backoff.cooldownMs || 0);
+    newBackoffLevel = backoff.newBackoffLevel ?? backoffLevel;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, resolveProviderId(provider)));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+
+  // C-4: Sticky-random: a locked key stops being current for its route, so
+  // the next pick re-rolls instead of re-sticking to it. Only the entry
+  // that actually points at this key is dropped — and only once the call
+  // really locks (a request-scoped 400 or a 499 timer abort must NOT end
+  // stickiness for a healthy account).
+  if (provider) {
+    const routeKey = stickyRouteKey(resolveProviderId(provider), model);
+    if (stickyCurrentByRoute.get(routeKey) === connectionId) stickyCurrentByRoute.delete(routeKey);
+  }
 
   // Provider breaker (P3-27): only genuine outages count — 429, 5xx, or a
   // missing status (network failure). Auth failures (401/403) are

@@ -182,7 +182,11 @@ export class BaseExecutor {
         // tokenjuice signature of 2026-11-02 — while the combo / client
         // retry layers are the proper fallback. Fail this attempt fast; a
         // different fallback URL (if any) is still tried below.
-        const isFetchConnectTimeout = error?.message === "fetch connect timeout";
+        // Gate on the abort signal itself, not on the message string: the
+        // timer is the only thing that aborts connectCtrl, so signal.aborted
+        // is true exactly for connect timeouts even when the surfaced error
+        // is a generic AbortError instead of "fetch connect timeout".
+        const isFetchConnectTimeout = connectCtrl.signal.aborted;
         if (!isFetchConnectTimeout && await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
 
         if (urlIndex + 1 < fallbackCount) {

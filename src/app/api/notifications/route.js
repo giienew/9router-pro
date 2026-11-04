@@ -25,7 +25,11 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const db = await getAdapter();
     if (body.action === "read" && body.id != null) {
-      return NextResponse.json({ ok: markTrustEventRead(db, body.id) });
+      const marked = markTrustEventRead(db, body.id);
+      if (!marked) {
+        return NextResponse.json({ error: "Notification not found" }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true });
     }
     if (body.action === "read-all") {
       return NextResponse.json({ ok: true, cleared: markAllTrustEventsRead(db) });
