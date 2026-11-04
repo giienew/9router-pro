@@ -4,6 +4,19 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.23
+
+- **Clean-install startup crash fixed**: published packs now include the missing `cli/hooks` and `cli/src` trees (a `.npmignore` negation bug had stripped them from the pro.20/pro.21 packs, crashing every fresh install with a missing-module error), plus a fallback to the standalone build when `cli/app` is absent and a root `bin` entry. Every pack audit now includes a startup smoke test from the extracted pack. Note: pro.22 was never released — its hotfix is bundled here.
+- **Security fixes**: settings no longer leak the encrypted MITM sudo value; credential-bearing headers are masked in log files again (masking had been left disabled); API-key masking is unified across usage, webhook, and endpoint code.
+- **Basic Chat works again**: sending now goes through `/v1/chat/completions` with a user API-key picker, instead of a dashboard route that never existed. No new route added.
+- **Rotation hardening**: a first-response timeout of 0 now truly disables the timer; a client disconnect aborts promptly instead of hanging; rescue waits no longer hold the selection lock or wait on excluded accounts; sticky entries are only cleared after the fallback check; cooldown is the maximum of the executor reset time and the blind backoff.
+- **OpenCode wire updated to the v2 shape**: current client version, session-affinity headers, and the legacy request header dropped; endpoint paths unchanged while fresh-network proof is still pending.
+- **Reliability batch**: OIDC fetches now time out after 15s; import/restore returns 500 for server failures and missing notifications return 404; the test-models check no longer self-fetches without credentials, so it stops failing falsely.
+
+## v0.5.109-pro.21
+
+- **Packaging fix**: the pro.19/pro.20 packs were missing every `*/test/route.js` (a root `.npmignore` rule stripped all directories named `test` at any depth), so dashboard Test buttons failed with network errors. pro.21 restores all 7 test routes; the pack audit verifies 198/198 routes including them.
+
 ## v0.5.109-pro.20
 
 - **Rotation reverted to the proven pattern**: balanced health tiers, windowed-LRU 32, sticky-random, provider breaker, and blind backoff replace the pro.19 rotation layers — Retry-After-aware 429 cooldown, latency-weighted picks, delayed hedging, and content-timeout failover are all reverted. The 60s combo first-response failover and connect-timeout fail-fast are kept.
