@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getPxpipeStats } from "@/lib/pxpipe/events.js";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,6 @@ export async function GET(request) {
     const recentLimit = Math.min(Number(searchParams.get("limit")) || 100, 500);
     return NextResponse.json(getPxpipeStats({ recentLimit }));
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "pxpipe_stats_failed", message: "Failed to load pxpipe stats" });
   }
 }

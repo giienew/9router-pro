@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { findPython310, getInstalledHeadroomExtras, HEADROOM_COMPRESSION_EXTRAS } from "@/lib/headroom/detect";
 import { installHeadroomExtras, uninstallHeadroomExtras, getInstallLogTail } from "@/lib/headroom/process";
 
@@ -17,7 +18,7 @@ export async function GET(req) {
       ...status,
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "headroom_extras_failed", message: "Failed to load headroom extras" });
   }
 }
 
@@ -29,7 +30,7 @@ export async function POST(req) {
     return NextResponse.json(result);
   } catch (error) {
     const status = error.code === "NOT_INSTALLED" || error.code === "NO_PYTHON" ? 400 : 500;
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status });
+    return apiErrorResponse(error, { code: error.code || "headroom_extras_failed", message: "Failed to install headroom extras", status });
   }
 }
 
@@ -41,6 +42,6 @@ export async function DELETE(req) {
     return NextResponse.json(result);
   } catch (error) {
     const status = error.code === "NO_PYTHON" || error.code === "INVALID_EXTRAS" ? 400 : 500;
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status });
+    return apiErrorResponse(error, { code: error.code || "headroom_extras_failed", message: "Failed to uninstall headroom extras", status });
   }
 }

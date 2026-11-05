@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { resolveCliApiKey } from "../resolveApiKey.js";
 import fs from "fs/promises";
 import path from "path";
@@ -83,7 +84,7 @@ export async function GET() {
       configPath: getOmpModelsYmlPath(),
     });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "omp_settings_failed", message: "Failed to load or save OMP settings" });
   }
 }
 
@@ -156,7 +157,7 @@ export async function POST(request) {
       configPath: getOmpModelsYmlPath(),
     });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "omp_settings_failed", message: "Failed to load or save OMP settings" });
   }
 }
 
@@ -177,6 +178,6 @@ export async function DELETE() {
       message: "9Router removed from Oh My Pi",
     });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "omp_settings_failed", message: "Failed to load or save OMP settings" });
   }
 }

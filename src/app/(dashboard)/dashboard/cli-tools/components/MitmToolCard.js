@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input, ModelSelectModal } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 import { TOOL_HOSTS } from "@/shared/constants/mitmToolHosts";
 import Image from "next/image";
 
@@ -106,7 +107,7 @@ export default function MitmToolCard({
         body: JSON.stringify({ tool: tool.id, action, sudoPassword: password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to toggle DNS");
+      if (!res.ok) throw new Error(errorText(data, "Failed to toggle DNS"));
 
       if (action === "enable") {
         setWarning(`Restart ${tool.name} to apply changes`);

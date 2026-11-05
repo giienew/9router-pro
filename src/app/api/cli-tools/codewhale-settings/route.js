@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { resolveCliApiKey } from "../resolveApiKey.js";
 import fs from "fs/promises";
 import path from "path";
@@ -67,7 +68,7 @@ export async function GET() {
       configPath: getCodewhaleConfigPath(),
     });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "codewhale_settings_failed", message: "Failed to load or save CodeWhale settings" });
   }
 }
 
@@ -113,7 +114,7 @@ export async function POST(request) {
       configPath,
     });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "codewhale_settings_failed", message: "Failed to load or save CodeWhale settings" });
   }
 }
 
@@ -138,6 +139,6 @@ export async function DELETE() {
 
     return NextResponse.json({ success: true, message: "9Router removed from CodeWhale" });
   } catch (err) {
-    return NextResponse.json({ error: { message: err.message } }, { status: 500 });
+    return apiErrorResponse(err, { code: "codewhale_settings_failed", message: "Failed to load or save CodeWhale settings" });
   }
 }

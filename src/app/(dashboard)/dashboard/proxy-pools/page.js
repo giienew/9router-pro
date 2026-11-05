@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 import Pagination from "@/shared/components/Pagination";
 import { useNotificationStore } from "@/store/notificationStore";
 
@@ -330,7 +331,7 @@ export default function ProxyPoolsPage() {
       const res = await fetch("/api/proxy-pools/delete-failed", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        notify.error(data.error || "Failed to delete failed proxies");
+        notify.error(errorText(data, "Failed to delete failed proxies"));
         return;
       }
       await fetchProxyPools();

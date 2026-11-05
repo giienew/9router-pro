@@ -5,6 +5,7 @@ import { recordQuotaPressure } from "@/lib/trustEvents.js";
 import { getKeyLimitUsage } from "@/lib/keyRateLimiter.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { validateCustomKey } from "@/shared/utils/apiKey";
+import { MAX_BULK_IMPORT_ITEMS } from "@/lib/oauth/bulkImport";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +117,15 @@ export async function PATCH(request) {
     const updates = body.updates && typeof body.updates === "object" ? body.updates : null;
     if (!ids.length || !updates) {
       return NextResponse.json({ error: "ids[] and updates are required" }, { status: 400 });
+    }
+    // M-1: cap the batch like the bulk imports (50/request). Each id is
+    // several DB reads/writes, so an uncapped batch holds the server in a
+    // long sequential loop.
+    if (ids.length > MAX_BULK_IMPORT_ITEMS) {
+      return NextResponse.json(
+        { error: `Bulk edit is limited to ${MAX_BULK_IMPORT_ITEMS} keys per request` },
+        { status: 400 }
+      );
     }
     if (updates.expiresAt !== undefined && updates.expiresAt !== null && !Number.isFinite(new Date(updates.expiresAt).getTime())) {
       return NextResponse.json({ error: "expiresAt must be an ISO date or null" }, { status: 400 });

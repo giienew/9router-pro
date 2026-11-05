@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { MAX_BULK_IMPORT_ITEMS } from "@/lib/oauth/bulkImport";
+import { checkDashboardThrottle, dashboardThrottleResponse, DASHBOARD_THROTTLE_MAX_MUTATE } from "@/lib/auth/dashboardThrottle";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -17,6 +19,8 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  * Tokens are NEVER echoed back in the response.
  */
 export async function POST(request) {
+  const throttle = checkDashboardThrottle(request, "oauth/codex/bulk-import", DASHBOARD_THROTTLE_MAX_MUTATE);
+  if (!throttle.allowed) return dashboardThrottleResponse(throttle.retryAfterSec);
   let body;
   try {
     body = await request.json();
@@ -42,6 +46,16 @@ export async function POST(request) {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return NextResponse.json(
       { error: "No accounts provided" },
+      { status: 400 }
+    );
+  }
+
+  // M-1: cap the batch like the Kiro bulk-import (50/request). Each item
+  // is a DB write plus JWT backfill work, so an uncapped batch holds the
+  // server in a long sequential loop.
+  if (accounts.length > MAX_BULK_IMPORT_ITEMS) {
+    return NextResponse.json(
+      { error: `Bulk import is limited to ${MAX_BULK_IMPORT_ITEMS} accounts per request` },
       { status: 400 }
     );
   }

@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { apiErrorBody } from "@/lib/apiError";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { isLocalRequest } from "@/dashboardGuard";
 
@@ -77,7 +78,9 @@ async function probeMcp(url) {
       tools: tools.map((t) => ({ name: t.name, description: t.description || "" })),
     };
   } catch (e) {
-    return { error: e.name === "AbortError" ? "timeout" : e.message, tools: [] };
+    return e.name === "AbortError"
+      ? { error: { code: "timeout", message: "MCP tools request timed out" }, tools: [] }
+      : { ...apiErrorBody(e, { code: "mcp_tools_failed", message: "Failed to load MCP tools" }), tools: [] };
   } finally {
     clearTimeout(timer);
   }
@@ -100,6 +103,6 @@ export async function POST(request) {
     const result = await probeMcp(url);
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: e.message, tools: [] }, { status: 500 });
+    return NextResponse.json({ ...apiErrorBody(e, { code: "mcp_tools_failed", message: "Failed to load MCP tools" }), tools: [] }, { status: 500 });
   }
 }

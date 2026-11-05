@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20127";
 
@@ -101,7 +102,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           setPort443Conflict({ owner: data.portOwner, password });
           return;
         }
-        setActionError(data.error || `Failed to ${action} MITM server`);
+        setActionError(errorText(data, `Failed to ${action} MITM server`));
         return;
       }
       setShowPasswordModal(false);

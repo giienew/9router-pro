@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Badge, Modal, Input, ModelSelectModal } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 import Image from "next/image";
 
 export default function AntigravityToolCard({
@@ -130,7 +131,7 @@ export default function AntigravityToolCard({
         fetchStatus();
       } else {
         setStartingStep(null);
-        setMessage({ type: "error", text: data.error || "Failed to start" });
+        setMessage({ type: "error", text: errorText(data, "Failed to start") });
       }
     } catch (error) {
       setStartingStep(null);
@@ -157,7 +158,7 @@ export default function AntigravityToolCard({
         setSudoPassword("");
         fetchStatus();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to stop" });
+        setMessage({ type: "error", text: errorText(data, "Failed to stop") });
       }
     } catch (error) {
       setMessage({ type: "error", text: error.message });
@@ -212,7 +213,7 @@ export default function AntigravityToolCard({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to save mappings");
+        throw new Error(errorText(data, "Failed to save mappings"));
       }
 
       setMessage({ type: "success", text: "Mappings saved!" });

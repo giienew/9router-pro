@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getSettings } from "@/lib/localDb";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 
@@ -91,7 +92,7 @@ async function proxy(request, { params }) {
 
     return new NextResponse(response.body, { status: response.status, headers });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "headroom_proxy_failed", message: "Headroom proxy request failed" });
   }
 }
 

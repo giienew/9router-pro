@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { decodeXaiIdTokenEmail, extractEmailFromAccessToken } from "@/lib/oauth/providerHelpers";
+import { MAX_BULK_IMPORT_ITEMS } from "@/lib/oauth/bulkImport";
+import { checkDashboardThrottle, dashboardThrottleResponse, DASHBOARD_THROTTLE_MAX_MUTATE } from "@/lib/auth/dashboardThrottle";
 
 /**
  * POST /api/oauth/grok-cli/bulk-import
@@ -19,6 +21,8 @@ import { decodeXaiIdTokenEmail, extractEmailFromAccessToken } from "@/lib/oauth/
  *   expires_in / expiresIn / expires_at / expiresAt
  */
 export async function POST(request) {
+  const throttle = checkDashboardThrottle(request, "oauth/grok-cli/bulk-import", DASHBOARD_THROTTLE_MAX_MUTATE);
+  if (!throttle.allowed) return dashboardThrottleResponse(throttle.retryAfterSec);
   let body;
   try {
     body = await request.json();
@@ -43,6 +47,16 @@ export async function POST(request) {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return NextResponse.json(
       { error: "No accounts provided" },
+      { status: 400 }
+    );
+  }
+
+  // M-1: cap the batch like the Kiro bulk-import (50/request). Each item
+  // is a DB write, so an uncapped batch holds the server in a long
+  // sequential loop.
+  if (accounts.length > MAX_BULK_IMPORT_ITEMS) {
+    return NextResponse.json(
+      { error: `Bulk import is limited to ${MAX_BULK_IMPORT_ITEMS} accounts per request` },
       { status: 400 }
     );
   }

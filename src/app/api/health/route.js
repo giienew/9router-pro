@@ -10,11 +10,12 @@ const CORS_HEADERS = {
 };
 
 // GET /api/health — liveness plus health detail (G11).
-// `ok` keeps its liveness semantics and is ALWAYS true here, so existing
-// monitors that alert on ok === false keep working unchanged. Degradation
-// is reported separately via `degraded` (true when the DB is unreachable
-// or any breaker is open/half-open) and the `checks` object, which
-// monitors can read without reinterpreting `ok`.
+// M-2: the status code carries the verdict. When the instance is degraded
+// (DB unreachable or any breaker open/half-open) the response is HTTP 503
+// with `ok: false`, so a monitor that only reads the status code or `ok`
+// can no longer miss a DB outage or a tripped provider breaker. Healthy
+// stays HTTP 200 with `ok: true`. `degraded` and `checks` keep their
+// shapes so existing body readers keep working.
 //
 // checks shape:
 //   checks.db: "ok" | "error" (a SELECT 1 against the app database)
@@ -54,8 +55,8 @@ export async function GET() {
 
   const degraded = db !== "ok" || breakers.open > 0 || breakers.halfOpen > 0;
   return NextResponse.json(
-    { ok: true, degraded, checks: { db, connections, breakers } },
-    { headers: CORS_HEADERS },
+    { ok: !degraded, degraded, checks: { db, connections, breakers } },
+    { status: degraded ? 503 : 200, headers: CORS_HEADERS },
   );
 }
 

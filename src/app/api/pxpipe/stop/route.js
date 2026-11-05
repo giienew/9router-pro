@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { unloadPxpipe } from "@/lib/pxpipe/loader.js";
 import { getPxpipeStatus } from "@/lib/pxpipe/service.js";
 
@@ -11,6 +12,6 @@ export async function POST() {
     const wasLoaded = unloadPxpipe();
     return NextResponse.json({ stopped: wasLoaded, ...getPxpipeStatus() });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "pxpipe_stop_failed", message: "Failed to stop pxpipe" });
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { unloadPxpipe, loadPxpipe } from "@/lib/pxpipe/loader.js";
 import { getPxpipeStatus } from "@/lib/pxpipe/service.js";
 
@@ -11,6 +12,6 @@ export async function POST() {
     await loadPxpipe();
     return NextResponse.json(getPxpipeStatus());
   } catch (error) {
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status: 500 });
+    return apiErrorResponse(error, { code: error.code || "pxpipe_failed", message: "Failed to restart pxpipe" });
   }
 }

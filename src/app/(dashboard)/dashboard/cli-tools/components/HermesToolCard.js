@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import { rememberEndpoint, readPresets } from "./cliEndpointPresets";
@@ -164,7 +165,7 @@ export default function HermesToolCard({
       if (res.ok) {
         setHermesStatus(data);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load Hermes settings" });
+        setMessage({ type: "error", text: errorText(data, "Failed to load Hermes settings") });
         if (res.status === 404) {
           // Profile disappeared (e.g. deleted in another tab) — fall back to default.
           fetchProfiles();
@@ -228,7 +229,7 @@ export default function HermesToolCard({
         checkStatus();
         fetchProfiles();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to apply settings" });
+        setMessage({ type: "error", text: errorText(data, "Failed to apply settings") });
       }
     } catch (error) {
       setMessage({ type: "error", text: error.message });
@@ -284,7 +285,7 @@ export default function HermesToolCard({
         fetchProfiles();
         checkStatus();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to apply settings" });
+        setMessage({ type: "error", text: errorText(data, "Failed to apply settings") });
       }
     } catch (error) {
       setMessage({ type: "error", text: error.message });
@@ -312,7 +313,7 @@ export default function HermesToolCard({
         checkStatus();
         fetchProfiles();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to reset settings" });
+        setMessage({ type: "error", text: errorText(data, "Failed to reset settings") });
       }
     } catch (error) {
       setMessage({ type: "error", text: error.message });

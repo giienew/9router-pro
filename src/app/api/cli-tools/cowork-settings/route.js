@@ -346,7 +346,7 @@ export async function POST(request) {
     await fs.writeFile(configPath, JSON.stringify(newConfig, null, 2));
 
     let skipResult = null;
-    try { skipResult = await writeSkipApprovals(managedMcpServers); } catch (e) { skipResult = { error: e.message }; }
+    try { skipResult = await writeSkipApprovals(managedMcpServers); } catch (e) { console.error("[api:cowork_skip_approvals_failed]", e); skipResult = { error: "Failed to update skip approvals" }; }
 
     // Best-effort cleanup of legacy 1p mcpServers entries written by earlier versions.
     let localMcpResult = { applied: localPluginNames, via: "3p-sse-bridge" };

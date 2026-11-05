@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { apiErrorBody } from "@/lib/apiError";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -55,7 +56,7 @@ const resolveHome = (profile) => {
   try {
     return { home: resolveHermesHome(profile) };
   } catch (error) {
-    return { error: error.message };
+    return apiErrorBody(error, { code: "hermes_home_failed", message: "Failed to resolve Hermes home directory" });
   }
 };
 

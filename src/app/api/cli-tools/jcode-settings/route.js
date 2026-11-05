@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -179,10 +180,7 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Error configuring jcode:", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, { code: "jcode_configure_failed", message: "Failed to configure jcode" });
   }
 }
 
@@ -208,9 +206,6 @@ export async function DELETE() {
     });
   } catch (error) {
     console.error("Error removing jcode configuration:", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, { code: "jcode_remove_failed", message: "Failed to remove jcode configuration" });
   }
 }

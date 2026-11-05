@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, Button, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { errorText } from "@/shared/utils/errorText";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange, translate } from "@/i18n/runtime";
 import {
@@ -188,7 +189,7 @@ export default function TokenSaverClient() {
     try {
       const res = await fetch("/api/headroom/start", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to start proxy");
+      if (!res.ok) throw new Error(errorText(data, "Failed to start proxy"));
       await refreshHeadroomStatus();
     } catch (e) {
       setHeadroomActionError(e.message);
@@ -251,7 +252,7 @@ export default function TokenSaverClient() {
         body: JSON.stringify({ extras: pendingExtras }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Install failed");
+      if (!res.ok) throw new Error(errorText(data, "Install failed"));
       setHeadroomExtras((s) => ({
         ...s,
         version: data.version ?? s.version,
@@ -277,7 +278,7 @@ export default function TokenSaverClient() {
         body: JSON.stringify({ extras: [extra] }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Remove failed");
+      if (!res.ok) throw new Error(errorText(data, "Remove failed"));
       setHeadroomExtras((s) => ({
         ...s,
         version: data.version ?? s.version,
@@ -330,7 +331,7 @@ export default function TokenSaverClient() {
     try {
       const res = await fetch("/api/headroom/restart", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Restart failed");
+      if (!res.ok) throw new Error(errorText(data, "Restart failed"));
       await refreshHeadroomStatus();
     } catch (e) {
       setExtrasActionError(e.message);
@@ -385,7 +386,7 @@ export default function TokenSaverClient() {
       try {
         const res = await fetch(`/api/pxpipe/${endpoint}`, { method: "POST" });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `PXPIPE ${endpoint} failed`);
+        if (!res.ok) throw new Error(errorText(data, `PXPIPE ${endpoint} failed`));
         await refreshPxpipeStatus();
         await runPxpipeHealth();
       } catch (e) {

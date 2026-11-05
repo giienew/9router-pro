@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getSettings } from "@/lib/localDb";
 import { getPxpipeStatus } from "@/lib/pxpipe/service.js";
 
@@ -16,6 +17,6 @@ export async function GET() {
       timeoutMs: settings.pxpipeTimeoutMs,
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "pxpipe_status_failed", message: "Failed to get pxpipe status" });
   }
 }

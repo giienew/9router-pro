@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
+import { errorText } from "@/shared/utils/errorText";
 
 const REGISTRY_ENDPOINT = "/api/cli-tools/cowork-mcp-registry";
 const TOOLS_ENDPOINT = "/api/cli-tools/cowork-mcp-tools";
@@ -24,7 +25,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
     fetch(REGISTRY_ENDPOINT)
       .then((r) => r.json())
       .then((d) => {
-        if (d.error) setError(d.error);
+        if (d.error) setError(errorText(d, "Failed to load MCP registry"));
         else setServers(d.servers || []);
       })
       .catch((e) => setError(e.message))
@@ -60,7 +61,7 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
       const tools = d.tools || [];
       const fallback = Array.isArray(server.toolNames) ? server.toolNames : [];
       const toolNames = tools.length > 0 ? tools.map((t) => t.name) : fallback;
-      setToolsCache((p) => ({ ...p, [server.url]: { tools, requiresAuth: !!d.requiresAuth, error: d.error } }));
+      setToolsCache((p) => ({ ...p, [server.url]: { tools, requiresAuth: !!d.requiresAuth, error: errorText(d, "") } }));
       // Default: all checked
       setToolSelection((p) => ({ ...p, [server.url]: Object.fromEntries(toolNames.map((t) => [t, true])) }));
     } catch (e) {

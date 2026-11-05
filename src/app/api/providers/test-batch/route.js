@@ -14,6 +14,7 @@ import {
   clearBatchJob,
 } from "@/lib/batchTestRegistry";
 import { invalidateStatsCache } from "@/lib/providerStatsCache";
+import { checkDashboardThrottle, dashboardThrottleResponse, DASHBOARD_THROTTLE_MAX_TEST } from "@/lib/auth/dashboardThrottle";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -47,6 +48,8 @@ function isCompatibleProvider(providerId) {
 
 // POST /api/providers/test-batch - Test multiple connections by group
 export async function POST(request) {
+  const throttle = checkDashboardThrottle(request, "providers/test-batch", DASHBOARD_THROTTLE_MAX_TEST);
+  if (!throttle.allowed) return dashboardThrottleResponse(throttle.retryAfterSec);
   let jobId = null;
   try {
     const body = await request.json();

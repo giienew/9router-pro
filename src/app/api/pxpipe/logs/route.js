@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getInstallLogTail } from "@/lib/pxpipe/install.js";
 import { readPxpipeEvents } from "@/lib/pxpipe/events.js";
 
@@ -13,6 +14,6 @@ export async function GET(request) {
       events: readPxpipeEvents({ limit }).reverse(),
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "pxpipe_logs_failed", message: "Failed to load pxpipe logs" });
   }
 }

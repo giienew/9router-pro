@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getSettings } from "@/lib/localDb";
 import { restartHeadroomProxy } from "@/lib/headroom/process";
 import { DEFAULT_HEADROOM_URL, isLoopbackHeadroomUrl } from "@/lib/headroom/detect";
@@ -30,6 +31,6 @@ export async function POST() {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     const status = error.code === "NOT_INSTALLED" ? 400 : 500;
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status });
+    return apiErrorResponse(error, { code: error.code || "headroom_failed", message: "Failed to restart headroom proxy", status });
   }
 }

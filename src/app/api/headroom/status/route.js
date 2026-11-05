@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getSettings } from "@/lib/localDb";
 import { DEFAULT_HEADROOM_URL, getHeadroomStatus } from "@/lib/headroom/detect";
 import { getManagedPid } from "@/lib/headroom/process";
@@ -13,6 +14,6 @@ export async function GET() {
     const managedPid = getManagedPid();
     return NextResponse.json({ ...status, url, managedPid });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "headroom_status_failed", message: "Failed to get headroom status" });
   }
 }
