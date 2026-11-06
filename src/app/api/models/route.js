@@ -4,6 +4,7 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { sanitizeModelCapsOverride } from "@/shared/constants/models";
 
 // 9Router Pro: the catalog is near-static (constants + aliases + disabled +
 // custom rows) but ~320KB to build and ship — cache the payload for 30s so
@@ -62,13 +63,29 @@ export async function GET() {
     // resolve the survivors' provider id, not the UI alias: the capability
     // tables are keyed by provider id, and an alias like `ocg` misses the
     // provider-scoped entries and falls back to the generic patterns.
-    const seenFull = new Set(models.map((m) => m.fullModel));
-    const seenRouted = new Set(models.map((m) => m.routedModel));
-    const customModels = (await getCustomModels()).filter((m) => {
-      if (!m?.id || (m.kind || m.type || "llm") !== "llm") return false;
-      if (seenRouted.has(`${m.providerAlias}/${m.id}`)) return false;
-      return !seenFull.has(`${m.providerAlias}/${m.id}`);
-    });
+    //
+    // Exception: a shadow row carrying an editor override (`capsOverride`,
+    // sparse — only the fields the user set) is NOT dropped. Its override
+    // merges onto the listed entry instead, so editing a detected model
+    // publishes the edited numbers (contextWindow/maxOutput included) to
+    // clients that read /api/models. Legacy rows have no capsOverride, so
+    // their drop behavior is unchanged.
+    const customRows = (await getCustomModels()).filter((m) => m?.id && (m.kind || m.type || "llm") === "llm");
+    const byRouted = new Map(models.map((m) => [m.routedModel, m]));
+    const byFull = new Map(models.map((m) => [m.fullModel, m]));
+    const customModels = [];
+    for (const m of customRows) {
+      const key = `${m.providerAlias}/${m.id}`;
+      const target = byRouted.get(key) || byFull.get(key);
+      if (target) {
+        const override = sanitizeModelCapsOverride(m.capsOverride);
+        if (override && Object.keys(override).length > 0) {
+          target.caps = { ...target.caps, ...override };
+        }
+        continue;
+      }
+      customModels.push(m);
+    }
     for (const m of customModels) {
       const fullModel = `${m.providerAlias}/${m.id}`;
       const providerId = ALIAS_TO_ID[m.providerAlias] || m.providerAlias;
@@ -87,6 +104,7 @@ export async function GET() {
           contextWindow: c.contextWindow,
           maxOutput: c.maxOutput,
           ...(m.caps || {}),
+          ...(sanitizeModelCapsOverride(m.capsOverride) || {}),
         },
       });
     }

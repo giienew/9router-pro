@@ -716,12 +716,10 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, reso
 }
 
 /**
- * Resolve capabilities for a model using the 4-step fallback chain,
- * merged over DEFAULT_CAPABILITIES so the result is always complete.
- *
- * @param {string} provider
- * @param {string} model
- * @returns {object} full capabilities object
+ * Table resolution (resolveBaseCapabilities below): provider override →
+ * exact id → pattern → floor, merged over DEFAULT_CAPABILITIES, then
+ * refined by the synced catalog. User overrides are applied last by the
+ * exported getCapabilitiesForModel, not here.
  */
 const MODALITY_KEYS = ["vision", "pdf", "audioInput", "videoInput"];
 
@@ -748,6 +746,45 @@ export function setCatalogSource(source) {
 function getCatalogSource() {
   if (typeof globalThis === "undefined") return catalogSource;
   return globalThis.__9rCatalogSource || null;
+}
+
+// User model overrides — same install pattern as the catalog source: the
+// server pushes a reader in (src/lib/userModelCaps.js, which reads the
+// customModels kv), this module stays free of node:fs / DB imports because
+// the dashboard bundles it into the browser too. The slot lives on
+// globalThis for the same per-chunk module-state reason as the catalog one.
+let userCapsSource = null;
+
+/**
+ * Install the user-override reader (server only).
+ * @param {{ getOverride: (provider: string, model: string) => object|null } | null} source
+ */
+export function setUserCapsSource(source) {
+  userCapsSource = source;
+  if (typeof globalThis !== "undefined") globalThis.__9rUserCapsSource = source;
+}
+
+function getUserCapsSource() {
+  if (typeof globalThis === "undefined") return userCapsSource;
+  return globalThis.__9rUserCapsSource || null;
+}
+
+// Sparse user override, applied last over a resolved result: only the fields
+// the user actually set win (an absent key keeps the detected value), so an
+// override can turn vision on for a pattern-missed model without touching
+// the reasoning / thinking fields detection got right. Fail-open: a reader
+// that throws leaves detection untouched.
+function applyUserCapsOverride(resolved, provider, model) {
+  const source = getUserCapsSource();
+  if (!source) return resolved;
+  let override = null;
+  try {
+    override = source.getOverride(provider, model);
+  } catch {
+    return resolved;
+  }
+  if (!override || typeof override !== "object") return resolved;
+  return { ...resolved, ...override };
 }
 
 // Apply the synced catalog + name heuristic on top of a table-resolved result.
@@ -814,7 +851,7 @@ function isCommandCodeTextOnly(model) {
   }
   return false;
 }
-export function getCapabilitiesForModel(provider, model) {
+function resolveBaseCapabilities(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
 
   // Canonical exact lookup strips vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7".
@@ -858,6 +895,22 @@ export function getCapabilitiesForModel(provider, model) {
 
   // 4. Floor
   return refine(null, provider, model);
+}
+
+/**
+ * Resolve capabilities for a model using the 4-step fallback chain,
+ * merged over DEFAULT_CAPABILITIES so the result is always complete,
+ * then refined by the synced catalog — and finally by the user's own
+ * per-model overrides (model editor), which is what makes an override
+ * reach real requests: chatCore calls this function directly, so a
+ * vision:true override here is what stops the image strip.
+ *
+ * @param {string} provider
+ * @param {string} model
+ * @returns {object} full capabilities object
+ */
+export function getCapabilitiesForModel(provider, model) {
+  return applyUserCapsOverride(resolveBaseCapabilities(provider, model), provider, model);
 }
 
 // Gemini 4 (Argon) drops sampling params and requires functionResponse-last merged user turns.

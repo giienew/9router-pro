@@ -78,6 +78,9 @@ export default function ProviderDetailPage() {
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
+  // Model being edited in the shared add/edit modal (null = add mode).
+  // { id, name, capsOverride } — capsOverride is the stored sparse override.
+  const [editingModel, setEditingModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkScope, setBulkScope] = useState("loaded");
@@ -608,12 +611,14 @@ export default function ProviderDetailPage() {
 
   // `transport` pins a realtime STT dispatch marker (shared whitelist
   // STT_TRANSPORT_META); the API only honours it on type "stt" records.
-  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport) => {
+  // `capsOverride` is the model editor's sparse override (only fields the
+  // user set); it rides along on the same POST as the legacy `caps`.
+  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport, capsOverride) => {
     try {
       const res = await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, ...(caps ? { caps } : {}), ...(transport ? { transport } : {}) }),
+        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, ...(caps ? { caps } : {}), ...(capsOverride !== undefined ? { capsOverride } : {}), ...(transport ? { transport } : {}) }),
       });
       if (res.ok) {
         await fetchCustomModels();
@@ -625,6 +630,36 @@ export default function ProviderDetailPage() {
     } catch (error) {
       console.log("Error adding custom model:", error);
     }
+  };
+
+  // Model editor save: PATCH the sparse override. Upsert on the server, so
+  // editing a detected (registry) model creates its override row — the
+  // model itself stays in the registry, only its capabilities change.
+  const handleEditCustomModel = async ({ modelId, capsOverride }) => {
+    try {
+      const res = await fetch("/api/models/custom", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerAlias: providerStorageAlias, id: modelId, type: "llm", capsOverride }),
+      });
+      if (res.ok) {
+        await fetchCustomModels();
+        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+      } else {
+        const data = await res.json();
+        notify.error(data.error || "Failed to update model");
+      }
+    } catch (error) {
+      console.log("Error updating custom model:", error);
+    }
+  };
+
+  // Open the shared add/edit modal for a model row. The stored override (if
+  // any) pre-fills the form; a detected model with no row yet starts all-Auto.
+  const openModelEditor = (modelId) => {
+    const row = customModels.find((m) => m.id === modelId && m.providerAlias === providerStorageAlias);
+    setEditingModel({ id: modelId, name: row?.name || modelId, capsOverride: row?.capsOverride || null, type: "llm" });
+    setShowAddCustomModel(true);
   };
 
   const handleDeleteCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias) => {
@@ -1384,6 +1419,7 @@ export default function ProviderDetailPage() {
             isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
+            onEdit={() => openModelEditor(model.id)}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
           />
@@ -1411,6 +1447,7 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
+              onEdit={() => openModelEditor(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -2087,13 +2124,19 @@ export default function ProviderDetailPage() {
           isOpen={showAddCustomModel}
           providerAlias={providerStorageAlias}
           providerDisplayAlias={providerDisplayAlias}
-          onSave={async (modelId, caps, transport) => {
-            // caps.stt is a UI-only flag; the API accepts transports only on
-            // type "stt" records, so the save derives the type from it.
-            await handleAddCustomModel(modelId, caps?.stt ? "stt" : "llm", providerStorageAlias, caps, transport);
+          initialModel={editingModel}
+          detectedCaps={editingModel ? getCaps(`${providerId}/${editingModel.id}`) : null}
+          onSave={async ({ modelId, capsOverride, legacyCaps, type, transport }) => {
+            await handleAddCustomModel(modelId, type, providerStorageAlias, legacyCaps, transport, capsOverride);
             setShowAddCustomModel(false);
+            setEditingModel(null);
           }}
-          onClose={() => setShowAddCustomModel(false)}
+          onSaveEdit={async ({ modelId, capsOverride }) => {
+            await handleEditCustomModel({ modelId, capsOverride });
+            setShowAddCustomModel(false);
+            setEditingModel(null);
+          }}
+          onClose={() => { setShowAddCustomModel(false); setEditingModel(null); }}
         />
       )}
 
