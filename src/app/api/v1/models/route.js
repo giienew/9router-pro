@@ -61,6 +61,19 @@ function comboSeatCapabilities(seat) {
   return getCapabilitiesForModel(ALIAS_TO_PROVIDER_ID[alias] || alias, seat.slice(slash + 1));
 }
 
+// A combo/variant seat is servable with zero stored connections when its
+// provider is a no-auth free provider (the router injects a virtual
+// connection for it — see auth.js). Nested combo names (no slash) cannot
+// be proven servable here, so they stay unlisted until a connection exists.
+function isNoAuthSeat(seat) {
+  if (typeof seat !== "string") return false;
+  const slash = seat.indexOf("/");
+  if (slash <= 0) return false;
+  const alias = seat.slice(0, slash);
+  const providerId = ALIAS_TO_PROVIDER_ID[alias] || alias;
+  return FREE_PROVIDERS[providerId]?.noAuth === true;
+}
+
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
@@ -390,6 +403,11 @@ export async function buildModelsList(kindFilter, options = {}) {
     combos.filter((c) => typeof c?.name === "string").map((c) => [c.name, c]),
   );
 
+  // Ids servable with zero stored connections (no-auth free lane only).
+  // Collected as combos/variants are pushed; the zero-connections branch
+  // below keeps exactly these and drops the rest.
+  const noAuthServableIds = new Set();
+
   // Lookup map so aggregateComboCapabilities can recursively resolve nested combos
   const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
 
@@ -415,6 +433,12 @@ export async function buildModelsList(kindFilter, options = {}) {
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
     }
     models.push(entry);
+    // A combo whose every seat is a no-auth free model serves with zero
+    // stored connections — keep it listed on a fresh install (it is the
+    // zero-config working combo). Anything else is dropped below.
+    if (Array.isArray(combo.models) && combo.models.length > 0 && combo.models.every(isNoAuthSeat)) {
+      noAuthServableIds.add(combo.name);
+    }
   }
 
   // Variants are directly routable models too (no backing combo): list
@@ -443,6 +467,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         owned_by: "variant",
         ...(capabilities ? { capabilities } : {}),
       });
+      if (isNoAuthSeat(entry.model)) noAuthServableIds.add(name);
     }
   }
 
@@ -470,7 +495,15 @@ export async function buildModelsList(kindFilter, options = {}) {
     // serve through a virtual connection (see auth.js) and are the
     // only models that can honestly be listed here. A fleet with no
     // no-auth providers therefore returns an empty list.
+    // One exception: combos/variants whose every seat is a no-auth free
+    // model (e.g. the seeded `free` combo) DO serve with zero stored
+    // connections, so keeping them listed is honest — and they are the
+    // new user's zero-config first request. auto:* intents are never
+    // kept: auto-routing needs at least one stored connection to
+    // produce a candidate.
+    const kept = models.filter((m) => noAuthServableIds.has(m.id));
     models.length = 0;
+    models.push(...kept);
   }
 
     // Live catalogs resolve concurrently under one shared budget: sequential

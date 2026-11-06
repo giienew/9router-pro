@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { FREE_PROVIDERS, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -167,6 +167,35 @@ function dedupeModels(models) {
   return Array.from(map.values());
 }
 
+// No-auth free providers serve through the router's virtual connection
+// (see auth.js), so they need no stored connection. Surface their static
+// models as virtual groups so Basic Chat works on a fresh install instead
+// of dead-ending with "No providers connected yet." Hidden lanes (e.g.
+// mimo-free, whose free channel ended) are never surfaced.
+function buildFreeProviderGroups() {
+  const groups = [];
+  for (const provider of Object.values(FREE_PROVIDERS || {})) {
+    if (!provider?.noAuth || provider.hidden) continue;
+    const kinds = Array.isArray(provider.serviceKinds) && provider.serviceKinds.length > 0
+      ? provider.serviceKinds
+      : ["llm"];
+    if (!kinds.includes("llm")) continue;
+    const connection = { id: "noauth", provider: provider.id, name: provider.name || humanize(provider.id) };
+    const models = getModelsByProviderId(provider.id)
+      .map((model) => normalizeStaticModel(model, connection))
+      .filter(Boolean);
+    if (!models.length) continue;
+    groups.push({
+      providerId: provider.id,
+      providerName: connection.name,
+      providerType: "free",
+      connections: [connection],
+      models: dedupeModels(models).sort((a, b) => a.name.localeCompare(b.name)),
+    });
+  }
+  return groups.sort((a, b) => a.providerName.localeCompare(b.providerName));
+}
+
 export default function BasicChatPageClient() {
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -253,9 +282,14 @@ export default function BasicChatPageClient() {
           : [];
 
         if (connections.length === 0) {
+          // No stored connections — but the no-auth free lane serves
+          // through a virtual connection, so offer its models instead of
+          // a dead end. The user still needs an API key to send (the key
+          // picker already points at Endpoint & Key when none exists).
+          const freeGroups = buildFreeProviderGroups();
           if (!cancelled) {
-            setProviderGroups([]);
-            setLoadError("No providers connected yet.");
+            setProviderGroups(freeGroups);
+            if (freeGroups.length === 0) setLoadError("No providers connected yet.");
           }
           return;
         }
@@ -936,6 +970,15 @@ export default function BasicChatPageClient() {
                     <p className="text-sm leading-6 text-white/60">
                       Simple chat interface to interact with any AI model from connected providers. Select a model and start chatting!
                     </p>
+                    {apiKeys.length === 0 ? (
+                      <p className="text-sm leading-6 text-white/60">
+                        Belum ada API key —{" "}
+                        <a href="/dashboard/endpoint" className="font-semibold text-violet-300 underline">
+                          buat dulu di Endpoint &amp; Key
+                        </a>
+                        , lalu kirim pesan pertama kamu (model gratis sudah tersedia, tanpa provider).
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>

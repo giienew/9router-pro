@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { LEGACY_FILES, DB_DIR } from "./paths.js";
 import { TABLES, buildCreateTableSql, SCHEMA_VERSION } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
@@ -202,6 +203,29 @@ function importLegacyDisabled(adapter, data) {
   }
 }
 
+// Zero-config starter combo: no-auth free models only, so it serves on a
+// fresh install with zero provider setup (the router injects a virtual
+// connection for no-auth providers — see auth.js). Members are the static
+// OpenCode free-lane ids, the same ids /v1/models publishes with no
+// connections. Runs once, on a brand-new DB with no legacy import; a user
+// can delete or rename it like any other combo, and it is never re-seeded
+// (fresh is false on every later boot).
+const FREE_COMBO_NAME = "free";
+const FREE_COMBO_MODELS = [
+  "opencode/muse-spark-1.3-contributor-free",
+  "opencode/union-alpha",
+];
+
+function seedFreeCombo(adapter) {
+  const existing = adapter.get(`SELECT COUNT(*) as c FROM combos`)?.c ?? 0;
+  if (existing > 0) return;
+  const now = new Date().toISOString();
+  adapter.run(
+    `INSERT OR IGNORE INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+    [randomUUID(), FREE_COMBO_NAME, null, stringifyJson(FREE_COMBO_MODELS), now, now],
+  );
+}
+
 function importLegacyDetails(adapter, data) {
   if (!data || !Array.isArray(data.records)) return;
   for (const r of data.records) {
@@ -287,6 +311,17 @@ export async function runMigrationOnce(adapter) {
     pruneOldBackups();
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
     return;
+  }
+
+  // Seed the zero-config `free` combo on a brand-new install only. The
+  // legacy branch above returns early, so legacy users never get it, and
+  // existing DBs are untouched (fresh is false after the first boot).
+  if (fresh && !hasLegacy) {
+    try {
+      seedFreeCombo(adapter);
+    } catch (e) {
+      console.warn(`[DB][migrate] free-combo seed failed (continuing): ${e.message}`);
+    }
   }
 
   // Track app version for informational purposes only. App version bumps no
