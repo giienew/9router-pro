@@ -4,6 +4,62 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.24
+
+- **Per-model editor (OmniRoute-style)**: every model row on Providers now has an Edit button — set Vision, PDF, Audio/Video input, Image/Audio output, Search, Tools, and Reasoning per model (Auto/On/Off), plus Context Window and Max Output overrides. Overrides apply at runtime and are published by `/api/models` and `/v1/models`; step-5-preview is corrected to vision + 1M context.
+- **First-run upgrade**: a built-in `free` combo (OpenCode free models) is seeded on fresh installs, `/v1/models` is honest with zero connections, Basic Chat works with zero connections, plus a first-request curl snippet and a first-run guide card.
+- **OpenCode 429 reset parsing**: 429 responses now parse `resets_at` / `resets_in_seconds` / `Retry-After` (HTTP-date included) so cooldowns follow the provider's reset instead of blind backoff (still capped at 30 min by the existing cooldown rule).
+- **Key live usage**: the Endpoint key panel polls live request/in-flight counts every 3 s while open instead of showing a frozen snapshot.
+- **Audit fixes M-1–M-6**: bulk imports capped at 50/batch, `/api/health` returns 503 when degraded, dashboard test/mutate endpoints throttled per IP+route, plus error-code centralization (partial: many routes still echo raw errors — follow-up, not a regression).
+- **Tests**: drifted assertions fixed test-only (combo call arity, localDb mock exports); 2 known-drift cases remain in the `/v1/models` zero-connection fixture.
+- **Changelog restored**: entries for pro.16–pro.23, previously only on master, are now included in this file.
+
+## v0.5.109-pro.23
+
+- **Clean-install startup crash fixed**: published packs now include the missing `cli/hooks` and `cli/src` trees (a `.npmignore` negation bug had stripped them from the pro.20/pro.21 packs, crashing every fresh install with a missing-module error), plus a fallback to the standalone build when `cli/app` is absent and a root `bin` entry. Every pack audit now includes a startup smoke test from the extracted pack. Note: pro.22 was never released — its hotfix is bundled here.
+- **Security fixes**: settings no longer leak the encrypted MITM sudo value; credential-bearing headers are masked in log files again (masking had been left disabled); API-key masking is unified across usage, webhook, and endpoint code.
+- **Basic Chat works again**: sending now goes through `/v1/chat/completions` with a user API-key picker, instead of a dashboard route that never existed. No new route added.
+- **Rotation hardening**: a first-response timeout of 0 now truly disables the timer; a client disconnect aborts promptly instead of hanging; rescue waits no longer hold the selection lock or wait on excluded accounts; sticky entries are only cleared after the fallback check; cooldown is the maximum of the executor reset time and the blind backoff.
+- **OpenCode wire updated to the v2 shape**: current client version, session-affinity headers, and the legacy request header dropped; endpoint paths unchanged while fresh-network proof is still pending.
+- **Reliability batch**: OIDC fetches now time out after 15s; import/restore returns 500 for server failures and missing notifications return 404; the test-models check no longer self-fetches without credentials, so it stops failing falsely.
+
+## v0.5.109-pro.21
+
+- **Packaging fix**: the pro.19/pro.20 packs were missing every `*/test/route.js` (a root `.npmignore` rule stripped all directories named `test` at any depth), so dashboard Test buttons failed with network errors. pro.21 restores all 7 test routes; the pack audit verifies 198/198 routes including them.
+
+## v0.5.109-pro.20
+
+- **Rotation reverted to the proven pattern**: balanced health tiers, windowed-LRU 32, sticky-random, provider breaker, and blind backoff replace the pro.19 rotation layers — Retry-After-aware 429 cooldown, latency-weighted picks, delayed hedging, and content-timeout failover are all reverted. The 60s combo first-response failover and connect-timeout fail-fast are kept.
+- **Console Log provider-only filter**: a Semua / Hanya provider toggle hides non-provider log rows (token refresh, auth, quota noise), with the choice persisted per browser.
+
+## v0.5.109-pro.19
+
+- **Smarter rotation**: Retry-After-aware 429 cooldown with 6h parking for balance-dead keys, latency-weighted picks inside the LRU window, and delayed-hedge racing for streaming combos — plus a 60s first-response failover that abandons a silent combo member, and connect timeouts that fail fast instead of stacking to ~250s.
+- **Accurate testing**: provider/model tests now show staged error reasons on the model card, and a peek deadline with zero content fails over instead of committing an empty stream.
+- **Dashboard**: a card for the provider with the most API keys.
+- **Updates fixed**: the manual-update panel installs the pinned registry version instead of GitHub master, so updates no longer land on a stale build.
+
+## v0.5.109-pro.18
+
+- **A dashboard made to be shown off**: a single dark neumorphism theme — floating glass cards, pill buttons and inputs, gradient toggles, hero-style numbers, spectrum charts, an opaque navbar, and Nunito throughout, done right on phone and laptop.
+- **Monitoring Dashboard**: a new first sidebar item with VPS specs, fastest and most-used providers, most-used API key, totals for providers, proxies, combos and keys, plus usage charts — all live, nothing fabricated.
+- **Built-in prompt templates**: a library of ready templates, titled by model and marked Bawaan (built-in). Read-only: copy or apply one to your own target yourself; nothing is auto-applied or bound to any model.
+- **Custom colours, dark to light**: pick any hue, then its shade with 6 dark-to-light dots per hue, an exact-colour dot, and a hex readout.
+- **Template carousel**: the template library swipes like cards on phone (arrows + dots on laptop), and the Templates header carries an icon-only reference button to an external prompt collection.
+- **Fresh screenshots**: Dashboard, Usage, Providers, Prompt Injection templates, and Chat script, all with real data.
+
+## v0.5.109-pro.17
+
+- **Bulk file import everywhere**: every bulk paste input now also takes files — Bulk Add API key (all API-key providers, `.txt`, one key per line, `name|key` supported), Bulk Import Codex (`.json`), Batch Import Proxies (`.txt`, one proxy per line), joining the GrokCli bulk modal which already had it. File content lands in the textarea, editable before submit; multiple files and drag-drop supported; no server change, existing submit paths handle the lines.
+- **Login via Browser fixes**: headed login now launches as root (`--no-sandbox`) and the on-demand playwright-core import works under ESM (chromium named export resolved via `.default`), so the button works on server installs instead of failing with "No Chrome/Chromium executable found" / "Cannot read properties of undefined (reading 'launchPersistentContext')".
+
+## v0.5.109-pro.16
+
+- **Re-audit fixes (1 critical + 11 major)**: database export/import now checks the CLI token value instead of its mere presence; the SSO-only test gate also fires when IdP fields change; response-cache and maintenance settings deep-merge instead of wiping nested config; a customized `INITIAL_PASSWORD` is accepted on first password set; quota endpoints refuse inactive connections; bulk-enable wording is honest about unknown quota with a refetch after toggle; import skips empty entries instead of deleting live injections; proxy health checks no longer reactivate operator-disabled pools; translator responses and logs mask credentials; single-key edits merge quota/limits instead of replacing them; the backup card counts variants.
+- **New providers (BYOK)**: OrcaRouter and TOTU AI, both OpenAI-compatible gateways with live catalog fetching. Kimi OAuth was already present from upstream, so no duplicate entry was added.
+- **Removals**: cross-provider catalog search is removed (it duplicated the provider shelf and cost a full-catalog fetch on every search).
+- **README**: title and credit line cleaned up, screenshots refreshed (providers, usage, prompt injection).
+
 ## v0.5.109-pro.15
 
 ### ADDITIONS FROM IMPLEMENTATION RUN
