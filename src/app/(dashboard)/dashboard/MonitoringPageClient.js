@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import Card from "@/shared/components/Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 // Audit fix: recharts charts render client-only in this codebase (the Usage
@@ -105,6 +106,14 @@ export default function MonitoringPageClient() {
     ? (sys.disk.usedBytes / sys.disk.totalBytes) * 100
     : null;
 
+  // Brand-new instance (no providers, no API keys yet): the numbers below
+  // are all zero and say nothing — show the three first steps instead of
+  // an empty dashboard. Disappears the moment the first provider or key
+  // exists, so existing installs never see it.
+  const isFreshInstall = !loading && !!mon
+    && (mon.providers?.total || 0) === 0
+    && (mon.keys?.total || 0) === 0;
+
   return (
     <div className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -120,6 +129,37 @@ export default function MonitoringPageClient() {
           Refresh
         </button>
       </div>
+
+      {isFreshInstall ? (
+        <Card className="p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-[22px] text-violet-400">rocket_launch</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">Mulai dalam 1 menit — tanpa setup provider</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                Router ini sudah bisa menjawab lewat jalur gratis (OpenCode Free). Tidak perlu API key provider apa pun untuk mencoba.
+              </p>
+              <ol className="mt-3 flex flex-col gap-2 text-sm leading-6 text-text-muted">
+                <li>
+                  <span className="font-semibold text-white">1.</span>{" "}
+                  <Link href="/dashboard/basic-chat" className="font-semibold text-violet-300 underline">Coba chat gratis di Basic Chat</Link>
+                  {" "}— pilih model OpenCode Free, lalu kirim pesan pertama kamu.
+                </li>
+                <li>
+                  <span className="font-semibold text-white">2.</span>{" "}
+                  <Link href="/dashboard/endpoint" className="font-semibold text-violet-300 underline">Buat API key</Link>
+                  {" "}— contoh request pertama yang siap salin ada di halaman Endpoint &amp; Key.
+                </li>
+                <li>
+                  <span className="font-semibold text-white">3.</span>{" "}
+                  <Link href="/dashboard/providers" className="font-semibold text-violet-300 underline">Hubungkan provider</Link>
+                  {" "}— kalau mau memakai model berbayar atau akun kamu sendiri.
+                </li>
+              </ol>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {stats ? (
         <OverviewCards stats={stats} series={series} />
