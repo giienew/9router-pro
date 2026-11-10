@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 import { getStageLabel } from "@/shared/utils/testErrorStage";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, testDetail, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, testDetail, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, onEdit, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -65,6 +65,20 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
               {copied === `model-${model.id}` ? "Copied!" : "Copy"}
             </span>
           </div>
+          {onEdit && (
+            <div className="relative shrink-0 group/btn">
+              <button
+                onClick={onEdit}
+                className="rounded p-1.5 text-text-muted transition-opacity hover:bg-sidebar hover:text-primary"
+                title="Edit model capabilities"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+              </button>
+              <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+                Edit
+              </span>
+            </div>
+          )}
           {isCustom ? (
             <button
               onClick={onDeleteAlias}
@@ -104,6 +118,7 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  onEdit: PropTypes.func,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };

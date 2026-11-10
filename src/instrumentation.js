@@ -8,6 +8,11 @@ export async function register() {
     const { installCatalogSource } = await import("open-sse/providers/catalogOverride.js");
     await installCatalogSource();
 
+    // Server-only: lets capabilities.js read the user's per-model overrides
+    // (model editor) without pulling the DB into the browser bundle.
+    const { installUserCapsSource } = await import("@/lib/userModelCaps.js");
+    await installUserCapsSource();
+
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
 
