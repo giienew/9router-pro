@@ -28,7 +28,7 @@ describe("combo credit fallback", () => {
 
     expect(response).toBe(shouldContinue ? success : failure);
     expect(handleSingleModel.mock.calls).toEqual(
-      (shouldContinue ? models : models.slice(0, 1)).map((model) => [body, model])
+      (shouldContinue ? models : models.slice(0, 1)).map((model) => [body, model, null])
     );
   });
 });

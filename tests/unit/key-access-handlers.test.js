@@ -28,6 +28,13 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: async (k) => fx.keys[k] || null,
   getInjectVariants: async () => ({}),
   resolvePromptInjections: async () => ({}),
+  // No injections configured in this fixture: empty stack, not a variant
+  // pick — matches resolvePromptInjectionMeta's fail-open return shape.
+  resolvePromptInjectionMeta: async () => ({ stack: [], isVariantPick: false }),
+  // Test models all contain "/" so the real resolver returns null; the
+  // identity apply matches the real no-sampling path (returns body as-is).
+  resolveVariantSampling: async () => null,
+  applyVariantSampling: (body) => body,
   resolveBriefLevel: async () => null,
   recordRtkSavings: async () => {},
   checkKeyQuota: async () => ({ blocked: false, used: 0, quota: { limit: 0, windowHours: 24 } }),
