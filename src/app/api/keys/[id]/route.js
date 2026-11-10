@@ -13,6 +13,14 @@ export async function GET(request, { params }) {
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
+    // Live usage for the dashboard: the same snapshot PUT returns, so the
+    // "Live:" line in the key panel reflects current traffic instead of
+    // the page-load values from the list GET.
+    const savedLimits = await getKeyLimits(id);
+    key.limitsUsage = {
+      ...getKeyLimitUsage(id),
+      tpmUsed: savedLimits?.tpm ? await getKeyUsageInWindow(key.key, 1 / 60) : 0,
+    };
     return NextResponse.json({ key });
   } catch (error) {
     console.log("Error fetching key:", error);

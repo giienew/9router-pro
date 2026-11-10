@@ -10,7 +10,7 @@
 // opt12: the editor also runs in draft mode inside the unified Edit modal
 // (draft=true): every change only updates the parent draft — nothing is
 // saved until Save. In immediate mode the callbacks PUT straight away.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Toggle, ModelSelectModal } from "@/shared/components";
 
@@ -115,7 +115,36 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
   const quota = apiKey.quota || null;
   const quotaUsed = apiKey.quotaUsed || 0;
   const limits = apiKey.limits || null;
-  const limitsUsage = apiKey.limitsUsage || null;
+
+  // Live usage is read-only display: it starts from the list snapshot and
+  // refreshes from GET /api/keys/[id] while the panel is open. The list GET
+  // runs once on page load, so without this the "Live:" line froze at
+  // page-load values even while the key was serving traffic.
+  const [liveUsage, setLiveUsage] = useState(apiKey.limitsUsage || null);
+  useEffect(() => {
+    setLiveUsage(apiKey.limitsUsage || null);
+  }, [apiKey.limitsUsage]);
+  useEffect(() => {
+    if (!open && !draft) return undefined;
+    let cancelled = false;
+    const refresh = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch(`/api/keys/${apiKey.id}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (data?.key?.limitsUsage) setLiveUsage(data.key.limitsUsage);
+      } catch {
+        // Keep the last value; the next tick retries.
+      }
+    };
+    refresh();
+    const timer = setInterval(refresh, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [open, draft, apiKey.id]);
 
   // opt12 draft mode: every change only updates the parent draft (nothing
   // is saved until Save). In immediate mode the callbacks PUT straight
@@ -349,14 +378,14 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
                 </label>
               ))}
             </div>
-            {!!limitsUsage && (
+            {!!liveUsage && (
               <p className="mt-2.5 flex items-center gap-1.5 text-[11px] tabular-nums text-text-muted">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Live: {limitsUsage.rpmUsed || 0} req/min
-                {limits?.tpm ? ` · ${fmt(limitsUsage.tpmUsed)} tok/min` : ""}
-                {limits?.rph ? ` · ${fmt(limitsUsage.rphUsed)} req/hour` : ""}
-                {limits?.rpd ? ` · ${fmt(limitsUsage.rpdUsed)} req/day` : ""}
-                {" · "}{limitsUsage.inFlight || 0} in flight
+                Live: {liveUsage.rpmUsed || 0} req/min
+                {limits?.tpm ? ` · ${fmt(liveUsage.tpmUsed)} tok/min` : ""}
+                {limits?.rph ? ` · ${fmt(liveUsage.rphUsed)} req/hour` : ""}
+                {limits?.rpd ? ` · ${fmt(liveUsage.rpdUsed)} req/day` : ""}
+                {" · "}{liveUsage.inFlight || 0} in flight
               </p>
             )}
           </div>
