@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./images/pro-dashboard.png" alt="9Router Pro — Monitoring Dashboard" width="800"/>
 
-  # 9Router Pro — by Gienetic
+  # 9Router Pro
 
   **A Pro edition of 9Router with Prompt Injection: one injection per target — global, per API key, per model — as a system prompt or a scripted chat.**
 
