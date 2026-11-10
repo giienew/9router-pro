@@ -7,6 +7,7 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
+import { parseOpencodeRateLimitReset } from "../utils/opencodeResetTime.js";
 import { opencodeTlsFetch } from "../services/opencodeTlsClient.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
@@ -381,6 +382,13 @@ function dropAdaptiveReasoningEffort(body) {
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
+  }
+
+  // Parse OpenCode free-tier 429 to extract precise resetsAtMs; fallback to default otherwise
+  parseError(response, bodyText) {
+    const reset = parseOpencodeRateLimitReset(response, bodyText);
+    if (reset) return { status: 429, message: reset.message, resetsAtMs: reset.resetsAtMs };
+    return super.parseError(response, bodyText);
   }
 
   prepareRequestCredentials({ body, credentials, providerSessionId, clientTool } = {}) {
