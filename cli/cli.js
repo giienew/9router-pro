@@ -4,27 +4,14 @@ const { spawn, exec, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
-const net = require("net");
 const os = require("os");
 
-// Poll until the server accepts TCP connections on port, or timeout — avoids blind fixed waits.
-function waitServerReady(port, { timeoutMs = 15000, intervalMs = 150 } = {}) {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve) => {
-    const tryConnect = () => {
-      const socket = net.connect({ host: "127.0.0.1", port }, () => {
-        socket.destroy();
-        resolve(true);
-      });
-      socket.on("error", () => {
-        socket.destroy();
-        if (Date.now() >= deadline) return resolve(false);
-        setTimeout(tryConnect, intervalMs);
-      });
-    };
-    tryConnect();
-  });
-}
+// Server-readiness probe, port cleanup, and restart budget live in
+// testable modules — cli.js must never re-implement them inline, so the
+// readiness result cannot silently go unchecked again (Pro issue #1).
+const { waitServerReady, serverNotReadyLines } = require("./src/cli/utils/readiness");
+const { killProcessOnPort } = require("./src/cli/utils/portCleanup");
+const { createRestartBudget } = require("./src/cli/utils/restartBudget");
 
 // Native spinner - no external dependency
 function createSpinner(text) {
@@ -418,55 +405,6 @@ function killProxyByPidFile() {
   } catch { }
 }
 
-// Kill any process on specific port
-function killProcessOnPort(port) {
-  return new Promise((resolve) => {
-    try {
-      const platform = process.platform;
-      let pid;
-
-      if (platform === "win32") {
-        try {
-          const output = execSync(`netstat -ano | findstr :${port}`, {
-            encoding: 'utf8',
-            shell: true,
-            windowsHide: true,
-            timeout: 5000
-          }).trim();
-          const lines = output.split('\n').filter(l => l.includes('LISTENING'));
-          if (lines.length > 0) {
-            pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
-          }
-        } catch (e) {
-          // Port is free or error
-        }
-      } else {
-        // macOS/Linux
-        try {
-          const pidOutput = execSync(`lsof -ti:${port}`, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-          }).trim();
-          if (pidOutput) {
-            pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
-          }
-        } catch (e) {
-          // Port is free or error
-        }
-      }
-
-      // Wait for port to be released
-      setTimeout(() => resolve(), 500);
-    } catch (err) {
-      // Silent fail - continue anyway
-      resolve();
-    }
-  });
-}
-
-
 // Detect if running in restricted environment (Codespaces, Docker)
 function isRestrictedEnvironment() {
   // Check for Codespaces
@@ -644,7 +582,9 @@ function startServer(updatePromise) {
     if (lanIp) console.log(`\x1b[33m⚠ Network-exposed: reachable at http://${lanIp}:${port} (bound 0.0.0.0). Use --host 127.0.0.1 for local-only.\x1b[0m`);
   }
 
-  let restartCount = 0;
+  // Restart budget: a permanently crashing server reaches a visible
+  // terminal state instead of respawning forever (see tryRestart).
+  const restartBudget = createRestartBudget({ maxRestarts: MAX_RESTARTS, resetMs: RESTART_RESET_MS });
   let serverStartTime = Date.now();
 
   const CRASH_LOG_LINES = 50;
@@ -675,6 +615,12 @@ function startServer(updatePromise) {
   }
 
   let server = spawnServer();
+
+  // Attach crash/close handling here, not at the end of startServer: the
+  // tray branch returns early, so a call at the end would never run in
+  // tray mode — the mode most users actually run — and a crashing server
+  // would sit dead with no restart and no message at all.
+  attachServerEvents();
 
   // Cleanup function - force kill server process
   let isCleaningUp = false;
@@ -756,7 +702,17 @@ function startServer(updatePromise) {
     console.log(`\n🚀 ${pkg.name} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    waitServerReady(port).then(() => {
+    waitServerReady(port).then((ready) => {
+      if (!ready) {
+        // Never claim "running" when nothing is listening: the tray menu
+        // itself says "Server is running", so do not init it — print the
+        // failure plainly and exit instead.
+        serverNotReadyLines(port).forEach((line) => console.error(line));
+        isShuttingDown = true;
+        cleanup();
+        process.exit(1);
+        return;
+      }
       initTrayIcon();
       console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
       console.log("   Right-click tray icon to open dashboard or quit.\n");
@@ -765,8 +721,17 @@ function startServer(updatePromise) {
     return;
   }
 
-  // Wait for server to be ready, then show interface menu loop + tray
-  waitServerReady(port).then(async () => {
+  // Wait for server to be ready, then show interface menu loop + tray.
+  // If it never comes up, say so and exit — the menu's "Server: <url>"
+  // subtitle would otherwise claim a dead server is up.
+  waitServerReady(port).then(async (ready) => {
+    if (!ready) {
+      serverNotReadyLines(port).forEach((line) => console.error(line));
+      isShuttingDown = true;
+      cleanup();
+      process.exit(1);
+      return;
+    }
     // Resolve parallel update check (already running); don't block server start on it.
     const latestVersion = await latestVersionPromise;
     // Start tray icon alongside TUI
@@ -834,12 +799,21 @@ function startServer(updatePromise) {
           });
           bgProcess.unref();
 
+          // cleanup() kills server so bgProcess can claim the port fresh.
+          // The child prints its own failure if its server never comes up,
+          // but its stdio is discarded — so verify readiness here before
+          // claiming "running": the parent is the only voice the user hears.
+          cleanup();
+          const bgReady = await waitServerReady(port);
+          if (!bgReady) {
+            serverNotReadyLines(port).forEach((line) => console.error(line));
+            process.exit(1);
+          }
+
           console.log(`🔔 9Router is now running in background (PID: ${bgProcess.pid})`);
           console.log(`   Server: http://${displayHost}:${port}`);
           console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
 
-          // cleanup() kills server so bgProcess can claim the port fresh
-          cleanup();
           process.exit(0);
         } else if (choice === "exit") {
           isShuttingDown = true;
@@ -873,10 +847,29 @@ function startServer(updatePromise) {
 
   function tryRestart(code) {
     const aliveMs = Date.now() - serverStartTime;
-    // Reset counter if last run was stable
-    if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
+    const decision = restartBudget.recordCrash(aliveMs);
 
-    if (restartCount >= MAX_RESTARTS) {
+    if (decision.action === "terminal") {
+      // The server keeps crashing even after the MITM-disable reset: stop
+      // respawning and say so plainly instead of looping forever while the
+      // CLI claims to be running.
+      console.error(`\n❌ Server keeps crashing — stopped respawning. The router is NOT running.`);
+      if (crashLog.length) {
+        console.error("\n--- Last server output ---");
+        crashLog.forEach(l => console.error(l));
+        console.error("--- End server output ---\n");
+      } else {
+        console.error("   (No server output was captured; rerun with --log to see it.)");
+      }
+      console.error(`   Diagnose it with: 9router-pro doctor --port ${port}`);
+      console.error(`   Then free the port if something stale holds it: fuser -k ${port}/tcp`);
+      isShuttingDown = true;
+      cleanup();
+      process.exit(1);
+      return;
+    }
+
+    if (decision.action === "mitm-reset") {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
       try {
         const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
@@ -886,15 +879,13 @@ function startServer(updatePromise) {
           fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
         }
       } catch { /* best effort */ }
-      restartCount = 0;
       server = spawnServer();
       attachServerEvents();
       return;
     }
 
-    restartCount++;
-    const delay = Math.min(1000 * restartCount, 10000);
-    console.error(`\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${restartCount}/${MAX_RESTARTS})`);
+    const delay = decision.delayMs;
+    console.error(`\n⚠️  Server exited (code=${code ?? "unknown"}). Restarting in ${delay / 1000}s... (${decision.attempt}/${MAX_RESTARTS})`);
     if (crashLog.length) {
       console.error("\n--- Server crash log ---");
       crashLog.forEach(l => console.error(l));
@@ -906,6 +897,4 @@ function startServer(updatePromise) {
       attachServerEvents();
     }, delay);
   }
-
-  attachServerEvents();
 }
