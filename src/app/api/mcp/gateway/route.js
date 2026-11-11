@@ -72,7 +72,7 @@ async function runTool(name, args) {
 export async function GET() {
   return NextResponse.json({
     name: "9router-pro-gateway",
-    version: "0.5.109-pro.24",
+    version: "0.5.109-pro.25",
     protocol: "mcp-json-rpc-over-http",
     tools: TOOLS.map((t) => t.name),
     mutatingTools: [],
@@ -92,7 +92,7 @@ export async function POST(request) {
   try {
     if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") return err(-32600, "Invalid JSON-RPC request");
     if (body.method === "initialize") {
-      return ok({ protocolVersion: body.params?.protocolVersion || "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "9router-pro-gateway", version: "0.5.109-pro.24" } });
+      return ok({ protocolVersion: body.params?.protocolVersion || "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "9router-pro-gateway", version: "0.5.109-pro.25" } });
     }
     if (body.method === "ping") return ok({});
     if (body.method === "notifications/initialized") return new Response(null, { status: 202 });

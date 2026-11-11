@@ -1,6 +1,6 @@
 {
   "name": "9router-pro",
-  "version": "0.5.109-pro.24",
+  "version": "0.5.109-pro.25",
   "bin": {
     "9router-pro": "./cli/cli.js"
   },

@@ -4,6 +4,11 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.25
+
+- **CLI readiness — the router never claims "running" when the server is down**: tray, TUI, and background-hide startup now gate on an HTTP readiness probe (`GET /api/health`, 15 s) and say plainly when the server did not start, with `doctor --port` and port-free hints (platform-aware: `fuser -k` on Unix, `netstat` + `taskkill` on Windows). A crashing server reaches a terminal state instead of looping silently ("Server keeps crashing — stopped respawning"). Port cleanup works without `lsof` (Linux `/proc` fallback; Windows netstat parser). Three startup-cleanup races fixed along the way (cleanup killing its own launcher, Hide zombie restart loop, `lsof` matching client sockets). This fixes the published-pro.24 bug behind complaint #1 / #2 ("This page couldn't load" on `/dashboard/endpoint`): the page itself was healthy — the CLI printed "running" while the server was dead. Note: `cli/cli.js` is byte-identical between pro.23 and pro.24, so the bug predates pro.24; it surfaced at the 24 update because updating means restarting, and the restart/orphan trap is what bites.
+- **Tests**: 83/83 CLI tests pass; fresh-install smoke covers tray/TUI/hide healthy + blocked-port + crash-loop + no-lsof paths. Windows path is unit-tested only (no Windows machine to run it on).
+
 ## v0.5.109-pro.24
 
 - **Per-model editor (OmniRoute-style)**: every model row on Providers now has an Edit button — set Vision, PDF, Audio/Video input, Image/Audio output, Search, Tools, and Reasoning per model (Auto/On/Off), plus Context Window and Max Output overrides. Overrides apply at runtime and are published by `/api/models` and `/v1/models`; step-5-preview is corrected to vision + 1M context.
