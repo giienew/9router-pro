@@ -9,8 +9,8 @@ const os = require("os");
 // Server-readiness probe, port cleanup, and restart budget live in
 // testable modules — cli.js must never re-implement them inline, so the
 // readiness result cannot silently go unchecked again (Pro issue #1).
-const { waitServerReady, serverNotReadyLines } = require("./src/cli/utils/readiness");
-const { killProcessOnPort } = require("./src/cli/utils/portCleanup");
+const { waitServerReady, serverNotReadyLines, portFreeHintLines } = require("./src/cli/utils/readiness");
+const { killProcessOnPort, collectAppPids } = require("./src/cli/utils/portCleanup");
 const { createRestartBudget } = require("./src/cli/utils/restartBudget");
 
 // Native spinner - no external dependency
@@ -274,6 +274,15 @@ function killAllAppProcesses(appPort) {
       });
 
       const platform = process.platform;
+      // Never kill ourselves, and never kill the process that spawned us:
+      // the Hide-to-Tray parent is still alive (awaiting the child's
+      // readiness) while the detached tray child runs this cleanup, and
+      // the parent matches the whitelist — without the exclusion the
+      // child SIGKILLed its own parent (hide-blocked, 2026-11-12).
+      // The parent passes its PID via NINEROUTER_PARENT_PID at spawn.
+      const skipPids = new Set([process.pid.toString()]);
+      const launcherPid = process.env.NINEROUTER_PARENT_PID;
+      if (launcherPid && /^\d+$/.test(launcherPid)) skipPids.add(launcherPid);
       let pids = [];
 
       if (platform === "win32") {
@@ -285,21 +294,7 @@ function killAllAppProcesses(appPort) {
             windowsHide: true,
             timeout: 5000
           });
-          const lines = output.split("\n").slice(1).filter(l => l.trim());
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const match = line.match(/^"(\d+)"/);
-              if (match && match[1] && match[1] !== process.pid.toString()) {
-                pids.push(match[1]);
-              }
-            }
-          });
+          pids = collectAppPids(output, "win32", skipPids);
         } catch (e) {
           // No processes found or error - continue
         }
@@ -310,23 +305,7 @@ function killAllAppProcesses(appPort) {
             encoding: 'utf8',
             timeout: 5000
           });
-          const lines = output.split('\n');
-
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const parts = line.trim().split(/\s+/);
-              const pid = parts[1];
-              if (pid && !isNaN(pid) && pid !== process.pid.toString()) {
-                pids.push(pid);
-              }
-            }
-          });
+          pids = collectAppPids(output, "linux", skipPids);
         } catch (e) {
           // No processes found or error - continue
         }
@@ -795,10 +774,21 @@ function startServer(updatePromise) {
             detached: true,
             stdio: "ignore",
             windowsHide: true,
-            env: { ...process.env }
+            // Tell the child our PID so its startup cleanup (killAllAppProcesses)
+            // never SIGKILLs us while we are still alive awaiting its readiness.
+            env: { ...process.env, NINEROUTER_PARENT_PID: String(process.pid) }
           });
           bgProcess.unref();
 
+          // Detach our own server's crash/close handlers before killing it:
+          // cleanup() SIGKILLs the server, and the 'close' handler would
+          // otherwise treat that as a crash and restart it (zombie loop —
+          // it even re-bound the port and answered our own readiness probe
+          // in the hide-healthy smoke test). The child owns the port now;
+          // this parent only verifies the child and reports.
+          server.removeAllListeners("close");
+          server.removeAllListeners("error");
+          server.on("error", () => {}); // never throw on a late error from the killed server
           // cleanup() kills server so bgProcess can claim the port fresh.
           // The child prints its own failure if its server never comes up,
           // but its stdio is discarded — so verify readiness here before
@@ -862,7 +852,8 @@ function startServer(updatePromise) {
         console.error("   (No server output was captured; rerun with --log to see it.)");
       }
       console.error(`   Diagnose it with: 9router-pro doctor --port ${port}`);
-      console.error(`   Then free the port if something stale holds it: fuser -k ${port}/tcp`);
+      console.error(`   Then free the port if something stale holds it:`);
+      portFreeHintLines(port).forEach((line) => console.error(line));
       isShuttingDown = true;
       cleanup();
       process.exit(1);

@@ -48,11 +48,27 @@ function waitServerReady(port, { timeoutMs = DEFAULT_READY_TIMEOUT_MS, intervalM
   });
 }
 
+// Lines that tell the user how to free the port by hand, for the platform
+// the CLI is actually running on. `fuser` does not exist on Windows — the
+// original complainer's platform (C:\Users\Administrator, Node v24.22.1) —
+// so handing a Windows user `fuser -k` made the failure message itself a
+// dead end. On Windows the equivalent is netstat to find the PID, then
+// taskkill it.
+function portFreeHintLines(port, platform = process.platform) {
+  if (platform === "win32") {
+    return [
+      `     netstat -ano | findstr :${port}`,
+      `     taskkill /PID <pid> /F   (the PID on the LISTENING line for :${port})`,
+    ];
+  }
+  return [`     fuser -k ${port}/tcp`];
+}
+
 // Lines to print (to stderr) when the server did not come up within the
 // readiness window. Names the port, the wait, and the next steps — never a
 // bare "failed to start", so a user on a phone can act on it without
 // guessing.
-function serverNotReadyLines(port, { timeoutMs = DEFAULT_READY_TIMEOUT_MS } = {}) {
+function serverNotReadyLines(port, { timeoutMs = DEFAULT_READY_TIMEOUT_MS, platform = process.platform } = {}) {
   return [
     "",
     `❌ Server did not start on port ${port} within ${Math.round(timeoutMs / 1000)}s.`,
@@ -60,9 +76,9 @@ function serverNotReadyLines(port, { timeoutMs = DEFAULT_READY_TIMEOUT_MS } = {}
     "   Diagnose it with:",
     `     9router-pro doctor --port ${port}`,
     "   Then check the server log and free the port if something stale holds it:",
-    `     fuser -k ${port}/tcp`,
+    ...portFreeHintLines(port, platform),
     "",
   ];
 }
 
-module.exports = { waitServerReady, serverNotReadyLines, DEFAULT_READY_TIMEOUT_MS };
+module.exports = { waitServerReady, serverNotReadyLines, portFreeHintLines, DEFAULT_READY_TIMEOUT_MS };
