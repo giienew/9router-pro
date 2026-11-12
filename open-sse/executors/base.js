@@ -1,6 +1,7 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { stableJsonStringify } from "../utils/stableJson.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
@@ -140,7 +141,10 @@ export class BaseExecutor {
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
-        const bodyStr = JSON.stringify(transformedBody);
+        // Stable key order so the same logical request always serializes to
+        // the same bytes — keeps upstream prefix caching alive (see
+        // utils/stableJson.js). Semantics match JSON.stringify.
+        const bodyStr = stableJsonStringify(transformedBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
         const response = await proxyAwareFetch(url, {

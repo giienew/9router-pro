@@ -23,6 +23,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -693,6 +694,11 @@ export async function buildModelsList(kindFilter, options = {}) {
           }
           if (Number.isFinite(contextWindow)) model.context_length = contextWindow;
           if (Number.isFinite(maxOutput)) model.max_completion_tokens = maxOutput;
+          // Thinking/effort levels the model accepts (upstream 0.5.119 +
+          // XRouter publish the same field). Null for models without
+          // reasoning, so non-reasoning models stay unchanged.
+          const levels = getThinkingLevels(providerId, modelId);
+          if (levels?.length) model.thinking_levels = levels;
         }
         models.push(model);
       }

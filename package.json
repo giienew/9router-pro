@@ -13,6 +13,9 @@
   "homepage": "https://github.com/giienew/9router-pro#readme",
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "scripts": {
     "dev": "next dev --port 20127",
     "dev:webpack": "next dev --webpack --port 20127",
