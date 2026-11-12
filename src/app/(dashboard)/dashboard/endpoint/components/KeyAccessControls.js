@@ -121,6 +121,15 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
   // runs once on page load, so without this the "Live:" line froze at
   // page-load values even while the key was serving traffic.
   const [liveUsage, setLiveUsage] = useState(apiKey.limitsUsage || null);
+  // All state above the effects: the live-usage effect reads `open` in its
+  // dependency array, and deps are evaluated during render — declaring `open`
+  // below the effect threw "Cannot access 'open' before initialization" on
+  // every Edit-modal open and crashed the whole page (TDZ bug).
+  const [open, setOpen] = useState(false);
+  const [limitDraft, setLimitDraft] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [activeProviders, setActiveProviders] = useState([]);
+  const [modelAliases, setModelAliases] = useState({});
   useEffect(() => {
     setLiveUsage(apiKey.limitsUsage || null);
   }, [apiKey.limitsUsage]);
@@ -156,12 +165,6 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict,
   const emitRestrict = () => (draft
     ? onDraftChange?.({ access: { restricted: true, allow: access.allow || [] } })
     : onRequestRestrict?.());
-
-  const [open, setOpen] = useState(false);
-  const [limitDraft, setLimitDraft] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [activeProviders, setActiveProviders] = useState([]);
-  const [modelAliases, setModelAliases] = useState({});
 
   const commitLimit = (field, rawValue) => {
     if (!draft && !onLimitsChange) return;
