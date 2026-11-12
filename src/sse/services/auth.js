@@ -192,10 +192,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (isModelLockActive(c, model)) return false;
       // Provider breaker (P3-27, layer 1): a tripped provider contributes
       // nothing until its probe window. Half-open reads as available —
-      // the first probe failure re-opens immediately.
-      if (providerBreakerGate(providerId) === "skip") {
+      // the first probe failure re-opens immediately. A model in cooldown
+      // is skipped while the rest of the provider keeps serving.
+      if (providerBreakerGate(providerId, model) === "skip") {
         // opt46: breaker skips are operationally significant — warn, not debug.
-        log.warn("AUTH", `${c.id?.slice(0, 8)} | provider breaker open for ${providerId} — skip`);
+        log.warn("AUTH", `${c.id?.slice(0, 8)} | provider breaker open for ${providerId}${model ? `/${model}` : ""} — skip`);
         return false;
       }
       // Kiro: an account whose profileArn could not be resolved (refresh
@@ -512,11 +513,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Provider breaker (P3-27): only genuine outages count — 429, 5xx, or a
   // missing status (network failure). Auth failures (401/403) are
   // credential problems handled by quarantine; 402/404 are request-scoped
-  // and never reach here (shouldFallback is false for them).
+  // and never reach here (shouldFallback is false for them). The model is
+  // passed so a single bad model cools down on its own instead of
+  // tripping the whole provider.
   if (provider) {
     const s = Number(status);
     const isOutage = status == null || s === 429 || (Number.isFinite(s) && s >= 500);
-    if (isOutage) recordProviderFailure(resolveProviderId(provider), connectionId);
+    if (isOutage) recordProviderFailure(resolveProviderId(provider), connectionId, model);
   }
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";

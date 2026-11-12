@@ -240,7 +240,7 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
     if (soloResult?.ok) {
       const target = soloVariantBacking(modelStr) || modelStr;
       const p = parseModel(target);
-      if (p?.provider) recordProviderSuccess(p.provider);
+      if (p?.provider) recordProviderSuccess(p.provider, p.model);
     }
   } catch { /* breaker bookkeeping must not fail the request */ }
   return soloResult;

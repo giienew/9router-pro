@@ -86,6 +86,9 @@ export const PROVIDER_BREAKER_MIN_FAILURES = 5;
 export const PROVIDER_BREAKER_MIN_CONNECTIONS = 2;
 export const PROVIDER_BREAKER_OPEN_MS = 60 * 1000;
 export const PROVIDER_BREAKER_PROBE_MS = 30 * 1000;
+// Per-model cooldown ceiling: a model that keeps failing escalates
+// 60s → 120s → 240s → ... but never parks longer than 10 min at a time.
+export const PROVIDER_BREAKER_MODEL_COOLDOWN_MAX_MS = 10 * 60 * 1000;
 
 // Small-fleet rescue: when every connection of a small provider is locked
 // but the earliest lock lifts within this wait, selection retries that

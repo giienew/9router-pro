@@ -62,7 +62,7 @@ export const withBreakerSuccess = (fn, backingOf) => async (b, m, ...rest) => {
     if (r?.ok) {
       const target = (backingOf ? backingOf(m) : null) || m;
       const p = parseModel(target);
-      if (p?.provider) recordProviderSuccess(p.provider);
+      if (p?.provider) recordProviderSuccess(p.provider, p.model);
     }
   } catch { /* breaker bookkeeping must not fail the request */ }
   return r;
