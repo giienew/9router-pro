@@ -31,6 +31,10 @@ const MAX_SESSION_LENGTH = 256;
 const MAX_TOOL_NAME_LEN = 128;
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeSession";
+// Overload-retry ceiling: an overloaded 429 backs off 800ms → 1600 → 3200,
+// capped here. Quota 429s (a reset time is present) are never retried.
+const OPENCODE_OVERLOAD_MAX_DELAY_MS = 4000;
+const OPENCODE_OVERLOAD_MESSAGE_RE = /overload/i;
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -389,6 +393,36 @@ export class OpenCodeExecutor extends BaseExecutor {
     const reset = parseOpencodeRateLimitReset(response, bodyText);
     if (reset) return { status: 429, message: reset.message, resetsAtMs: reset.resetsAtMs };
     return super.parseError(response, bodyText);
+  }
+
+  // Hook called by BaseExecutor.tryRetry: classify a 429 before retrying.
+  // Quota 429s (a reset time is present) are NEVER retried — retrying
+  // burns the quota window and grows the reset delay. Only a 429 whose
+  // message says "overloaded" and carries no reset is a transient
+  // capacity blip: retry it with exponential backoff (registry base
+  // 800ms, doubling, capped at 4000ms, up to 8 attempts). Any other 429
+  // is vetoed (current behavior). Non-429 statuses defer to the
+  // configured delay (return null).
+  async computeRetryDelay(response, attempt, delayMs) {
+    if (!response || response.status !== 429) return null;
+    let bodyText = "";
+    try {
+      bodyText = await response.clone().text();
+    } catch {
+      return false;
+    }
+    // Quota window: never retry.
+    if (parseOpencodeRateLimitReset(response, bodyText)) return false;
+    let message = "";
+    try {
+      const json = bodyText ? JSON.parse(bodyText) : null;
+      message = json?.error?.message || json?.message || "";
+    } catch {
+      message = bodyText;
+    }
+    if (!OPENCODE_OVERLOAD_MESSAGE_RE.test(String(message))) return false;
+    const base = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 800;
+    return Math.min(base * 2 ** (attempt - 1), OPENCODE_OVERLOAD_MAX_DELAY_MS);
   }
 
   prepareRequestCredentials({ body, credentials, providerSessionId, clientTool } = {}) {

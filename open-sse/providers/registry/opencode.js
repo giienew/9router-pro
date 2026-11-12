@@ -19,6 +19,12 @@ export default {
     },
     forceStream: true,
     noAuth: true,
+    retry: {
+      // 429s are classified by OpenCodeExecutor.computeRetryDelay: quota
+      // 429s are vetoed (never retried), overloaded 429s retry up to 8
+      // times with 800ms base backoff (doubling, capped 4000ms).
+      "429": { attempts: 8, delayMs: 800 },
+    },
     // Zen reasoning models reject multi-turn history whose assistant messages
     // carry no reasoning_content (400 missing_required_parameter), and the
     // response pipeline strips the field before it reaches the client, so the
