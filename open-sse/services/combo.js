@@ -9,13 +9,42 @@ import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
 import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
-import { COMBO_FIRST_RESPONSE_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { COMBO_FIRST_RESPONSE_TIMEOUT_MS, COMBO_FIRST_RESPONSE_GRACE_MS } from "../config/runtimeConfig.js";
 import {
   getStickyComboModel,
   setStickyComboModel,
   clearStickyComboSession,
   orderModelsByChoice,
 } from "./systemoneRouter.js";
+
+// First-response grace: after a combo member stalls past its fetch budget,
+// exclude it from this combo for this long, then let it rejoin on its own.
+// Stops a slow member from burning the full timeout on every request
+// ("pending terus"). Single-process map, like the sticky/rate-limit state.
+const firstResponseGrace = new Map();
+function graceKey(comboName, modelStr) {
+  return `${comboName}\0${modelStr}`;
+}
+function graceUntilFor(comboName, modelStr, now = Date.now()) {
+  const until = firstResponseGrace.get(graceKey(comboName, modelStr));
+  return until && now < until ? until : null;
+}
+function setFirstResponseGrace(comboName, modelStr, graceMs, now = Date.now()) {
+  if (firstResponseGrace.size > 1000) {
+    for (const [k, until] of firstResponseGrace) {
+      if (now >= until) firstResponseGrace.delete(k);
+    }
+  }
+  firstResponseGrace.set(graceKey(comboName, modelStr), now + graceMs);
+}
+function clearFirstResponseGrace(comboName, modelStr) {
+  firstResponseGrace.delete(graceKey(comboName, modelStr));
+}
+
+// Test seam: reset all first-response grace state.
+export function __resetFirstResponseGrace() {
+  firstResponseGrace.clear();
+}
 
 // Peek a 2xx combo response for real content. Returns null for non-SSE responses (leave
 // them untouched). For SSE, returns { outcome: "content"|"empty", finishReason, response }
@@ -376,6 +405,9 @@ export function isZeroContentResponse(data) {
  * @param {number} [options.firstResponseTimeoutMs=COMBO_FIRST_RESPONSE_TIMEOUT_MS] - Streaming-only
  *   fetch budget per member: headers past this abort the attempt and the combo tries the next
  *   member, instead of stalling until the client gives up. 0 disables.
+ * @param {number} [options.firstResponseGraceMs=COMBO_FIRST_RESPONSE_GRACE_MS] - After a
+ *   member times out on first response, exclude it from this combo for this long, then let
+ *   it rejoin. Only multi-member named combos grace. 0 disables.
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -393,6 +425,7 @@ export async function handleComboChat({
   confidenceThreshold = 0.8,
   resolveSmartChoice = null,
   firstResponseTimeoutMs = COMBO_FIRST_RESPONSE_TIMEOUT_MS,
+  firstResponseGraceMs = COMBO_FIRST_RESPONSE_GRACE_MS,
   // C-2: the caller's (client request) abort signal. Merged with each
   // attempt's own first-response timer below, so a client disconnect
   // aborts the in-flight member fetch at once instead of burning the
@@ -501,9 +534,24 @@ export async function handleComboChat({
   let earliestRetryAfter = null;
   let lastStatus = null;
   let requestScopedResult = null;
+  // First-response grace applies only when there is a fallback to prefer:
+  // a named combo with more than one member. A lone member has nothing to
+  // fall over to, so timing it out must not also park it.
+  const graceApplies =
+    Number.isFinite(firstResponseGraceMs) && firstResponseGraceMs > 0 &&
+    Boolean(comboName) && rotatedModels.length > 1;
+  let triedAny = false;
+  let skippedGrace = false;
 
   for (let i = 0; i < rotatedModels.length; i++) {
     const modelStr = rotatedModels[i];
+    // A member that stalled recently is skipped outright — no 60s burn
+    // per request — until its grace expires and it rejoins on its own.
+    if (graceApplies && graceUntilFor(comboName, modelStr)) {
+      log.info("COMBO", `skipping ${modelStr} — first-response grace until ${new Date(graceUntilFor(comboName, modelStr)).toISOString()}`);
+      skippedGrace = true;
+      continue;
+    }
     log.info("COMBO", `trying model ${i + 1} of ${rotatedModels.length}: ${modelStr}`);
 
     // First-response failover (streaming combos only): one member's fetch
@@ -527,6 +575,7 @@ export async function handleComboChat({
     try {
       let result;
       try {
+        triedAny = true;
         result = await handleSingleModel(body, modelStr, attemptSignal);
       } finally {
         if (attemptTimer) clearTimeout(attemptTimer);
@@ -577,11 +626,13 @@ export async function handleComboChat({
           }
 
           log.info("COMBO", `Model ${modelStr} succeeded`);
+          if (comboName) clearFirstResponseGrace(comboName, modelStr);
           return result;
         }
 
         if (peeked.outcome === "content") {
           log.info("COMBO", `Model ${modelStr} succeeded${peeked.timedOut ? " (peek deadline; committed)" : ""}`);
+          if (comboName) clearFirstResponseGrace(comboName, modelStr);
           return peeked.response;
         }
 
@@ -621,6 +672,9 @@ export async function handleComboChat({
           if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
             clearStickyComboSession(comboName, sessionId);
           }
+          // Grace the stalled member: the next requests skip it outright
+          // until it rejoins, instead of burning the full budget again.
+          if (graceApplies) setFirstResponseGrace(comboName, modelStr, firstResponseGraceMs);
           log.warn("COMBO", `Model ${modelStr} first response timed out after ${attemptBudgetMs}ms — trying next`);
           lastError = `First response timed out after ${attemptBudgetMs}ms`;
           lastStatus = 504;
@@ -705,6 +759,7 @@ export async function handleComboChat({
         if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
           clearStickyComboSession(comboName, sessionId);
         }
+        if (graceApplies) setFirstResponseGrace(comboName, modelStr, firstResponseGraceMs);
         lastError = `First response timed out after ${attemptBudgetMs}ms`;
         lastStatus = 504;
         log.warn("COMBO", `Model ${modelStr} first response timed out after ${attemptBudgetMs}ms — trying next`, { error: lastError });
@@ -718,6 +773,14 @@ export async function handleComboChat({
       lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
+  }
+
+  // Every member was skipped on first-response grace: fail fast with a
+  // clear message instead of the generic "all unavailable" — the members
+  // proved slow within the grace window and rejoin on their own.
+  if (!triedAny && skippedGrace) {
+    lastError = "All combo models are in first-response grace (timed out recently); retry shortly";
+    lastStatus = 504;
   }
 
   // At least one member rejected the request itself. Hand back that member's own

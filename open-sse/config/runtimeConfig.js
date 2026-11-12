@@ -84,6 +84,14 @@ export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000)
 // 0 disables the timer; an invalid value falls back to the default.
 export const COMBO_FIRST_RESPONSE_TIMEOUT_MS = envMsAllowZero("COMBO_FIRST_RESPONSE_TIMEOUT_MS", 60 * 1000);
 
+// First-response grace: after a combo member stalls past its fetch budget,
+// exclude it from this combo for this long, then let it rejoin on its own.
+// Stops a slow member from burning the full timeout on every request
+// ("pending terus"). Only multi-member named combos grace — a lone member
+// has no fallback to prefer, and an unnamed combo has no stable identity
+// to key the grace on. Env: COMBO_FIRST_RESPONSE_GRACE_MS. 0 disables.
+export const COMBO_FIRST_RESPONSE_GRACE_MS = envMsAllowZero("COMBO_FIRST_RESPONSE_GRACE_MS", 5 * 60 * 1000);
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 
