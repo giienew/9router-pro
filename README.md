@@ -1,4 +1,6 @@
 <div align="center">
+  <img src="./images/logo-wordmark.png" alt="9Router Pro" width="480"/>
+
   <img src="./images/pro-dashboard.png" alt="9Router Pro — Monitoring Dashboard" width="800"/>
 
   # 9Router Pro
