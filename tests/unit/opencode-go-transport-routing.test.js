@@ -66,11 +66,12 @@ vi.mock("../../open-sse/translator/concerns/image.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
-const BASE = "https://opencode.ai/zen/go/v1";
+// Upstream 0.5.119 retired /zen/go/v1: chat/responses moved under
+// /inference/go/openai/v1, messages under /inference/go/anthropic/v1.
 const ENDPOINTS = {
-  openai: `${BASE}/chat/completions`,
-  claude: `${BASE}/messages`,
-  "openai-responses": `${BASE}/responses`,
+  openai: "https://opencode.ai/inference/go/openai/v1/chat/completions",
+  claude: "https://opencode.ai/inference/go/anthropic/v1/messages",
+  "openai-responses": "https://opencode.ai/inference/go/openai/v1/responses",
 };
 
 // Minimal non-stream provider JSON per target format — the mocked executor's response.

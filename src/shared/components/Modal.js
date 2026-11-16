@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Tooltip from "./Tooltip";
+
+// Open modals, topmost last. Escape closes only the topmost one, so a picker
+// opened over a form closes just the picker — not the form underneath it.
+const openModals = [];
 
 export default function Modal({
   isOpen,
@@ -27,6 +31,9 @@ export default function Modal({
     full: "max-w-4xl",
   };
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -37,12 +44,19 @@ export default function Modal({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const entry = { close: () => onCloseRef.current?.() };
+    openModals.push(entry);
     const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
+      if (e.key === "Escape" && openModals[openModals.length - 1] === entry) entry.close();
     };
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      const i = openModals.indexOf(entry);
+      if (i !== -1) openModals.splice(i, 1);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

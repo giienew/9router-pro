@@ -70,6 +70,16 @@ export async function GET(request) {
     }
 
     if (idsOnly) {
+      // With includeUsage, also report how many connections are currently
+      // bound to any pool — the delete-all confirm dialog needs that count
+      // without downloading every row. The sum covers dangling bindings too
+      // (a connection whose pool id no longer exists still gets unpinned).
+      if (includeUsage) {
+        const connections = await getProviderConnections();
+        const usageMap = buildUsageMap(connections);
+        const boundConnectionCount = [...usageMap.values()].reduce((a, b) => a + b, 0);
+        return NextResponse.json({ ids: proxyPools.map((pool) => pool.id), total: proxyPools.length, boundConnectionCount });
+      }
       return NextResponse.json({ ids: proxyPools.map((pool) => pool.id), total: proxyPools.length });
     }
 

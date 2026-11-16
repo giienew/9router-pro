@@ -80,10 +80,15 @@ export async function applyCapacityStrategy({ comboStrategy, models, getCapacity
 
 // Full combo dispatch for one combo name. `handleSingleModel` is the raw
 // single-model runner with signature
-//   (body, member, clientRawRequest, request, apiKey, null, injectName, cap, signal, pin)
+//   (body, member, clientRawRequest, request, apiKey, null, injectName, cap, signal, pin, comboPrompt)
 // (i.e. handleSingleModelChat). `recordBreakerSuccess` preserves the one
 // deliberate top-level/nested difference: the top-level branch records
 // breaker success, the nested branch does not.
+// `comboPrompt` (issue #2) is this combo's own prompt, resolved once by
+// the caller: { name, entry } where entry is the cleaned prompt entry,
+// or null. It is passed through to every member attempt (panel + fallback)
+// so the combo prompt fires for all members; a nested combo replaces it
+// with its own prompt at its own dispatch call.
 export async function dispatchCombo({
   body,
   comboName,
@@ -105,6 +110,8 @@ export async function dispatchCombo({
   // the outer variant's prompt still fires. Top-level passes nothing
   // and the fallback is the combo name itself.
   variantFallbackName = null,
+  // Combo-level prompt injection (issue #2): { name, entry } or null.
+  comboPrompt = null,
 }) {
   const { memberInjectName, variantBacking } = createVariantHelpers(variants, variantFallbackName || comboName);
   const pinFor = memberPinFor(settings, comboName);
@@ -127,7 +134,7 @@ export async function dispatchCombo({
       handleSingleModel(
         b, m,
         isPanel ? stripPanelTools(clientRawRequest) : clientRawRequest,
-        request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m),
+        request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt,
       );
     return handleFusionChat({
       body,
@@ -146,7 +153,7 @@ export async function dispatchCombo({
   const comboCfg = comboStrategies[comboName] || {};
   log?.info?.("CHAT", `Combo "${comboName}" with ${orderedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
   const inner = (b, m, signal) =>
-    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m));
+    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt);
   return handleComboChat({
     body,
     models: orderedModels,

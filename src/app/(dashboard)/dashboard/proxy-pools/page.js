@@ -415,6 +415,52 @@ export default function ProxyPoolsPage() {
     confirmDeleteFailed(count, `Delete ${count} proxies that failed their last test? Pools still bound to a connection are kept.`);
   };
 
+  const runDeleteAll = useCallback(async () => {
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/proxy-pools/delete-all", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        notify.error(errorText(data, "Failed to delete all proxies"));
+        return;
+      }
+      await fetchProxyPools();
+      clearSelection();
+      notify.success(`Deleted ${data.deletedPools} proxy pools, ${data.unpinnedConnections} connection(s) switched to DIRECT`);
+    } catch {
+      notify.error("Failed to delete all proxies");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [fetchProxyPools, notify]);
+
+  // Delete-all confirm: fetch the live counts first (pools + bound
+  // connections) so the modal states exactly what will be destroyed.
+  // idsOnly keeps the response light — no pool rows are downloaded.
+  const handleDeleteAll = useCallback(async () => {
+    if (total === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/proxy-pools?idsOnly=true&includeUsage=true", { cache: "no-store" });
+      const data = await res.json();
+      const poolCount = res.ok ? (data.total ?? 0) : total;
+      const boundCount = res.ok ? (data.boundConnectionCount ?? 0) : 0;
+      setConfirmState({
+        title: "Delete All Proxy Pools",
+        message: `Delete all ${poolCount} proxy pool(s)? ${boundCount} connection(s) are currently using a pool and will be switched back to DIRECT (no proxy). This cannot be undone.`,
+        confirmText: "Delete all",
+        onConfirm: async () => {
+          setConfirmState(null);
+          await runDeleteAll();
+        },
+      });
+    } catch {
+      notify.error("Failed to load proxy counts");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [total, runDeleteAll, notify]);
+
   // Resume watching if a health-check job is already running (e.g. it was
   // started before a page refresh).
   useEffect(() => {
@@ -886,6 +932,9 @@ export default function ProxyPoolsPage() {
                 Delete failed ({failedCount})
               </Button>
             )}
+            <Button size="sm" variant="danger" icon="delete_forever" onClick={handleDeleteAll} disabled={bulkBusy || healthChecking || total === 0}>
+              Delete all
+            </Button>
           </div>
         </div>
 
@@ -1392,6 +1441,7 @@ export default function ProxyPoolsPage() {
         onConfirm={confirmState?.onConfirm}
         title={confirmState?.title || "Confirm"}
         message={confirmState?.message}
+        confirmText={confirmState?.confirmText || "Confirm"}
         variant="danger"
       />
     </div>

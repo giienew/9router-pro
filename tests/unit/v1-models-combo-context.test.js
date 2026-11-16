@@ -104,4 +104,19 @@ describe("/v1/models combo limits", () => {
     expect(dupes).toHaveLength(1);
     expect(dupes[0].owned_by).toBe("combo");
   });
+
+  it("never publishes a combo prompt in /v1/models (issue #2)", async () => {
+    // Combo entries are built field-by-field, so the prompt must never
+    // leak into the public model list — not even as a key.
+    const combo = {
+      name: "prompted-combo",
+      models: ["ocg/mimo-v2.5"],
+      prompt: { mode: "single", content: "SECRET-PROMPT", turns: [], position: "append", enabled: true },
+    };
+    const models = await modelsWithCombo("opencode-go", "mimo-v2.5", [combo]);
+    const published = models.find((model) => model.id === combo.name);
+    expect(published).toBeDefined();
+    expect(published).not.toHaveProperty("prompt");
+    expect(JSON.stringify(published)).not.toContain("SECRET-PROMPT");
+  });
 });

@@ -205,11 +205,29 @@ function modelKind(model) {
   return MODEL_TYPE_TO_KIND[k] || LLM_KIND;
 }
 
+// Build an id -> kind map where a model id listed under several kinds keeps
+// the LLM entry. The static registry lists a few flagship ids twice — once
+// as an LLM and once as an stt/transcription variant of the same model
+// (gemini-2.5-pro/flash/flash-lite). A naive last-wins Map recorded them as
+// stt and dropped them from the /v1/models LLM list entirely.
+function buildKindById(models) {
+  const map = new Map();
+  for (const m of models || []) {
+    if (!m?.id) continue;
+    const k = modelKind(m);
+    const prev = map.get(m.id);
+    if (prev === undefined) map.set(m.id, k);
+    else if (prev !== LLM_KIND && k === LLM_KIND) map.set(m.id, LLM_KIND);
+  }
+  return map;
+}
+
 // For dynamic/unknown model IDs (compatible providers, alias map, custom models)
 // fall back to provider-level kind matching when per-model type is unavailable.
 function inferKindFromUnknownModelId(modelId) {
   const lower = String(modelId).toLowerCase();
-  if (/embed/.test(lower)) return "embedding";
+  if (/embed|bge-|voyage|e5-|nomic-embed/.test(lower)) return "embedding";
+  if (/whisper|parakeet/.test(lower)) return "stt";
   if (/tts|speech|audio|voice/.test(lower)) return "tts";
   if (/image|imagen|dall-?e|flux|sdxl|sd-|stable-diffusion/.test(lower)) return "image";
   return LLM_KIND;
@@ -554,9 +572,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
       // Build kind lookup for static models so we can filter even when only IDs are exposed
-      const staticModelKindById = new Map(
-        providerModels.map((m) => [m.id, modelKind(m)])
-      );
+      const staticModelKindById = buildKindById(providerModels);
       let liveModelKindById = new Map();
       let liveCapabilitiesById = new Map();
 
@@ -581,11 +597,7 @@ export async function buildModelsList(kindFilter, options = {}) {
       const live = liveByProvider.get(providerId);
       if (live?.models?.length) {
         rawModelIds = live.models.map((m) => m.id);
-        liveModelKindById = new Map(
-          live.models
-            .filter((m) => m?.id)
-            .map((m) => [m.id, modelKind(m)])
-        );
+        liveModelKindById = buildKindById(live.models.filter((m) => m?.id));
         liveCapabilitiesById = new Map(
           live.models
             .filter((m) => m?.id && m.capabilities)

@@ -7,6 +7,7 @@ import {
   handleComboChat,
   __resetFirstResponseGrace,
 } from "../../open-sse/services/combo.js";
+import { dispatchCombo } from "../../src/sse/services/comboDispatch.js";
 
 const enc = new TextEncoder();
 const quietLog = { info: () => {}, warn: () => {}, debug: () => {} };
@@ -128,5 +129,77 @@ describe("combo first-response grace", () => {
     const r2 = await runCombo({ models, calls, graceMs: 0 });
     expect(r2.status).toBe(200);
     expect(calls).toEqual(["slow/a", "fast/b"]);
+  });
+});
+
+describe("combo first-response grace with a combo prompt set (issue #2)", () => {
+  const PROMPT = {
+    name: "prompt-grace-combo",
+    entry: { mode: "single", content: "steer", turns: [], position: "append", enabled: true },
+  };
+
+  async function runPromptedCombo({ calls, comboName = "prompt-grace-combo" }) {
+    const handleSingleModel = async (
+      body, modelStr, _crr, _req, _key, _null, _inject, _cap, signal, _pin, comboPrompt,
+    ) => {
+      calls.push({ model: modelStr, comboPrompt });
+      if (modelStr.startsWith("slow/")) {
+        await new Promise((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            return;
+          }
+          signal?.addEventListener("abort", () => {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          }, { once: true });
+        });
+        return new Response(JSON.stringify({ error: { message: "Request aborted" } }), {
+          status: 499,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return sseOk();
+    };
+    const promise = dispatchCombo({
+      body: { stream: true, messages: [{ role: "user", content: "hi" }] },
+      comboName,
+      comboModels: ["slow/x", "fast/y"],
+      settings: { comboStrategies: { [comboName]: { fallbackStrategy: "fallback" } } },
+      apiKey: null,
+      keyAccess: null,
+      requiredCapabilities: new Set(),
+      variants: {},
+      clientRawRequest: null,
+      request: null,
+      log: quietLog,
+      sessionId: null,
+      handleSingleModel,
+      getCapacityConnections: async () => ({}),
+      recordBreakerSuccess: false,
+      comboPrompt: PROMPT,
+    });
+    // Default first-response timeout is 60s: drive past it so the slow
+    // member is graced, well inside the 5-minute grace and 30-minute
+    // total request budget.
+    await vi.advanceTimersByTimeAsync(61_000);
+    return promise;
+  }
+
+  it("grace still skips the stalled member, and every attempt carries the combo prompt", async () => {
+    const calls = [];
+    const first = await runPromptedCombo({ calls });
+    expect(first.status).toBe(200);
+    // Slow member attempted once and stalled; fast member answered.
+    expect(calls.map((c) => c.model)).toEqual(["slow/x", "fast/y"]);
+    // Every attempt — stalled and successful — carried the combo prompt.
+    for (const c of calls) expect(c.comboPrompt).toBe(PROMPT);
+
+    // Second request inside the grace window: slow member skipped,
+    // fast member attempted again with the prompt still attached.
+    const secondCalls = [];
+    const second = await runPromptedCombo({ calls: secondCalls });
+    expect(second.status).toBe(200);
+    expect(secondCalls.map((c) => c.model)).toEqual(["fast/y"]);
+    expect(secondCalls[0].comboPrompt).toBe(PROMPT);
   });
 });

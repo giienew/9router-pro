@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCombos, createCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases } from "@/lib/localDb";
+import { getCombos, createCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry } from "@/lib/localDb";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: await normalizeRoutableMembers(memberList), kind: kind || null });
+    // Combo prompt (issue #2): optional entry { mode, content|turns,
+    // position, enabled }. A provided-but-invalid prompt (empty content
+    // for single, zero turns for chat) is rejected, not silently
+    // stored as nothing; null is the same as absent on create.
+    let prompt = null;
+    if (body.prompt !== undefined && body.prompt !== null) {
+      prompt = cleanEntry(body.prompt);
+      if (!prompt) {
+        return NextResponse.json({ error: "Combo prompt needs non-empty content (single) or at least one turn (chat)" }, { status: 400 });
+      }
+    }
+
+    const combo = await createCombo({ name, models: await normalizeRoutableMembers(memberList), kind: kind || null, prompt });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {

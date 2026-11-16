@@ -20,7 +20,7 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
   };
   const handleKeyDown = (e) => {
     if (e.key === "Enter") commit();
-    if (e.key === "Escape") { setDraft(model); setEditing(false); }
+    if (e.key === "Escape") { e.stopPropagation(); setDraft(model); setEditing(false); }
   };
   return (
     <div className="group flex min-w-0 items-center gap-1.5 rounded-md bg-black/[0.02] px-2 py-1 transition-colors hover:bg-black/[0.04] dark:bg-white/[0.02] dark:hover:bg-white/[0.04]">

@@ -276,6 +276,39 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     }
   }
 
+  // Orphaned tool results: a role:tool message whose matching assistant
+  // tool_calls turn is absent (or whose id never matched) would otherwise
+  // vanish silently — the main loop only emits results piggybacked on their
+  // assistant turn. Emit whatever is left unconsumed as its own
+  // functionResponse turn so the result still reaches the model.
+  for (const [origId, queue] of Object.entries(toolResponses)) {
+    const cursor = toolResponseCursor[origId] || 0;
+    for (let qi = cursor; qi < queue.length; qi++) {
+      const resp = queue[qi];
+      let name = tcID2Name[origId];
+      if (!name) {
+        const idParts = String(origId).split("-");
+        name = idParts.length > 2 ? idParts.slice(0, -2).join("-") : origId;
+      }
+      let parsedResp = tryParseJSON(resp);
+      if (parsedResp === null) {
+        parsedResp = { result: resp };
+      } else if (typeof parsedResp !== "object") {
+        parsedResp = { result: parsedResp };
+      }
+      result.contents.push({
+        role: GEMINI_ROLE.USER,
+        parts: [{
+          functionResponse: {
+            id: toolCallIdUniquifier.next(origId),
+            name: sanitizeGeminiFunctionName(name),
+            response: { result: parsedResp }
+          }
+        }]
+      });
+    }
+  }
+
   // Convert tools
   if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
     const functionDeclarations = [];

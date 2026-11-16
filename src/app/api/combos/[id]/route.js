@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases } from "@/lib/localDb";
+import { getComboById, updateCombo, deleteCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -70,12 +70,28 @@ export async function PUT(request, { params }) {
     if (body.kind !== undefined && !ALLOWED_KINDS.has(body.kind ?? null)) {
       return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
     }
+
+    // Combo prompt (issue #2): same validation as POST. prompt: null
+    // clears the stored prompt; an absent prompt leaves it untouched.
+    // A provided-but-invalid prompt is rejected, not silently dropped.
+    let promptPatch = {};
+    if (body.prompt !== undefined) {
+      if (body.prompt === null) {
+        promptPatch = { prompt: null };
+      } else {
+        const clean = cleanEntry(body.prompt);
+        if (!clean) {
+          return NextResponse.json({ error: "Combo prompt needs non-empty content (single) or at least one turn (chat)" }, { status: 400 });
+        }
+        promptPatch = { prompt: clean };
+      }
+    }
     
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
     const patch = Array.isArray(body.models)
-      ? { ...body, models: await normalizeRoutableMembers(body.models) }
-      : body;
+      ? { ...body, models: await normalizeRoutableMembers(body.models), ...promptPatch }
+      : { ...body, ...promptPatch };
     const combo = await updateCombo(id, patch);
     
     if (!combo) {

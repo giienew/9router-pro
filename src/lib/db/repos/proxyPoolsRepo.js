@@ -114,3 +114,34 @@ export async function deleteProxyPoolsByIds(ids) {
   });
   return changes;
 }
+
+// Delete EVERY proxy pool and unpin every connection bound to a pool (back
+// to DIRECT), in a single transaction. Unlike deleteProxyPoolsByIds, bound
+// pools are NOT skipped — unpinning is the point. Other providerSpecificData
+// fields on the connection are preserved; only proxyPoolId is cleared.
+// Returns { deletedPools, unpinnedConnections }.
+export async function deleteAllProxyPools() {
+  const db = await getAdapter();
+  let deletedPools = 0;
+  let unpinnedConnections = 0;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    const bound = db.all(
+      `SELECT id, data FROM providerConnections WHERE json_extract(data, '$.providerSpecificData.proxyPoolId') IS NOT NULL`
+    );
+    for (const row of bound) {
+      const data = parseJson(row.data, {});
+      const spec = { ...(data.providerSpecificData || {}) };
+      spec.proxyPoolId = null;
+      data.providerSpecificData = spec;
+      db.run(
+        `UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?`,
+        [stringifyJson(data), now, row.id]
+      );
+    }
+    unpinnedConnections = bound.length;
+    const info = db.run(`DELETE FROM proxyPools`);
+    deletedPools = info?.changes ?? 0;
+  });
+  return { deletedPools, unpinnedConnections };
+}

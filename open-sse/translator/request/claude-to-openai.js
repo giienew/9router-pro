@@ -167,11 +167,30 @@ function convertClaudeMessage(msg) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
+    let reasoningText = "";
+    const redactedThinking = [];
 
     for (const block of msg.content) {
       switch (block.type) {
         case CLAUDE_BLOCK.TEXT:
           parts.push({ type: OPENAI_BLOCK.TEXT, text: block.text });
+          break;
+
+        case CLAUDE_BLOCK.THINKING:
+          // Caller-sent thinking (e.g. Claude Code history) used to fall
+          // through silently, losing the reasoning on the bridge leg. Carry
+          // the text as reasoning_content on the assistant message.
+          if (typeof block.thinking === "string" && block.thinking) {
+            reasoningText += (reasoningText ? "\n" : "") + block.thinking;
+          }
+          break;
+
+        case CLAUDE_BLOCK.REDACTED_THINKING:
+          // No plaintext form exists; keep the encrypted blob restorable in
+          // provider_specific_fields instead of dropping it.
+          if (block.data) {
+            redactedThinking.push({ data: block.data });
+          }
           break;
 
         case CLAUDE_BLOCK.IMAGE:
@@ -248,16 +267,42 @@ function convertClaudeMessage(msg) {
       if (parts.length > 0) {
         result.content = collapseTextParts(parts);
       }
+      if (reasoningText) {
+        result.reasoning_content = reasoningText;
+      }
+      if (redactedThinking.length > 0) {
+        result.provider_specific_fields = { redacted_thinking: redactedThinking };
+      }
       result.tool_calls = toolCalls;
       return result;
     }
 
     // Return content
     if (parts.length > 0) {
-      return {
+      const result = {
         role,
         content: collapseTextParts(parts)
       };
+      if (reasoningText) {
+        result.reasoning_content = reasoningText;
+      }
+      if (redactedThinking.length > 0) {
+        result.provider_specific_fields = { redacted_thinking: redactedThinking };
+      }
+      return result;
+    }
+
+    // Thinking-only message: the reasoning is the whole content — it must not
+    // vanish into a null message.
+    if (reasoningText || redactedThinking.length > 0) {
+      const result = { role: ROLE.ASSISTANT };
+      if (reasoningText) {
+        result.reasoning_content = reasoningText;
+      }
+      if (redactedThinking.length > 0) {
+        result.provider_specific_fields = { redacted_thinking: redactedThinking };
+      }
+      return result;
     }
     
     // Empty content array

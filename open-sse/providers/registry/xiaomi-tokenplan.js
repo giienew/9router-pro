@@ -50,6 +50,12 @@ export default {
     },
   ],
   models: [
+    { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro" },
+    { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
+    { id: "mimo-v2.5-asr", name: "MiMo V2.5 ASR", params: ["language"], kind: "stt" },
+    // Compatibility shim (upstream 0.5.119 retired these in favour of the
+    // v2.6 rows above): the rows stay so existing combos/variants keep
+    // resolving, same as the gpt-5.6 image shim in codex.js.
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
     { id: "mimo-v2.5-pro-claude", name: "MiMo V2.5 Pro (Claude Native)", targetFormat: "claude", upstreamModelId: "mimo-v2.5-pro" },
     { id: "mimo-v2.5", name: "MiMo V2.5" },

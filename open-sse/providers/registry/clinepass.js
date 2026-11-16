@@ -21,6 +21,7 @@ export default {
   hasOAuth: true,
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",
+    usage: { url: "https://api.cline.bot/api/v1/users/me/plan/usage-limits" },
     headers: {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",
@@ -58,5 +59,9 @@ export default {
   thinkingConfig: {
     options: ["auto", "on", "off"],
     defaultMode: "auto",
+  },
+  features: {
+    usage: true,
+    usageApikey: true,
   },
 };

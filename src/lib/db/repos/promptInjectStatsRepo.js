@@ -8,7 +8,7 @@
 //       byName: { <coordKey>: { scope, fires } } }
 // A fire records ONLY the injection's coordinate key and scope —
 // never prompt text. Coordinate keys reuse the dashboard's coordId
-// shape: "global", "key:<apiKeyId>", "variant:<name>",
+// shape: "global", "key:<apiKeyId>", "combo:<name>", "variant:<name>",
 // "model:<model>", "km:<apiKeyId>::<model>".
 import { makeKv } from "../helpers/kvStore.js";
 
@@ -31,9 +31,10 @@ function emptyDay() {
 
 // Pure classification of a resolved injection stack into countable fires.
 // The stack comes from selectPromptInjections, in stacking order:
-// global → key → variant → model+key. Names are the only signal, the
+// global → key → combo → variant → model+key. Names are the only signal, the
 // same signal the Stack Preview UI already shows:
-//   "global" → global scope, "user" → the request's API key scope.
+//   "global" → global scope, "user" → the request's API key scope,
+//   "combo:<name>" → the combo's scope (its own prompt, issue #2).
 //   When isVariantPick is true (the resolver's explicit flag, from
 //   resolvePromptInjectionMeta), every remaining entry is that variant
 //   (a variant pick suppresses the model scopes). Otherwise the
@@ -59,6 +60,11 @@ export function classifyInjectStack(stack, { apiKeyId = null, isVariantPick = fa
       fires.push({ key: "global", scope: "global", mode: entry.mode || "single" });
     } else if (entry.name === "user") {
       fires.push({ key: `key:${apiKeyId || "?"}`, scope: "key", mode: entry.mode || "single" });
+    } else if (entry.name.startsWith("combo:")) {
+      // Combo prompt (issue #2): its own scope, never a model scope —
+      // without this it would land in the modelish bucket and corrupt
+      // both its own count and the plain-model vs model+key ordering.
+      fires.push({ key: entry.name, scope: "combo", mode: entry.mode || "single" });
     } else if (variantPick) {
       fires.push({ key: `variant:${entry.name}`, scope: "variant", mode: entry.mode || "single" });
     } else {

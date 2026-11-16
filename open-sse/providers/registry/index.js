@@ -149,6 +149,8 @@ import p152 from "./runcrate.js";
 import p153 from "./nace.js";
 import p154 from "./orcarouter.js";
 import p155 from "./totu-ai.js";
+import p157 from "./sensenova-intl.js";
+import p158 from "./synthetic.js";
 export default [
   p0,
   p1,
@@ -298,4 +300,6 @@ export default [
   p153,
   p154,
   p155,
+  p157,
+  p158,
 ];

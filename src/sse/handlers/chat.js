@@ -10,10 +10,11 @@ import {
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { resolveComboMemberAttemptCap } from "../services/memberFailover.js";
 import { dispatchCombo, createVariantHelpers, withBreakerSuccess } from "../services/comboDispatch.js";
-import { getSettings, getApiKeyByKey, resolvePromptInjectionMeta, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections, recordPromptInjectFire, classifyInjectStack, getInjectKeyModelPrompts } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, resolvePromptInjectionMeta, resolveVariantSampling, applyVariantSampling, resolveBriefLevel, recordRtkSavings, getInjectVariants, getProviderConnections, recordPromptInjectFire, classifyInjectStack, getInjectKeyModelPrompts, getComboByName, cleanEntry } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseAutoTarget, buildAutoCandidates, getLatencyByProviderCached, AUTO_EXPLORATION_SHARE } from "../services/autoRouting.js";
 import { getModelInfo, getComboModels, parseModel } from "../services/model.js";
+import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { recordProviderSuccess } from "../services/providerBreaker.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -188,6 +189,13 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
   // in comboDispatch.js (P4-33) — the same module the nested branch uses.
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
+    // Combo-level prompt injection (issue #2): resolve the combo's own
+    // prompt ONCE per request, here at the top level — never re-read per
+    // member attempt. dispatchCombo threads it to every member.
+    const comboRow = await getComboByName(modelStr).catch(() => null);
+    const comboPrompt = comboRow?.prompt
+      ? { name: modelStr, entry: cleanEntry(comboRow.prompt) }
+      : null;
     return dispatchCombo({
       body,
       comboName: modelStr,
@@ -204,6 +212,7 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
       handleSingleModel: handleSingleModelChat,
       getCapacityConnections,
       recordBreakerSuccess: true,
+      comboPrompt,
     });
   }
 
@@ -263,7 +272,7 @@ function withFlakyRetriesHeader(response, retries) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null, pinnedConnectionId = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null, pinnedConnectionId = null, comboPrompt = null) {
   // Direct variant pick without a backing combo: a bare name that names a
   // variant routes straight to its backing model, with the variant name
   // carried so its prompt still fires. This covers both direct picks and
@@ -278,7 +287,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // whole pool (a dahl direct pick timed out at 150s). Resolve the
       // cap here when the caller passed none (top-level picks pass null).
       const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
-      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId);
+      // A combo member naming a variant keeps its combo's prompt through
+      // the recursion into the backing model.
+      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId, comboPrompt);
     }
   }
   const modelInfo = await getModelInfo(modelStr);
@@ -298,6 +309,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // name here is (injectModelName || modelStr), not modelStr.
       const chatSettings = await getSettings();
       const nestedSession = resolveSessionIdentity({ headers: clientRawRequest?.headers, body });
+      // Nested combo (issue #2, v1): the INNER combo's prompt replaces
+      // the outer combo's prompt for the inner members — the outer
+      // prompt does not leak into the inner combo. Resolved once here,
+      // at this dispatch, never per member attempt.
+      const innerComboRow = await getComboByName(modelStr).catch(() => null);
+      const innerComboPrompt = innerComboRow?.prompt
+        ? { name: modelStr, entry: cleanEntry(innerComboRow.prompt) }
+        : null;
       return dispatchCombo({
         body,
         comboName: modelStr,
@@ -315,6 +334,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         handleSingleModel: handleSingleModelChat,
         getCapacityConnections,
         recordBreakerSuccess: false,
+        comboPrompt: innerComboPrompt,
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
@@ -358,8 +378,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // to its next member at once instead of grinding the whole pool.
   let memberFallbackFailures = 0;
 
+  // Combo perf (sweep 2026-11-16, item 4): the retry loop below re-selects
+  // credentials per account attempt. Without a snapshot every attempt
+  // re-ran SELECT * + decrypt over the whole provider pool — for a big
+  // pool that is the N+1 the sweep flagged (there is no single-statement
+  // health/lock query to cut: locks live inside the encrypted `data`
+  // blob, so they cannot be filtered in SQL). Load the pool once per
+  // member turn and reuse it across attempts. Failed accounts are
+  // excluded by the caller, and each member turn loads fresh, so locks
+  // written by earlier members are still seen. No-auth providers resolve
+  // before any DB read, so they skip the preload. If the preload fails,
+  // pass nothing and getProviderCredentials loads the pool itself.
+  let memberConnections = null;
+  if (!FREE_PROVIDERS[resolveProviderId(provider)]?.noAuth) {
+    memberConnections = await getProviderConnections({ provider: resolveProviderId(provider), isActive: true }).catch(() => null);
+  }
+
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model, preferredConnectionId: pinnedConnectionId || undefined });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model, preferredConnectionId: pinnedConnectionId || undefined, connections: memberConnections || undefined });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -396,10 +432,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     // Prompt Injection (9Router Pro): global → the API key's → the
-    // variant's (matched by the bare custom name the user requested) →
+    // combo's (matched by the combo this request runs under, issue #2) →
+    // the variant's (matched by the bare custom name the user requested) →
     // the model+key's (matched by resolved provider/model). A variant
     // pick suppresses the model scopes, so the raw model name is never
-    // disturbed by an injection.
+    // disturbed by an injection. The combo prompt is threaded down from
+    // the combo dispatch (resolved once per request at the top level);
+    // a combo member naming a variant gets combo + variant, combo first.
     // Fail-open: resolvePromptInjectionMeta already swallows storage errors.
     const injectKeyRecord = apiKey ? await getApiKeyByKey(apiKey).catch(() => null) : null;
     const { stack: promptInjects, isVariantPick } = await resolvePromptInjectionMeta({
@@ -407,6 +446,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       requestedModel: injectModelName || requestedModel || modelStr,
       resolvedModel: `${provider}/${model}`,
       bareModel: model,
+      comboPrompt: comboPrompt?.entry || null,
+      comboName: comboPrompt?.name || null,
     });
     // Prompt Injection usage stats (9Router Pro): buffered, fail-open,
     // coordinate keys + scopes only — never prompt text. A lone
@@ -420,7 +461,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         const variantPick = isVariantPick === true;
         let keyModelNames = null;
         if (!variantPick && injectKeyRecord?.id) {
-          const modelish = promptInjects.filter((p) => p && p.name !== "global" && p.name !== "user");
+          // Combo entries are their own scope, not model scopes — exclude
+          // them so a lone model+key entry still reads as model+key when
+          // a combo prompt is also in the stack.
+          const modelish = promptInjects.filter((p) => p && p.name !== "global" && p.name !== "user" && !p.name.startsWith("combo:"));
           if (modelish.length === 1) {
             const km = await getInjectKeyModelPrompts().catch(() => null);
             keyModelNames = km?.[injectKeyRecord.id] ? new Set(Object.keys(km[injectKeyRecord.id])) : new Set();

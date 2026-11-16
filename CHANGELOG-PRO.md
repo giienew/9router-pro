@@ -4,6 +4,17 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.27
+
+- **Combo prompt injection (GitHub issue #2)**: every combo now has an optional prompt — one prompt applies to all members, including variants. Injection order: global → key → combo → variant → model+key. Nested combos: the inner combo's prompt replaces the outer one. Manage it from the Create/Edit Combo form (with prepend/append choice), a Prompt badge on the combo card, and a preview in Prompt Injection.
+- **Escape closes only the topmost modal**: modals now share one stack, so the first Escape closes the picker and the second closes the form underneath — no more losing a half-filled form. The inline model rename behaves the same way.
+- **Catalog sync 0.5.110–0.5.119**: new providers Synthetic and Sensenova International; new models claude-fable-5-2, claude-haiku-5-5, gemini-4-carbon (Antigravity); Claude CLI 2.1.322, Codex CLI 0.167.1; updated pricing.
+- **Translator fixes (all three were silently dropping content)**: DeepSeek `reasoning_content` is preserved OpenAI→Claude; Gemini tool results are preserved in both directions; Claude caller `thinking` blocks are preserved.
+- **Combo performance**: provider credentials are snapshotted once per combo turn instead of reloaded per member attempt.
+- **`/v1/models` kind fix**: a model id listed under several kinds (e.g. gemini-2.5-pro/flash as LLM and as STT) keeps its LLM entry instead of vanishing from the LLM list.
+- **Delete-all proxy pools**: the Proxy Pools page gains a danger action that unpins every bound connection back to DIRECT and deletes all pools in one transaction, with live counts in the confirmation dialog.
+- **New Pro logo**: the dashboard hub mark on a violet→pink gradient, with matching favicon, PWA icons, and README wordmark.
+
 ## v0.5.109-pro.26
 
 - **Edit-modal crash fixed**: clicking Edit on a key row in `/dashboard/endpoint` killed the whole page ("This page couldn't load"). Root cause was a TDZ ReferenceError in `KeyAccessControls.js` — the live-usage `useEffect` read `open` in its dependency array before `const [open, setOpen] = useState(false)` was declared below it. All state declarations are now hoisted above the effects; the same pattern was scanned across `src/` with no other occurrence. API-only smoke tests never caught it (the card list never mounts this component), so UI changes are now verified in a real browser before deploy.

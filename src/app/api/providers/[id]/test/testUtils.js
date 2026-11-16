@@ -817,6 +817,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://api.cohere.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "fal-ai": {
+        // Fal uses `Key` auth (not Bearer) and bills per image — check auth
+        // without queueing anything, same as the validate route case.
+        const res = await fetchWithConnectionProxy("https://api.fal.ai/v1/models?limit=1", { headers: { Authorization: `Key ${connection.apiKey}` } }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
       case "nebius": {
         const res = await fetchWithConnectionProxy("https://api.studio.nebius.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
@@ -910,7 +917,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: res.ok, error: res.ok ? null : "OpenCode free tier unavailable" };
       }
       case "opencode-go": {
-        const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {
+        const res = await fetchWithConnectionProxy("https://opencode.ai/inference/go/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
           body: JSON.stringify({ model: getDefaultModel("opencode-go"), messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),

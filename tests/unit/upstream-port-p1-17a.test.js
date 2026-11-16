@@ -1,5 +1,5 @@
 // P1-17 (part 1): upstream 0.5.111/0.5.112 safe ports — Codex image shim,
-// new catalog rows, capability entries, CommandCode 1.88.0 headers data,
+// new catalog rows, capability entries, CommandCode 1.88.5 headers data,
 // and reasoning_effort max on OpenAI-compatible nodes.
 // Run from tests/:
 //   bun x vitest run unit/upstream-port-p1-17a.test.js
@@ -39,8 +39,8 @@ describe("upstream catalog / caps ports", () => {
     expect(getCapabilitiesForModel("opencode", "deepseek-v4.1-flash-free").contextWindow).toBe(330000);
   });
 
-  it("CommandCode registry carries 1.88.0 headers and Kimi K3.1 Pro", () => {
-    expect(commandcodeRegistry.transport.headers["x-command-code-version"]).toBe("1.88.0");
+  it("CommandCode registry carries 1.88.5 headers and Kimi K3.1 Pro", () => {
+    expect(commandcodeRegistry.transport.headers["x-command-code-version"]).toBe("1.88.5");
     expect(commandcodeRegistry.models.some((m) => m.id === "moonshotai/Kimi-K3.1-Pro")).toBe(true);
   });
 

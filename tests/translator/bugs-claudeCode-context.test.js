@@ -39,9 +39,10 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(JSON.stringify(out)).toContain("step-by-step plan");
   });
 
-  // claude-to-openai.js:128 — redacted_thinking also dropped
-  // KNOWN BUG
-  it.fails("redacted_thinking block is not silently dropped", () => {
+  // Fixed 2026-11-16 (sweep): redacted_thinking is carried in
+  // provider_specific_fields instead of being dropped; thinking text is
+  // mapped to reasoning_content (see convertClaudeMessage).
+  it("redacted_thinking block is not silently dropped", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [
@@ -52,6 +53,23 @@ describe("Claude Code CLI context → OpenAI", () => {
       ],
     });
     expect(JSON.stringify(out)).toContain("ENCRYPTED_BLOB");
+  });
+
+  // Fixed 2026-11-16 (sweep): caller-sent thinking blocks map to
+  // reasoning_content on the assistant message instead of falling through.
+  it("assistant thinking block becomes reasoning_content", () => {
+    const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
+      messages: [
+        { role: "assistant", content: [
+          { type: "thinking", thinking: "plan the refactor" },
+          { type: "text", text: "done" },
+        ] },
+        { role: "user", content: "go" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant?.reasoning_content).toContain("plan the refactor");
+    expect(assistant?.content).toContain("done");
   });
 
   // claude-to-openai.js:155-173 — tool_result image block stringified into raw JSON

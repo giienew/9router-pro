@@ -113,6 +113,16 @@ function githubMonthlyResetMs(status, errorText, provider) {
  * @param {string} provider - Provider name
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
+ * @param {object} [options]
+ * @param {Array} [options.connections] - Preloaded active connections for this
+ *   provider (same filter as the internal load: provider + isActive). A caller
+ *   that retries within one member turn passes its snapshot so the pool is
+ *   loaded + decrypted once per turn instead of once per account attempt.
+ *   Freshness: failed accounts are excluded by the caller, and each member
+ *   turn loads its own snapshot, so locks written by earlier members are
+ *   still seen. A concurrent lock landing mid-turn may cost one wasted
+ *   attempt on that account before it is excluded — same as the rescue
+ *   path below, which already re-derives from one snapshot.
  */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
   // Normalize to Set for consistent handling
@@ -172,7 +182,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    const connections = options?.connections
+      ?? await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {

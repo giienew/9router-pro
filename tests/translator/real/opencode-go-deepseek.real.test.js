@@ -1,6 +1,6 @@
 // REAL endpoint matrix for opencode-go DeepSeek models.
 //
-// Verifies, against the live upstream (https://opencode.ai/zen/go), that each client
+// Verifies, against the live upstream (https://opencode.ai/inference/go), that each client
 // request format actually WORKS for DeepSeek on the endpoint 9router routes it to:
 //
 //   Claude (/v1/messages)          → must return a Claude-shape SSE

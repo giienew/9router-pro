@@ -44,7 +44,11 @@ export function geminiToOpenAIRequest(model, body, stream) {
     for (const content of body.contents) {
       const converted = convertGeminiContent(content);
       if (converted) {
-        result.messages.push(converted);
+        if (Array.isArray(converted)) {
+          result.messages.push(...converted);
+        } else {
+          result.messages.push(converted);
+        }
       }
     }
   }
@@ -81,6 +85,7 @@ function convertGeminiContent(content) {
 
   const parts = [];
   const toolCalls = [];
+  const toolResults = [];
 
   for (const part of content.parts) {
     if (part.text !== undefined) {
@@ -109,13 +114,32 @@ function convertGeminiContent(content) {
       });
     }
 
+    // Collect ALL functionResponses: an early return here used to discard every
+    // sibling part after the first one, so parallel tool calls in a single
+    // Gemini user turn lost all results after the first.
     if (part.functionResponse) {
-      return {
+      toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: part.functionResponse.id || `call_${part.functionResponse.name}`,
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
-      };
+      });
     }
+  }
+
+  // Content with functionResponses — return the tool result messages, plus an
+  // assistant message for any co-located tool calls / text.
+  if (toolResults.length > 0) {
+    if (toolCalls.length > 0 || parts.length > 0) {
+      const assistantMsg = { role: ROLE.ASSISTANT };
+      if (parts.length > 0) {
+        assistantMsg.content = parts.length === 1 ? parts[0].text : parts;
+      }
+      if (toolCalls.length > 0) {
+        assistantMsg.tool_calls = toolCalls;
+      }
+      return [...toolResults, assistantMsg];
+    }
+    return toolResults;
   }
 
   if (toolCalls.length > 0) {

@@ -69,11 +69,11 @@ describe("aggregateComboCapabilities: resolveCaps override", () => {
     expect(caps.contextWindow).toBe(getCapabilitiesForModel("kimi", "kimi-k3").contextWindow);
   });
 
-  it("claude-haiku-5-5 combo: 1M only through the provider-alias resolver", () => {
-    // Both seats are 1M in their provider tables (opencode-go/commandcode entries),
-    // but a bare `ocg/`-style alias resolves to 200k without the resolver: null
-    // provider falls to the global *claude*haiku* pattern. The server passes
-    // comboSeatCapabilities (alias → provider id); the dashboard does not.
+  it("claude-haiku-5-5 combo: 1M on every seat via the global caps row", () => {
+    // Both seats are 1M in their provider tables (opencode-go/commandcode entries).
+    // Upstream 0.5.119 added a global explicit caps row for haiku-5-5 (1M/adaptive),
+    // so the bare lookup now resolves 1M too — the seat resolver is no longer
+    // needed for this id (it still matters for ids with provider-only rows).
     const seats = ["ocg/claude-haiku-5-5", "cmc/claude-haiku-5-5"];
     const seatCaps = (fullId) => {
       const slash = fullId.indexOf("/");
@@ -81,7 +81,7 @@ describe("aggregateComboCapabilities: resolveCaps override", () => {
       const providerId = { ocg: "opencode-go", cmc: "commandcode" }[fullId.slice(0, slash)] || fullId.slice(0, slash);
       return getCapabilitiesForModel(providerId, fullId.slice(slash + 1));
     };
-    expect(aggregateComboCapabilities(seats).contextWindow).toBe(200_000);
+    expect(aggregateComboCapabilities(seats).contextWindow).toBe(1_000_000);
     expect(aggregateComboCapabilities(seats, null, seatCaps).contextWindow).toBe(1_000_000);
   });
 });

@@ -62,6 +62,18 @@ export async function GET(request) {
           if (typeof routed === "string" && routed) resolvedModel = routed;
         }
       } catch { /* fail-open: preview with the raw input */ }
+      // Combo prompt (issue #2): when the previewed model names a combo,
+      // its prompt joins the stack exactly as a live request would see it.
+      // Bare variant names and provider/model ids never match a combo.
+      let comboPrompt = null;
+      let comboName = null;
+      if (model && !model.includes("/")) {
+        const combo = await getComboByName(model).catch(() => null);
+        if (combo?.prompt) {
+          comboPrompt = combo.prompt;
+          comboName = combo.name;
+        }
+      }
       const stack = selectPromptInjections(
         { global, byKey: userPrompts, byModel: prompts, byKeyModel: keyModelPrompts, byVariant: variants },
         {
@@ -69,6 +81,8 @@ export async function GET(request) {
           requestedModel: model,
           resolvedModel,
           bareModel: model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model,
+          comboPrompt,
+          comboName,
         }
       );
       return NextResponse.json({ stack });
