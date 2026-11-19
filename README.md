@@ -31,6 +31,7 @@
 - **Key Limits for reselling** — per-API-key rate limits, all configurable per key on the Endpoint page: requests/minute, tokens/minute, requests/hour, requests/day and max concurrent requests, enforced with HTTP 429 + `Retry-After`. Shape every key to the plan you sold.
 - **Custom Headers per provider** — every provider page has a Custom Headers card: set any header (e.g. a custom `User-Agent`) sent with every upstream call. Validated and stored per provider.
 - **Combo context window** — each combo picks how its context window is sized: Min (smallest member, the default), Max (largest member), or a Custom value — set from the combo form.
+- **Per-model editor** — every model can be edited from the dashboard: capabilities (9 toggles, on / off / inherit), a Context Window override, and a Max Output override. Custom models can be added the same way. Overrides are published through `/api/models` and `/v1/models`, so clients see them immediately.
 - **Providers, organized** — custom (OpenAI/Anthropic-compatible) providers get their own **Provider Custom** section, an **All Connection Providers** shelf, and a **Test All** button in *every* section — custom providers included. Server-side search & pagination keeps tens of thousands of connections snappy, bulk add shows live progress, and each custom provider's icon is auto-detected from its endpoint's favicon.
 - **Proxy Pools that maintain themselves** — a server-side **health check across every pool** with one-click cleanup of the dead ones. Per-provider proxy rotation (random / round-robin) can be pinned to a **hand-picked subset of pools**, chosen from a compact collapsible picker that folds away when you're done.
 - **Balanced fallback** — health-tiered account selection (clean → suspect → cooldown, suspects heal after an hour) with least-recently-used spreading across the fleet, so a temporarily-limited key stops poisoning a whole combo.
@@ -118,6 +119,7 @@ The original 9Router is a great router — Pro is what it becomes when you actua
 
 - **Prompt Injection** — the original has *no* custom system prompts at all. Pro gives every target one injection — **global**, **per API key**, and **per model** — each either a system prompt (prepend or append) or a scripted chat primed as fake history, injected wire-aware for OpenAI / Claude / Gemini / Responses bodies.
 - **Per-key token quotas** — upstream *removed* this feature. Pro brings it back: a token budget per API key (24h / 7d / 30d, or All time with Reset) with live usage and 429 enforcement.
+- **Per-model editor** — upstream shows models read-only. Pro lets you edit every model: capabilities, context window, max output — plus add custom models.
 - **An identity** — a dark neumorphism dashboard with floating glass cards, pill everything, spectrum charts and a custom colour picker (any hue, dark to light), plus Pro branding throughout.
 - **Fleet care built in** — Balanced health-tiered fallback, the Anti-Flaky Guard, server-side proxy-pool health checks and per-provider rotation subsets keep a big key fleet healthy without babysitting.
 - **An optimized hot path** — injection resolution is snapshot-cached and system prompts run as a single grouped pass per position: identical output, less work per request.
@@ -145,6 +147,7 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 | Prepend/append control | ❌ | ❌ | ✅ |
 | Dashboard accents | coral only | varies | ✅ custom colours (any hue, dark to light) |
 | Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d / All time budgets |
+| Per-model editing (caps, context, max output) | ❌ | ❌ | ✅ edit + add custom models |
 | Per-key rate limits (RPM/TPM/RPD/concurrency) | ❌ | ❌ | ✅ per key, 429 + Retry-After |
 | Test All per provider section (incl. custom) | ❌ | ❌ | ✅ |
 | Proxy pool health check + dead-pool cleanup | ❌ | ❌ | ✅ server-side, all pools |
