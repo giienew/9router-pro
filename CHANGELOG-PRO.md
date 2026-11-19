@@ -4,6 +4,15 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.30
+
+- **npm correction release**: npm `0.5.109-pro.29` shipped an earlier build that predates the Admin and Spam fixes, and a published npm version can never be republished. pro.30 brings npm users the exact same code as GitHub pro.29 — no new features beyond pro.29, the fixes below are what npm pro.29 was missing.
+- **Admin and Spam, redesigned minimalist**: both pages are rebuilt for glanceability — big-number stat cards with tiny labels, a 7-day requests sparkline on Admin and a traffic trend chart (requests, errors, 429s) on Spam, tight tables, and no long descriptions. Values wrap instead of truncating, and nothing overflows on phone width.
+- **Admin icon fix**: the System status card rendered a broken `monitor_heart` ligature (`__HEART`) because the subset icon font was generated before Admin used it — and the subset script's quote scanner skipped icon names after any apostrophe in a file. The scanner now matches icon props directly and double/single-quoted strings separately; a full audit then found `health_and_safety` also missing, and the regenerated subset (216 glyphs, ~26 KB) covers every icon the Admin and Spam pages use.
+- **Admin is the control room**: API key management lives in Admin (masked keys with pause/resume, usage reset, regenerate), alongside the security center, spam ranking with IP blacklist, and Maintenance. Logs live in Console Log and monitoring in Usage — Admin deliberately duplicates nothing else.
+- **Spam IP capture fix**: every request was recorded as client IP `unknown` because the deployed process runs the plain standalone `server.js`, never `custom-server.js`, so the peer-token stamping (`x-9r-real-ip` / `x-9r-peer-token`) never ran. The standalone build now boots through the request-sanitizing wrapper (`postbuild` prepends the require to the generated `server.js`), so the tunnel's real client IP is captured on every request and the spam ranking shows real addresses instead of one `unknown` bucket.
+- **Tests**: full suite 5,040 passed / 27 failed — identical to the pro.29 release baseline; the 27 are the same pre-existing categories (codex/opencode/commandcode executors, image generation, reasoning injector, favicon utils, pair-strategy, live-network mimo-free, rival-combo-advisor, param-support, audit-m4, bulk-add-pool), none in files this release touched. The 3 golden-url-header version-snapshot failures from the pro.30 bump were updated to the new version.
+
 ## v0.5.109-pro.29
 
 - **Context windows from live provider feeds**: `/v1/models` and combo seat limits no longer guess context windows from static tables — they read `context_length` / `max_completion_tokens` from each provider's live `/v1/models` feed (5-minute cache), falling back to the static registry when a feed is unreachable. Models previously published with wrong windows (qwen and free-lane models) now report the provider's real numbers.
