@@ -59,22 +59,22 @@ describe("Admin surface (source assertions)", () => {
     expect(src).toContain("../spam/SpamRankingClient");
   });
 
-  it("Admin client keeps only admin-exclusive sections (no duplicates)", () => {
+  it("Admin client keeps the key manager (control room) and drops only Logs + shortcuts", () => {
     const src = readSrc("src/app/(dashboard)/dashboard/admin/AdminClient.js");
-    // Admin-exclusive sections only: system summary, security, spam, maintenance.
-    for (const section of ["System status", "Security center", "Spam ranking", "Maintenance"]) {
+    // Admin is the control room: key manager, security, spam, maintenance stay.
+    for (const section of ["System status", "Security center", "Key management", "Maintenance"]) {
       expect(src).toContain(section);
     }
-    // Duplicates of other menus are gone: keys live in Endpoint & Keys,
-    // logs in Console Log, shortcuts are clutter, monitoring in Usage.
-    for (const removed of ["Key management", "System health", "Settings shortcuts"]) {
-      expect(src).not.toContain(removed);
-    }
-    expect(src).not.toContain('title="Logs"');
-    expect(src).not.toContain("keyMasked");
+    // Spam ranking lives inside the embedded SpamRankingClient (own title there).
+    expect(src).toContain("SpamRankingClient");
+    expect(src).toContain("keyMasked");
     expect(src).not.toMatch(/\bk\.key\b/);
+    // True duplicates only: Logs lives in Console Log, shortcuts are a link list.
+    expect(src).not.toContain("Settings shortcuts");
+    expect(src).not.toContain('title="Logs"');
+    expect(src).not.toContain("SETTING_LINKS");
     expect(src).toContain("ConfirmModal");
-    expect(src).toContain("Revoke all other sessions");
+    expect(src).toContain("Revoke other sessions");
     expect(src).toContain("Restart the app");
   });
 

@@ -21,7 +21,9 @@ import {
   aggregateSpamRanking,
   countryFlag,
   countryFromHeaders,
+  is429Status,
   isBlockableIp,
+  isErrorStatus,
   normalizeIp,
 } from "@/shared/utils/clientMeta.js";
 
@@ -186,7 +188,42 @@ export async function getSpamRanking({ period = "7d", limit = 50, dbOverride } =
     });
   }
 
-  return { ...aggregateSpamRanking(rows, { limit: lim }), period };
+  return { ...aggregateSpamRanking(rows, { limit: lim }), period, series: buildSeries(rows, period) };
+}
+
+// Time series for the Spam trend chart: bucket the same rows by time.
+// 24h -> hourly (24 points), 7d -> 6-hourly (28), 30d/all -> daily (30).
+// Each bucket: { label, requests, errors, rate429 }. No extra DB read.
+function buildSeries(rows, period) {
+  const bucketMs = period === "24h" ? 3600000 : period === "7d" ? 21600000 : 86400000;
+  const count = period === "24h" ? 24 : period === "7d" ? 28 : 30;
+  const now = Date.now();
+  const start = Math.floor(now / bucketMs) * bucketMs - (count - 1) * bucketMs;
+  const buckets = Array.from({ length: count }, (_, i) => ({
+    label: "",
+    requests: 0,
+    errors: 0,
+    rate429: 0,
+    _t: start + i * bucketMs,
+  }));
+  for (const r of rows || []) {
+    const t = new Date(r.timestamp).getTime();
+    if (Number.isNaN(t) || t < start) continue;
+    const idx = Math.min(count - 1, Math.floor((t - start) / bucketMs));
+    if (idx < 0) continue;
+    const b = buckets[idx];
+    b.requests += 1;
+    if (isErrorStatus(r.status)) b.errors += 1;
+    if (is429Status(r.status) || r.is429) b.rate429 += 1;
+  }
+  for (const b of buckets) {
+    const d = new Date(b._t);
+    b.label = period === "24h"
+      ? `${String(d.getHours()).padStart(2, "0")}:00`
+      : `${d.getDate()}/${d.getMonth() + 1}`;
+    delete b._t;
+  }
+  return buckets;
 }
 
 // Recent request log with attribution: newest first. Masked keys only.
