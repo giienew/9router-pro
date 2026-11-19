@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorBody } from "@/lib/apiError";
 import { readZedIdeCredentials } from "@/lib/oauth/utils/zedCredentials";
 
 /**
@@ -32,7 +33,7 @@ export async function GET() {
   } catch (error) {
     console.log("Zed auto-import error:", error);
     return NextResponse.json(
-      { found: false, error: error.message || "Failed to read Zed credentials" },
+      { found: false, ...apiErrorBody(error, { code: "zed_auto_import_failed", message: "Failed to read Zed credentials" }) },
       { status: 500 },
     );
   }

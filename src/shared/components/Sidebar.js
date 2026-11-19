@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,6 +25,8 @@ const navItems = [
   { href: "/dashboard/providers", label: "Providers", icon: "dns", color: "#60A5FA" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers", color: "#F472B6" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart", color: "#34D399" },
+  { href: "/dashboard/admin", label: "Admin", icon: "admin_panel_settings", color: "#F87171" },
+  { href: "/dashboard/spam", label: "Spam", icon: "shield", color: "#FB923C" },
   { href: "/dashboard/quota", label: "Provider Quota", icon: "data_usage", color: "#2DD4BF" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings", color: "#FBBF24" },
   { href: "/dashboard/prompt-injection", label: "Prompt Injection", icon: "skull", color: "#C084FC", badge: "PRO" },
@@ -438,8 +441,10 @@ export default function Sidebar({ onClose }) {
         variant="primary"
       />
 
-      {/* Disconnected / Updating Overlay */}
-      {(isDisconnected || isUpdating) && (
+      {/* Disconnected / Updating Overlay — portaled: the mobile Sidebar
+          instance renders inside a transformed slide-over, which traps
+          position:fixed (see Modal.js). */}
+      {(isDisconnected || isUpdating) && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
           {isUpdating ? (
             <ManualUpdatePanel
@@ -463,7 +468,8 @@ export default function Sidebar({ onClose }) {
               </Button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

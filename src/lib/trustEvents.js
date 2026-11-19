@@ -7,6 +7,7 @@
 // kind+subject+level; clearing the condition (clearTrustSubject) re-arms
 // it, so a recurrence shows up as unread again instead of being swallowed.
 import { randomUUID } from "node:crypto";
+import { hasTrustedPeerHeaders } from "./auth/trustedPeer.js";
 
 export const QUOTA_WARN_RATIO = 0.9;
 
@@ -20,11 +21,16 @@ export function quotaPressureLevel(used, cap) {
 }
 
 export function clientIpFromRequest(request) {
+  // Audit item 6g: forwarding headers are attacker-controlled input unless
+  // custom-server.js vouched for them (peer token). X-Forwarded-For and
+  // X-Real-IP are never trusted here; only the socket-derived x-9r-real-ip
+  // and the peer-vetted cf-connecting-ip are.
   try {
-    const fwd = request?.headers?.get?.("x-forwarded-for");
-    if (fwd) return fwd.split(",")[0].trim();
-    const real = request?.headers?.get?.("x-real-ip");
+    if (!hasTrustedPeerHeaders(request)) return null;
+    const real = request?.headers?.get?.("x-9r-real-ip");
     if (real) return real.trim();
+    const cf = request?.headers?.get?.("cf-connecting-ip");
+    if (cf) return cf.trim();
   } catch {}
   return null;
 }

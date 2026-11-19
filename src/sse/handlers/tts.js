@@ -14,6 +14,7 @@ import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
 import { recordModalityUsage, estimateTokensFromText } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
@@ -45,7 +46,7 @@ async function handleTtsImpl(request, requestId = null) {
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
   const apiKey = extractApiKey(request);
-  const usageCtx = { apiKey, endpoint: url.pathname, requestId };
+  const usageCtx = { apiKey, endpoint: url.pathname, requestId, clientMeta: clientMetaFromRequest(request) };
   const settings = await getSettings();
   if (settings.requireApiKey) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");

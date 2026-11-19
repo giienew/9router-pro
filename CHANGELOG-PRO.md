@@ -4,6 +4,27 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.29
+
+- **Context windows from live provider feeds**: `/v1/models` and combo seat limits no longer guess context windows from static tables — they read `context_length` / `max_completion_tokens` from each provider's live `/v1/models` feed (5-minute cache), falling back to the static registry when a feed is unreachable. Models previously published with wrong windows (qwen and free-lane models) now report the provider's real numbers.
+- **Least-busy routing**: a new routing strategy that sends each request to the least-loaded deployment or key among eligible ones, alongside balanced and sticky-random. Built for multi-key providers where one key can saturate while others sit idle.
+- **Anthropic cache markers preserved**: `cache_control` blocks now survive routing instead of being stripped, so repeat prompts benefit from prompt caching on Claude-compatible providers.
+- **Per-model rate limiting**: custom providers can now cap requests per model per session, so one hot model cannot drain a provider's quota.
+- **Cloudflare Workers AI provider**: a new `cloudflare-ai` lane over the official Workers AI OpenAI-compatible endpoint, with models from the live feed. Free tier: 10,000 Neurons/day.
+- **Antigravity 200-banner fix**: the executor no longer mistakes an HTTP 200 carrying an error or banner text for a success — auth, quota, policy, and generic 502 banners are classified as retryable errors, so failover actually advances.
+- **UUID leaks fixed**: combo cards and provider detail no longer show raw custom-node UUIDs (`openai-compatible-chat-<uuid>`) — display prefixes are used everywhere.
+- **Vision capability fix**: the vision capability lookup is corrected so a vision request cannot fail with a 400 from a wrong capability resolution.
+- **Gemini 4 Hydrogen pricing**: `gemini-4-hydrogen-sonar` is now billed at its real rate in the cost map.
+- **Lighter dashboard**: the icon font is subset to the glyphs actually used (3.9 MB → 59 KB); all modals and drawers are portaled to `document.body` (structural fix for the modal-stacking class).
+- **Month-scope usage**: the Usage page gains a current-month scope alongside all-time for tokens and requests.
+- **Proxy-pool status filter**: the Proxy Pools page can filter pools by status.
+- **Security hardening**: provider credentials at rest are AES-256-GCM encrypted when `PRO_CREDENTIAL_KEY` is set (migration included; a loud startup warning is logged when it is absent); router API keys are stored as hashes and never returned whole from GET or PUT (full value only once at creation); dashboard sessions are revoked on logout and password change; the MITM logger redacts auth headers and bodies; the login lockout is persisted in the DB and `cf-connecting-ip` is no longer trusted from untrusted peers; ~70 routes return generic errors via `apiError` instead of raw `error.message`; the PKCE `codeVerifier` stays server-side; API keys are generated with `crypto.randomBytes`. The default password is no longer printed on the login page.
+- **Spam ranking + IP blacklist**: the dashboard shows per-request client IP, country flag, and masked key, plus a ranking of the top spammers by volume and error/429 rate. Any IP can be blacklisted (rejected with 403 before any provider call, dashboard login unaffected) and unblacklisted from the same view.
+- **Admin menu + Maintenance**: a new top-level Admin menu holds only admin-exclusive tools — security center (encryption status, login lockouts with per-IP unlock, session epoch and revoke), spam ranking with IP blacklist, a compact system-status summary, and Maintenance. It deliberately duplicates nothing: key management lives in Endpoint & Keys, logs in Console Log, monitoring in Usage. Maintenance adds cache clearing (semantic, models, latency), app restart, breaker reset, log clearing, disk cleanup, DB VACUUM and backup, and on-demand token refresh — each behind a confirmation.
+- **Admin icon fix**: the System status card rendered a broken `monitor_heart` ligature (`__HEART`) because the subset icon font was generated before Admin used it — and the subset script's quote scanner skipped icon names after any apostrophe in a file. The scanner now matches icon props directly and double/single-quoted strings separately; the regenerated subset (215 glyphs, ~26 KB) covers every icon the Admin page uses.
+- **Spam IP capture fix**: every request was recorded as client IP `unknown` because the deployed process runs the plain standalone `server.js`, never `custom-server.js`, so the peer-token stamping (`x-9r-real-ip` / `x-9r-peer-token`) never ran. The standalone build now boots through the request-sanitizing wrapper (`postbuild` prepends the require to the generated `server.js`), so the tunnel's real client IP is captured on every request and the spam ranking shows real addresses instead of one `unknown` bucket.
+- **Tests**: full suite 5,007 passed / 27 failed — identical failure count to the live-tree baseline (5,029 passed / 27 failed; the 22-test gap is the 2 DeepAI test files excluded from the public release plus run-to-run flake). The 3 version-snapshot failures from the pro.29 bump were updated. Admin, spam, standalone-asset, font-subset and peer-trust suites pass.
+
 ## v0.5.109-pro.28
 
 - **Community suggestions, built (thank you @cristalineeee and @Appsheet_Indonesia)**:

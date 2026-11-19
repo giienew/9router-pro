@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { getTunnelStatus, getTailscaleStatus, getDownloadStatus } from "@/lib/tunnel";
 
 const STATUS_CACHE_TTL_MS = 3000; // coalesce rapid polls; underlying probes already cache 10s
@@ -20,6 +21,6 @@ export async function GET() {
     return NextResponse.json({ ...probes, download });
   } catch (error) {
     console.error("Tunnel status error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "tunnel_status_failed", message: "Failed to fetch tunnel status" });
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 
@@ -33,7 +34,7 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Authentication failed");
+        throw new Error(errorText(data, "Authentication failed"));
       }
 
       setSuccess(true);

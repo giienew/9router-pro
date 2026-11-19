@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -234,6 +234,17 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_sl_created ON securityLog(createdAt DESC)",
       "CREATE INDEX IF NOT EXISTS idx_sl_ip ON securityLog(ip, createdAt DESC)",
     ],
+  },
+  // Audit item 6f: dashboard login lockout, persisted in the DB so a
+  // process restart does not clear it. One row per client IP.
+  loginLockouts: {
+    columns: {
+      ip: "TEXT PRIMARY KEY",
+      fails: "INTEGER DEFAULT 0",
+      lockUntil: "INTEGER DEFAULT 0",
+      lockLevel: "INTEGER DEFAULT 0",
+      lastFailAt: "INTEGER DEFAULT 0",
+    },
   },
   // R14 eval runner: saved golden sets + runs (results as JSON).
   evalSets: {

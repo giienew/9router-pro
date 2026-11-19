@@ -223,8 +223,11 @@ export default function ProviderDetailPage() {
     }
     return set.size ? ["auto", ...[...set]] : null;
   })();
+  // Deleted custom node (or a failed /api/provider-nodes fetch): the node
+  // has no prefix, and providerId is the raw node id — show the generic
+  // "custom" label instead of leaking the id.
   const providerDisplayAlias = isCompatible
-    ? (providerNode?.prefix || providerId)
+    ? (providerNode?.prefix || "custom")
     : providerAlias;
 
   const fetchDisabledModels = useCallback(async () => {

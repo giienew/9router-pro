@@ -21,6 +21,15 @@ export const dynamic = "force-dynamic";
 const CACHE_TTL_MS = 5000;
 let cache = null;
 
+// Test/admin hook (pro.29): drop the cached monitoring payload so the
+// Admin "Clear caches" action can actually clear it. Returns 1 when a
+// cached payload was dropped, 0 when there was none.
+export function __clearMonitoringCache() {
+  const had = cache ? 1 : 0;
+  cache = null;
+  return had;
+}
+
 function getDisk() {
   try {
     const out = execFileSync("df", ["-k", "/"], { encoding: "utf8", timeout: 5000 });

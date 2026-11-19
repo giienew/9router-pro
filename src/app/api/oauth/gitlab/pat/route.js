@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { createProviderConnection } from "@/models";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
@@ -57,6 +58,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("GitLab PAT auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "gitlab_pat_failed", message: "Failed to authenticate with GitLab" });
   }
 }

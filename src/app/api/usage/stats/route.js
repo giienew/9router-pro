@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUsageStats } from "@/lib/usageDb";
 
-const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d", "all", "custom"]);
+const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "month", "60d", "all", "custom"]);
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Short-lived cache: the dashboard polls this on every period switch and

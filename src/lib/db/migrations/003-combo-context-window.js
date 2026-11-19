@@ -10,6 +10,9 @@ export default {
   name: "combo-context-window",
   up(db) {
     const cols = db.all(`PRAGMA table_info(combos)`);
+    // See 002: a legacy DB may have no combos table yet; the additive
+    // sync creates it with all columns, so skip the ALTERs here.
+    if (cols.length === 0) return;
     const names = new Set(cols.map((c) => c.name));
     if (!names.has("contextWindowMode")) {
       db.exec(`ALTER TABLE combos ADD COLUMN contextWindowMode TEXT`);

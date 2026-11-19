@@ -7,7 +7,7 @@ import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { parseModel } from "./model.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
-import { peekStreamForContent, reconstructStream, isNoRetryFinish } from "./emptyFailover.js";
+import { peekStreamForContent, reconstructStream, isNoRetryFinish, isErrorBannerText } from "./emptyFailover.js";
 import { SSE_HEADERS, SSE_DONE } from "../utils/sseConstants.js";
 import { COMBO_FIRST_RESPONSE_TIMEOUT_MS, COMBO_FIRST_RESPONSE_GRACE_MS } from "../config/runtimeConfig.js";
 import {
@@ -372,6 +372,12 @@ export function isZeroContentResponse(data) {
     if (!hasContent && !hasToolCalls && !hasReasoning && (!isNormalFinish || finish === "in_progress" || finish === "incomplete")) {
       return true;
     }
+
+    // Banner-only text (e.g. an upstream error reported as a 200 with
+    // fault-shaped content) counts as zero content so combo falls through.
+    if (hasContent && !hasToolCalls && typeof content === "string" && isErrorBannerText(content)) {
+      return true;
+    }
   }
 
   // Anthropic messages format
@@ -380,6 +386,13 @@ export function isZeroContentResponse(data) {
     const stopReason = data.stop_reason;
     if (!hasContent && (!stopReason || stopReason === "in_progress" || stopReason === "incomplete")) {
       return true;
+    }
+    // Banner-only text (no tool use) counts as zero content so combo falls through.
+    if (hasContent && !data.content.some((c) => c.type === "tool_use")) {
+      const text = data.content.filter((c) => c.type === "text").map((c) => c.text || "").join("");
+      if (typeof text === "string" && isErrorBannerText(text)) {
+        return true;
+      }
     }
   }
 

@@ -212,11 +212,14 @@ describe("combo prompt storage (migration + repo round-trip)", () => {
     const cols = db.all(`PRAGMA table_info(combos)`).map((c) => c.name);
     assert.ok(cols.includes("prompt"), `combos columns: ${cols.join(",")}`);
     // Migration 003 (combo context-window mode) added contextWindowMode
-    // + contextWindow and bumped the schema version to 8.
+    // + contextWindow and bumped the schema version to 8. The loginLockouts
+    // table (audit item 6, pro.29) bumped it to 9 — see
+    // tests/unit/schema-v9-login-lockouts.test.js for the proof that an
+    // existing v8 DB gains the table via the additive sync on next boot.
     assert.ok(cols.includes("contextWindowMode"), `combos columns: ${cols.join(",")}`);
     assert.ok(cols.includes("contextWindow"), `combos columns: ${cols.join(",")}`);
     const { SCHEMA_VERSION } = await import("@/lib/db/schema.js");
-    assert.equal(SCHEMA_VERSION, 8);
+    assert.equal(SCHEMA_VERSION, 9);
   });
 
   it("create/update/get preserve the prompt; legacy NULL rows read null", async () => {

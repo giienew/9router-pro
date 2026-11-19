@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { createProxyPool } from "@/models";
 
 // Relay worker source code deployed to Cloudflare
@@ -37,10 +38,7 @@ export default {
         headers: response.headers,
       });
     } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 502,
-        headers: { "content-type": "application/json" },
-      });
+    return apiErrorResponse(error, { code: "proxy_deploy_relay_failed", message: "Deploy request failed", status: 502 });
     }
   },
 };
@@ -140,6 +138,6 @@ export async function POST(request) {
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
   } catch (error) {
     console.log("Error deploying Cloudflare relay:", error);
-    return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
+    return apiErrorResponse(error, { code: "cloudflare_deploy_failed", message: "Deploy failed" });
   }
 }

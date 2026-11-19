@@ -1,6 +1,7 @@
 import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
+import { enforceBlockedIp } from "@/lib/spamAbuse.js";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -84,6 +85,9 @@ export async function OPTIONS() {
 
 // GET /v1/models/info?id={alias}/{modelId} — metadata for a single model
 export async function GET(request) {
+  // Spam/abuse IP blocklist: 403 before any catalog work.
+  const blocked = await enforceBlockedIp(request);
+  if (blocked) return blocked;
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const kind = searchParams.get("kind");

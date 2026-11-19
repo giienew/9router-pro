@@ -84,3 +84,52 @@ describe("custom-server peer header sanitizing", () => {
     expect(sanitized["x-9r-real-ip"]).toBe("127.0.0.1");
   });
 });
+
+// Audit item 6g: cf-connecting-ip is only trustworthy from a Cloudflare
+// edge peer or the local tunnel peer. custom-server.js is the enforcement
+// point — it strips the header from any other TCP peer before Next sees it.
+describe("custom-server cf-connecting-ip trust", () => {
+  const { __test__ } = require("../../custom-server.js");
+  const { isTrustedCfPeer } = __test__;
+
+  it("trusts loopback (tunnel/cloudflared) peers, including ::ffff: form", () => {
+    expect(isTrustedCfPeer("127.0.0.1")).toBe(true);
+    expect(isTrustedCfPeer("::1")).toBe(true);
+    expect(isTrustedCfPeer("::ffff:127.0.0.1")).toBe(true);
+  });
+
+  it("trusts Cloudflare edge ranges (v4 and v6) and rejects neighbours", () => {
+    expect(isTrustedCfPeer("173.245.48.1")).toBe(true);
+    expect(isTrustedCfPeer("104.16.23.45")).toBe(true);
+    expect(isTrustedCfPeer("131.0.72.200")).toBe(true);
+    expect(isTrustedCfPeer("2400:cb00:1234::1")).toBe(true);
+    expect(isTrustedCfPeer("2606:4700:abcd::1")).toBe(true);
+    expect(isTrustedCfPeer("173.245.64.1")).toBe(false); // just outside 173.245.48.0/20
+    expect(isTrustedCfPeer("203.0.113.9")).toBe(false);
+    expect(isTrustedCfPeer("8.8.8.8")).toBe(false);
+    expect(isTrustedCfPeer("2400:cb01::1")).toBe(false);
+    expect(isTrustedCfPeer("not-an-ip")).toBe(false);
+    expect(isTrustedCfPeer(null)).toBe(false);
+  });
+
+  it("keeps cf-connecting-ip from a loopback (tunnel) peer", async () => {
+    const headers = await get({ "cf-connecting-ip": "203.0.113.9" });
+    expect(headers["cf-connecting-ip"]).toBe("203.0.113.9");
+  });
+
+  it("strips a spoofed cf-connecting-ip when the TCP peer is a direct public address", async () => {
+    // No real non-loopback socket is available in the sandbox (egress
+    // blocks it), so drive the wrapper with a synthetic request whose
+    // socket peer is a public IP — the exact branch a direct client hits.
+    const seen = await new Promise((resolve) => {
+      const fakeReq = {
+        socket: { remoteAddress: "203.0.113.55" },
+        headers: { "cf-connecting-ip": "203.0.113.99", "x-forwarded-for": "198.51.100.1" },
+      };
+      const fakeRes = { end: () => resolve(fakeReq.headers) };
+      server.emit("request", fakeReq, fakeRes);
+    });
+    expect(seen["cf-connecting-ip"]).toBeUndefined();
+    expect(seen["x-9r-real-ip"]).toBe("203.0.113.55");
+  });
+});

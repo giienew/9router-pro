@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input, OAuthModal } from "@/shared/components";
 
@@ -70,7 +71,7 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
         body: JSON.stringify({ token: pat.trim(), baseUrl: baseUrl.trim() || GITLAB_COM }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Authentication failed");
+      if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
       onSuccess?.();
       handleClose();
     } catch (err) {

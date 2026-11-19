@@ -265,8 +265,9 @@ export function stampLastUsedOverlay(id, nowMs = Date.now()) {
 // timestamp, ordered by priority number ascending (the old comparator's
 // rule); used connections sort by timestamp ascending. Unparseable
 // timestamps are treated as never-used, which is deterministic where the
-// old comparator's NaN comparison was not.
-function lruKey(connection, overlay) {
+// old comparator's NaN comparison was not. Exported for least-busy
+// tie-breaking, which reuses exactly this ordering.
+export function lruKeyForConnection(connection, overlay) {
   if (overlay?.has(connection.id)) return overlay.get(connection.id);
   const priority = Math.min(connection.priority || 999, LRU_PRIORITY_CAP);
   if (!connection.lastUsedAt) return LRU_NEVER_USED_BASE + priority;
@@ -295,7 +296,7 @@ export function pickWindowedLru(connections, windowSize = 32, rng = Math.random,
   const size = Math.max(1, Math.min(windowSize, connections.length));
   const window = []; // [key, connection], ascending by key once filled
   for (const connection of connections) {
-    const key = lruKey(connection, overlay);
+    const key = lruKeyForConnection(connection, overlay);
     if (window.length < size) {
       window.push([key, connection]);
       if (window.length === size) window.sort((a, b) => a[0] - b[0]);

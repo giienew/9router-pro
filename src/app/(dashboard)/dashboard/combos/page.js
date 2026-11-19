@@ -1317,7 +1317,7 @@ function ModelItem({ id, index, model, prefixById = {}, isFirst, isLast, onEdit,
 // Account pin picker (P3-28): picks one connection for a combo member.
 // The pin is advisory — an unavailable pinned connection falls back to
 // normal selection at request time (preferredConnectionId semantics).
-function PinPickerModal({ member, currentPin, onPick, onClose }) {
+function PinPickerModal({ member, currentPin, onPick, onClose, prefixById = {} }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1344,7 +1344,7 @@ function PinPickerModal({ member, currentPin, onPick, onClose }) {
   }, [providerId, query]);
 
   return (
-    <Modal isOpen onClose={onClose} title={`Pin account for ${member}`}>
+    <Modal isOpen onClose={onClose} title={`Pin account for ${displayBacking(member, prefixById)}`}>
       <div className="flex flex-col gap-3">
         <Input
           placeholder="Search by name or email…"
@@ -1689,6 +1689,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
         <PinPickerModal
           member={pinMember}
           currentPin={pins?.[pinMember] || null}
+          prefixById={prefixById}
           onPick={(pin) => {
             onPinChange(pinMember, pin);
             setPinMember(null);

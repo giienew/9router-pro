@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 
@@ -50,7 +51,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
             });
           }
         } else {
-          setError(data.error || "Could not auto-detect token");
+          setError(errorText(data, "Could not auto-detect token"));
         }
       } catch (err) {
         setError("Failed to auto-detect token");
@@ -94,7 +95,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Import failed");
+        throw new Error(errorText(data, "Import failed"));
       }
 
       // Success - notify parent to refresh connections
@@ -125,7 +126,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "CLIProxyAPI import failed");
+        throw new Error(errorText(data, "CLIProxyAPI import failed"));
       }
 
       onMethodSelect("import-cli-proxy");
@@ -166,7 +167,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Import failed");
+        throw new Error(errorText(data, "Import failed"));
       }
 
       // Success - notify parent to refresh connections

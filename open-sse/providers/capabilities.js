@@ -872,6 +872,22 @@ function isCommandCodeTextOnly(model) {
   }
   return false;
 }
+
+// Exact-id lookup, case-insensitive: registries serve mixed-case ids
+// ("dahl/zai-org/GLM-5.3-Flash") while the tables key the canonical
+// lowercase id ("glm-5.3-flash"). A case-sensitive miss falls through to a
+// generic pattern that lacks the model's vision/pdf flags, so the model is
+// silently advertised as text-only and images are stripped. Patterns stay
+// case-insensitive already (matchPattern); only the exact steps need this.
+function lookupExact(map, key) {
+  if (!map || !key) return undefined;
+  if (map[key] !== undefined) return map[key];
+  const lower = String(key).toLowerCase();
+  for (const k of Object.keys(map)) {
+    if (k.toLowerCase() === lower) return map[k];
+  }
+  return undefined;
+}
 function resolveBaseCapabilities(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
 
@@ -882,8 +898,8 @@ function resolveBaseCapabilities(provider, model) {
   // (deepseek-v4 → thinkingFormat:deepseek, vision:false) must not win here.
   if (provider === "commandcode" || provider === "cmc") {
     const providerCaps = PROVIDER_CAPABILITIES.commandcode;
-    if (providerCaps?.[model]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[model] };
-    if (providerCaps?.[baseModel]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] };
+    const hit = lookupExact(providerCaps, model) ?? lookupExact(providerCaps, baseModel);
+    if (hit) return { ...DEFAULT_CAPABILITIES, ...hit };
     return {
       ...DEFAULT_CAPABILITIES,
       reasoning: true,
@@ -898,14 +914,14 @@ function resolveBaseCapabilities(provider, model) {
   // 1. Provider-specific override
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
-    if (providerCaps?.[model]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[model] };
-    if (providerCaps?.[baseModel]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] };
+    const hit = lookupExact(providerCaps, model) ?? lookupExact(providerCaps, baseModel);
+    if (hit) return { ...DEFAULT_CAPABILITIES, ...hit };
   }
 
   // 2. Canonical exact, then catalog overlay so provider-scoped models.dev
   //    deltas still apply. Step 1 above still short-circuits.
-  if (MODEL_CAPABILITIES[baseModel]) return refine(MODEL_CAPABILITIES[baseModel], provider, model);
-  if (MODEL_CAPABILITIES[model]) return refine(MODEL_CAPABILITIES[model], provider, model);
+  const exact = lookupExact(MODEL_CAPABILITIES, baseModel) ?? lookupExact(MODEL_CAPABILITIES, model);
+  if (exact) return refine(exact, provider, model);
 
   // 3. Pattern match (first match wins), refined by catalog + name heuristic
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {

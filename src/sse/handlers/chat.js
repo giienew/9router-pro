@@ -28,6 +28,7 @@ import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { resolveSessionIdentity } from "open-sse/utils/sessionManager.js";
+import { isCustomProviderId, resolvePerModelRateLimit, resolvePerModelScope, tryAcquirePerModelRateLimit } from "@/lib/perModelRateLimit.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
@@ -109,6 +110,12 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
 
   const session = resolveSessionIdentity({ headers: clientRawRequest?.headers, body });
   const sessionId = session?.sessionId || null;
+  // Per-model rate limit (pro.29 item D): thread the stable client
+  // session id so the limiter can scope per session (one conversation
+  // = one budget per model). Ephemeral ids are fresh-random per
+  // request, so they are NOT threaded — the hook then falls back to a
+  // per-API-key scope instead. Same D6 pattern as requestId above.
+  if (session && !session.ephemeral && sessionId) clientRawRequest.sessionId = sessionId;
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
@@ -378,6 +385,39 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       provider,
       model,
     );
+  }
+
+  // Per-model rate limit (pro.29 item D): custom providers only.
+  // One admitted request per (scope, provider, model) counts toward
+  // that model's window; a model over its session limit is refused
+  // BEFORE any credential is picked or upstream call made, with a 429
+  // — handleComboChat treats 429 as a fallback error, so a combo moves
+  // to its next member, and a solo request gets a clean 429 with
+  // Retry-After instead of hammering the provider. Registry providers
+  // keep their own breaker/quota handling and are untouched. Fail-open:
+  // the limiter never throws, and a settings read failure means
+  // defaults (not a block).
+  if (isCustomProviderId(provider)) {
+    const limitCfg = resolvePerModelRateLimit(await getSettings().catch(() => ({})), provider, model);
+    if (limitCfg.enabled) {
+      const verdict = tryAcquirePerModelRateLimit({
+        provider,
+        model,
+        scope: resolvePerModelScope({ sessionId: clientRawRequest?.sessionId || null, apiKey }),
+        limit: limitCfg.limit,
+        windowMs: limitCfg.windowMs,
+      });
+      if (!verdict.allowed) {
+        const windowSec = Math.round(limitCfg.windowMs / 1000);
+        log.warn("CHAT", `[${provider}/${model}] per-model rate limit: ${verdict.used}/${verdict.limit} per ${windowSec}s — retry after ${verdict.retryAfterSec}s`);
+        return unavailableResponse(
+          HTTP_STATUS.RATE_LIMITED,
+          `[${provider}/${model}] Per-model rate limit exceeded (${verdict.used}/${verdict.limit} per ${windowSec}s)`,
+          new Date(verdict.resetAtMs).toISOString(),
+          `reset after ${verdict.retryAfterSec}s`,
+        );
+      }
+    }
   }
 
   // Routing shown in the unified "▶" line (client model → provider/model)

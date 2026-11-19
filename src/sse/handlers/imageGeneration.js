@@ -20,13 +20,14 @@ import { withKeyAdmission } from "../services/keyAdmission.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 import { recordModalityUsage } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui", "veoaifree-web"]);
 
 // Returns true when a usage row was actually written, so the caller can
 // tell a reported-usage success from a no-usage success (G9 fallback below).
-function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoint, usage, requestId }) {
+function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoint, usage, requestId, clientMeta }) {
   if (!usage || typeof usage !== "object") return false;
   const promptTokens = usage.prompt_tokens;
   const completionTokens = usage.completion_tokens;
@@ -45,6 +46,7 @@ function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoi
     status: "success",
     requestId: requestId || undefined,
     meta: { accrual: "reported" },
+    ...(clientMeta || {}),
   }).catch(() => {});
   return true;
 }
@@ -72,6 +74,7 @@ async function handleImageGenerationImpl(request, requestId = null) {
   const wantsStream = (request.headers.get("accept") || "").includes("text/event-stream");
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
+  const clientMeta = clientMetaFromRequest(request);
 
   const apiKey = extractApiKey(request);
   const settings = await getSettings();
@@ -128,7 +131,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     // there is no token or USD figure to count).
     if (result.success) {
       recordModalityUsage({
-        provider, model, connectionId: null, apiKey, endpoint, requestId,
+        provider, model, connectionId: null, apiKey, endpoint, requestId, clientMeta,
         meta: { accrual: "request-only", reason: "provider reports no token usage" },
       });
       return result.response;
@@ -195,6 +198,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
           endpoint,
           usage,
           requestId,
+          clientMeta,
         })) usageRecorded = true;
       },
       onRequestSuccess: async () => {
@@ -215,7 +219,7 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     if (result.success) {
       if (!wantsStream && !usageRecorded) {
         recordModalityUsage({
-          provider, model, connectionId: credentials.connectionId, apiKey, endpoint, requestId,
+          provider, model, connectionId: credentials.connectionId, apiKey, endpoint, requestId, clientMeta,
           meta: { accrual: "request-only", reason: "provider reports no token usage" },
         });
       }

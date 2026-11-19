@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Card, Button, Badge, Input } from "@/shared/components";
 import { errorText } from "@/shared/utils/errorText";
 
@@ -265,8 +266,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         </div>
       </Card>
 
-      {/* Password Modal */}
-      {showPasswordModal && (
+      {/* Password Modal — portaled to document.body (see Modal.js) */}
+      {showPasswordModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
@@ -296,11 +297,12 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Port 443 Conflict Modal */}
-      {port443Conflict && (
+      {/* Port 443 Conflict Modal — portaled to document.body (see Modal.js) */}
+      {port443Conflict && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
             <h3 className="font-semibold text-text-main">Port 443 Already In Use</h3>
@@ -323,7 +325,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

@@ -7,6 +7,20 @@ export const dynamic = "force-dynamic";
 
 const PERIOD_MS = { "24h": 24 * 3600 * 1000, "7d": 7 * 24 * 3600 * 1000, "30d": 30 * 24 * 3600 * 1000 };
 
+// Test/admin hook (pro.29): drop the cached latency payloads so the Admin
+// "Clear caches" action can actually clear them. Returns periods cleared.
+export function __clearLatencyCache() {
+  const n = cache.size;
+  cache.clear();
+  return n;
+}
+
+// Month-to-date: details since local midnight on the 1st of this month.
+function monthStartIso() {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), 1).toISOString();
+}
+
 // m8: short cache like the stats route — the latency build parses up to
 // 5,000 detail blobs per call, and the card refetches on every period
 // change. 5s is invisible (the card shows aggregates, not live rows).
@@ -22,7 +36,7 @@ export async function GET(request) {
     if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
       stats = hit.data;
     } else {
-      const since = PERIOD_MS[period] ? new Date(Date.now() - PERIOD_MS[period]).toISOString() : null;
+      const since = period === "month" ? monthStartIso() : PERIOD_MS[period] ? new Date(Date.now() - PERIOD_MS[period]).toISOString() : null;
       const db = await getAdapter();
       stats = await getLatencyStats(db, since);
       cache.set(period, { ts: Date.now(), data: stats });

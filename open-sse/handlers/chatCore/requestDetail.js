@@ -1,4 +1,5 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
+import { buildClientMeta } from "@/shared/utils/clientMeta.js";
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
 
@@ -80,6 +81,14 @@ export function extractUsageFromResponse(responseBody) {
 }
 
 export function buildRequestDetail(base, overrides = {}) {
+  // Spam/abuse attribution: client IP + country come from the caller's
+  // plain-object headers (clientRawRequest.headers); the key is masked at
+  // record time — the full key never lands in the detail JSON.
+  // Fail-open: attribution must never break detail recording.
+  let attribution = { clientIp: "unknown", country: "unknown", apiKeyMasked: null };
+  try {
+    attribution = buildClientMeta(base.clientRawRequest?.headers || null, base.apiKey);
+  } catch { /* keep unknown attribution */ }
   return {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
@@ -93,6 +102,9 @@ export function buildRequestDetail(base, overrides = {}) {
     response: base.response || {},
     pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
+    clientIp: attribution.clientIp,
+    country: attribution.country,
+    apiKeyMasked: attribution.apiKeyMasked,
     ...overrides
   };
 }
@@ -120,7 +132,7 @@ export function formatDoneLine({ usage, latency }) {
   return parts.join(" · ");
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false, requestId = null, latencyMs = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false, requestId = null, latencyMs = null, clientRawRequest = null }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -141,6 +153,14 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
   };
 
+  // Spam/abuse attribution rides into usageHistory.meta via saveRequestUsage
+  // (client IP + country from the caller's headers; key masked there).
+  // Fail-open: attribution must never break usage recording.
+  let attribution = { clientIp: "unknown", country: "unknown" };
+  try {
+    attribution = buildClientMeta(clientRawRequest?.headers || null, apiKey);
+  } catch { /* keep unknown attribution */ }
+
   saveRequestUsage({
     provider: provider || "unknown",
     model: model || "unknown",
@@ -151,5 +171,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     endpoint: endpoint || null,
     requestId: requestId || undefined,
     latencyMs: Number.isFinite(latencyMs) ? Math.round(latencyMs) : undefined,
+    clientIp: attribution.clientIp,
+    country: attribution.country,
   }).catch(() => {});
 }

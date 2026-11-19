@@ -1,0 +1,14 @@
+/* 9Router Pro — subset of Material Symbols Outlined.
+   Only the 191 glyphs actually used in src/ (plus the a-z/0-9/_ letters
+   their ligatures are built from). Regenerate with:
+   python3 scripts/subset-material-symbols.py
+   Source: material-symbols@0.44.6 (kept in package.json as the subset
+   source). wght/GRAD/opsz are instanced to the values globals.css uses
+   (400/0/24); FILL stays a live axis for .fill-1. */
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url("./material-symbols-outlined-subset.woff2") format("woff2");
+}

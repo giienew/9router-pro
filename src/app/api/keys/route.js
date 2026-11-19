@@ -5,6 +5,7 @@ import { recordQuotaPressure } from "@/lib/trustEvents.js";
 import { getKeyLimitUsage } from "@/lib/keyRateLimiter.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { validateCustomKey } from "@/shared/utils/apiKey";
+import { maskApiKey, toMaskedApiKeyRecord } from "@/shared/utils/maskApiKey.js";
 import { MAX_BULK_IMPORT_ITEMS } from "@/lib/oauth/bulkImport";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,14 @@ export async function GET() {
         };
       }
     } catch {}
-    return NextResponse.json({ keys });
+    // NOTE (audit item 3): usageHistory rows are keyed by the PLAINTEXT
+    // presented key, while apiKeys.key is now a hash — so for a hashed
+    // row getKeyUsageInWindow(storedHash) matches nothing and quotaUsed /
+    // tpmUsed read 0 in this list response. Quota ENFORCEMENT is unaffected
+    // (admission passes the presented raw key). Per-key usage display for
+    // hashed keys needs usage attribution by key id/hash — follow-up work,
+    // not a silent change: do not "fix" this by echoing plaintext here.
+    return NextResponse.json({ keys: keys.map(toMaskedApiKeyRecord) });
   } catch (error) {
     console.log("Error fetching keys:", error);
     return NextResponse.json({ error: "Failed to fetch keys" }, { status: 500 });
@@ -85,8 +93,12 @@ export async function POST(request) {
     const machineId = await getConsistentMachineId();
     const apiKey = await createApiKey(trimmedName, machineId, customValue ? { customKey: customValue } : { prefix: keyPrefix });
 
+    // Audit item 3: `key` below is the ONE-TIME plaintext from creation
+    // (createApiKey stores only its hash). This 201 is the only response
+    // that ever carries a full key value; every read returns keyMasked.
     return NextResponse.json({
       key: apiKey.key,
+      keyMasked: maskApiKey(apiKey.key),
       name: apiKey.name,
       id: apiKey.id,
       machineId: apiKey.machineId,

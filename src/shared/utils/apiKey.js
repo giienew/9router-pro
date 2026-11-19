@@ -3,15 +3,14 @@ import crypto from "crypto";
 const API_KEY_SECRET = process.env.API_KEY_SECRET || "endpoint-proxy-api-key-secret";
 
 /**
- * Generate 6-char random keyId
+ * Generate the random keyId segment of an API key: 24 bytes from the
+ * cryptographic RNG, hex-encoded (48 chars, ~192 bits). Math.random must
+ * never feed key material — its output is predictable and the keyId is the
+ * only per-key secret in the {prefix}-{machineId}-{keyId}-{crc8} format
+ * (the CRC is a deterministic HMAC of machineId+keyId).
  */
 function generateKeyId() {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return crypto.randomBytes(24).toString("hex");
 }
 
 /**
@@ -60,15 +59,104 @@ export function validateCustomKey(value) {
 /**
  * Prefix of a standard-format key (multi-dash prefixes included), or null
  * when the value does not parse as a standard key (custom values, old format).
+ * A HASHED stored value (see hashApiKey) carries its original prefix in the
+ * second segment, so regenerate keeps the prefix after migration.
  * @param {string} apiKey
  * @returns {string | null}
  */
 export function prefixOfStandardKey(apiKey) {
+  const hashed = parseHashedApiKey(apiKey);
+  if (hashed) return hashed.prefix || null;
   const parsed = parseApiKey(apiKey);
   if (!parsed || !parsed.isNewFormat) return null;
   const parts = apiKey.split("-");
   const prefix = parts.slice(0, parts.length - 3).join("-");
   return prefix || null;
+}
+
+// ─── Hashed storage (audit item 3) ──────────────────────────────────────
+// Router keys are stored ONLY as a hash: `sha256:<prefix>:<last4>:<hex>`,
+// where <hex> is SHA-256 of the exact presented value and <prefix>/<last4>
+// are non-secret display hints (the dashboard already showed first-8 +
+// last-4). The plaintext exists only in memory at creation/rotation time.
+// A stored hash presented as a bearer token must NEVER authenticate:
+// hashApiKey(storedHash) != storedHash, and the legacy lookup below
+// rejects hashed rows outright.
+
+// Stored-hash format guard. Custom keys may only contain [A-Za-z0-9_-]
+// (validateCustomKey) and generated keys only dashes, so a ":" can never
+// appear in a genuine plaintext key — the prefix is unambiguous.
+export const HASHED_API_KEY_PREFIX = "sha256:";
+
+/**
+ * Hash a plaintext router key for storage. Deterministic: the same
+ * presented value always maps to the same stored string, so the hash
+ * column stays UNIQUE-indexable and lookups stay indexed.
+ * @param {string} value exact presented/plaintext key (never trimmed here:
+ *   the caller passes the exact value it validated/created)
+ * @returns {string} `sha256:<prefix>:<last4>:<hex>`
+ */
+export function hashApiKey(value) {
+  if (!value || typeof value !== "string") throw new Error("hashApiKey requires a key value");
+  const digest = crypto.createHash("sha256").update(value, "utf8").digest("hex");
+  const parsed = parseApiKey(value);
+  const prefix = parsed?.isNewFormat
+    ? value.split("-").slice(0, value.split("-").length - 3).join("-")
+    : "";
+  return `${HASHED_API_KEY_PREFIX}${prefix}:${value.slice(-4)}:${digest}`;
+}
+
+/**
+ * Parse a stored hashed key, or null when the value is not hashed
+ * (legacy plaintext) or malformed.
+ * @param {string} stored
+ * @returns {{ prefix: string, last4: string, digest: string } | null}
+ */
+export function parseHashedApiKey(stored) {
+  if (!stored || typeof stored !== "string") return null;
+  if (!stored.startsWith(HASHED_API_KEY_PREFIX)) return null;
+  const parts = stored.slice(HASHED_API_KEY_PREFIX.length).split(":");
+  if (parts.length !== 3) return null;
+  const [prefix, last4, digest] = parts;
+  if (!/^[A-Za-z0-9_-]*$/.test(prefix)) return null;
+  if (!last4 || last4.length > 8) return null;
+  if (!/^[0-9a-f]{64}$/.test(digest)) return null;
+  return { prefix, last4, digest };
+}
+
+export function isHashedApiKey(stored) {
+  return parseHashedApiKey(stored) !== null;
+}
+
+/** Last 4 of a stored key, hashed or legacy plaintext, or null. */
+export function storedKeyLast4(stored) {
+  const parsed = parseHashedApiKey(stored);
+  if (parsed) return parsed.last4;
+  if (typeof stored === "string" && stored.trim()) return stored.trim().slice(-4);
+  return null;
+}
+
+/**
+ * Constant-time verification of a presented key against a stored value
+ * (hashed or legacy plaintext). ALWAYS compares fixed-length 32-byte
+ * SHA-256 digests with crypto.timingSafeEqual — never the raw strings —
+ * so comparison time does not leak how much of the key matched. A
+ * malformed stored value fails closed (false, never throws: timingSafeEqual
+ * throws on length mismatch, and both digests here are always 32 bytes).
+ * @param {string} presented key as presented by the caller
+ * @param {string} stored value from apiKeys.key (hashed or legacy plaintext)
+ * @returns {boolean}
+ */
+export function verifyApiKeyHash(presented, stored) {
+  if (!presented || typeof presented !== "string") return false;
+  if (!stored || typeof stored !== "string") return false;
+  const presentedDigest = crypto.createHash("sha256").update(presented, "utf8").digest();
+  const parsed = parseHashedApiKey(stored);
+  const storedDigest = parsed
+    ? Buffer.from(parsed.digest, "hex")
+    : crypto.createHash("sha256").update(stored, "utf8").digest();
+  if (storedDigest.length !== presentedDigest.length) return false;
+  return crypto.timingSafeEqual(presentedDigest, storedDigest);
 }
 
 /**

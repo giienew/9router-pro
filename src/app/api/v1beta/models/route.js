@@ -1,4 +1,5 @@
 import { PROVIDER_MODELS } from "@/shared/constants/models";
+import { enforceBlockedIp } from "@/lib/spamAbuse.js";
 
 /**
  * Handle CORS preflight
@@ -17,8 +18,12 @@ export async function OPTIONS() {
  * GET /v1beta/models - Gemini compatible models list
  * Returns models in Gemini API format
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    // Spam/abuse IP blocklist: 403 before any catalog work. The dashboard
+    // login is a different route and is never gated by this list.
+    const blocked = await enforceBlockedIp(request);
+    if (blocked) return blocked;
     const models = [];
     const seen = new Set();
 
@@ -57,6 +62,6 @@ export async function GET() {
     return Response.json({ models });
   } catch (error) {
     console.log("Error fetching models:", error);
-    return Response.json({ error: { message: error.message } }, { status: 500 });
+    return Response.json({ error: { message: "Failed to fetch models" } }, { status: 500 });
   }
 }

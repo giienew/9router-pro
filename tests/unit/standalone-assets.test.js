@@ -48,6 +48,24 @@ describe("standalone build assets", () => {
       .toBe("wrapper");
   });
 
+  // PM2 runs the generated standalone server.js, not custom-server.js, so
+  // the peer-token stamping never ran and every chat row recorded
+  // clientIp "unknown". The standalone must boot through the wrapper.
+  it("prepends the wrapper require to the generated standalone server.js", () => {
+    const projectRoot = createBuildFixture(".next");
+    writeFileSync(join(projectRoot, "custom-server.js"), "wrapper");
+    writeFileSync(join(projectRoot, ".next", "standalone", "server.js"), "require(\"next\");\n");
+
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+    // A second postbuild must not duplicate the require.
+    copyStandaloneAssets({ projectRoot, distDir: ".next" });
+
+    const serverJs = readFileSync(join(projectRoot, ".next", "standalone", "server.js"), "utf8");
+    expect(serverJs.startsWith("require(\"./custom-server.js\");\n")).toBe(true);
+    expect(serverJs).toContain("require(\"next\");");
+    expect(serverJs.match(/custom-server\.js/g)).toHaveLength(1);
+  });
+
   it("does not modify workspace-traced CLI builds", () => {
     const projectRoot = createBuildFixture(".next-cli-build");
     const previousMode = process.env.NEXT_TRACING_ROOT_MODE;

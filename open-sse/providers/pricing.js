@@ -202,6 +202,67 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
   },
+  // Cloudflare Workers AI — rates from the official pricing page
+  // https://developers.cloudflare.com/workers-ai/platform/pricing/ (updated
+  // 2026-11-18), $/1M tokens. Workers AI bills in Neurons ($0.011/1,000;
+  // 10,000 free/day), but the page publishes the token-equivalent rate per
+  // model, which is what Pro's token-based cost model uses. `cached` is set
+  // ONLY where Cloudflare publishes a cached-input rate; otherwise it
+  // falls back to `input` in calculateCostFromTokens. `cache_creation` is
+  // omitted everywhere (falls back to input — Cloudflare publishes no
+  // separate cache-write price). NOT priced here, by design:
+  //   - 6 chat/LoRA models Cloudflare lists no token rate for
+  //     (llama-2-7b-chat-hf-lora, gemma-2b-it-lora, gemma-7b-it-lora,
+  //     mistral-7b-instruct-v0.2-lora, apertus-v1.5-8b, eurollm-9b-it):
+  //     they cost $0 in Pro until the admin sets an override. Do NOT guess
+  //     a rate from the base model.
+  //   - 10 image models (flux / lucid / phoenix / SD variants): billed per
+  //     512x512 tile and per step, not per token — Pro's token cost model
+  //     cannot express them, so they stay unpriced ($0) rather than
+  //     carrying a wrong per-token number.
+  //   - SystemOne models (clef / clairic) publish an input-only rate (no
+  //     output tokens); output is 0. clairic is $0.100 promo until
+  //     2026-12-01, then $0.240 — the entry below uses the promo rate and
+  //     must be re-checked after that date.
+  "cloudflare-ai": {
+    "@cf/meta/llama-3.2-1b-instruct": { input: 0.027, output: 0.201 },
+    "@cf/meta/llama-3.2-3b-instruct": { input: 0.051, output: 0.335 },
+    "@cf/meta/llama-3.1-8b-instruct-fp8-fast": { input: 0.045, output: 0.384 },
+    "@cf/meta/llama-3.1-8b-instruct-fp8": { input: 0.152, output: 0.287 },
+    "@cf/mistralai/mistral-small-3.1-24b-instruct": { input: 0.351, output: 0.555 },
+    "@cf/meta/llama-3.1-70b-instruct-fp8-fast": { input: 0.293, output: 2.253 },
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast": { input: 0.293, output: 2.253 },
+    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": { input: 0.497, output: 4.881 },
+    "@cf/deepseek-ai/deepseek-v4-flash-0731": { input: 0.440, output: 1.320, cached: 0.014 },
+    "@cf/deepseek-ai/deepseek-v4-pro-0813": { input: 1.320, output: 3.960, cached: 0.044 },
+    "@cf/deepseek-ai/deepseek-v4.1-flash-1017": { input: 0.300, output: 1.200, cached: 0.006 },
+    "@cf/moonshotai/kimi-k2.6": { input: 0.950, output: 4.000, cached: 0.160 },
+    "@cf/moonshotai/kimi-k2.7-code": { input: 0.950, output: 4.000, cached: 0.190 },
+    "@cf/zai-org/glm-4.7-flash": { input: 0.060, output: 0.400 },
+    "@cf/qwen/qwq-32b": { input: 0.660, output: 1.000 },
+    "@cf/qwen/qwen2.5-coder-32b-instruct": { input: 0.660, output: 1.000 },
+    "@cf/qwen/qwen3.8-27b": { input: 0.450, output: 3.200 },
+    "@cf/qwen/qwen3-30b-a3b-fp8": { input: 0.051, output: 0.335 },
+    "@cf/openai/gpt-oss-120b": { input: 0.350, output: 0.750 },
+    "@cf/openai/gpt-oss-20b": { input: 0.200, output: 0.300 },
+    "@cf/meta/llama-4-scout-17b-16e-instruct": { input: 0.270, output: 0.850 },
+    "@cf/meta/llama-3.2-11b-vision-instruct": { input: 0.049, output: 0.676 },
+    "@cf/meta/llama-guard-3-8b": { input: 0.484, output: 0.030 },
+    "@cf/google/gemma-4-26b-a4b-it": { input: 0.100, output: 0.300 },
+    "@cf/aisingapore/gemma-sea-lion-v4-27b-it": { input: 0.351, output: 0.555 },
+    "@cf/nvidia/nemotron-3-120b-a12b": { input: 0.500, output: 1.500 },
+    "@cf/zai-org/glm-5.2": { input: 1.400, output: 4.400, cached: 0.260 },
+    "@cf/zai-org/glm-5.3": { input: 1.400, output: 4.400, cached: 0.260 },
+    "@cf/zai-org/glm-5.3-flash": { input: 0.150, output: 0.500, cached: 0.030 },
+    "@cf/ibm-granite/granite-4.0-h-micro": { input: 0.017, output: 0.112 },
+    "@cf/thinkingmachines/inkling-2-small": { input: 0.300, output: 1.000, cached: 0.100 },
+    "@cf/daily-co/phonellm-mini-alpha-2": { input: 0.060, output: 0.240 },
+    "@cf/cloudflare/clef-flash": { input: 0.038, output: 0 },
+    "@cf/cloudflare/clef": { input: 0.240, output: 0 },
+    "@cf/cloudflare/clef-omni": { input: 0.150, output: 0 },
+    "@cf/cloudflare/clairic": { input: 0.100, output: 0 },
+    "@cf/cloudflare/clairic-flash": { input: 0.100, output: 0 },
+  },
   // TokenRouter — exact rates from https://api.tokenrouter.com/api/pricing ($1/1M tokens).
   // Ratio→USD: input = model_ratio×2, output = model_ratio×completion_ratio×2.
   // These override the canonical MODEL_PRICING/PATTERN_PRICING, whose rates often
@@ -351,7 +412,7 @@ export const PATTERN_PRICING = [
   { pattern: "gemini-*-pro",    pricing: { input: 2.00,  output: 12.00, cached: 0.25,  reasoning: 18.00,  cache_creation: 2.00  } },
   { pattern: "gemini-3-*",      pricing: { input: 0.50,  output: 3.00,  cached: 0.03,  reasoning: 4.50,   cache_creation: 0.50  } },
   { pattern: "gemini-2.5-*",    pricing: { input: 0.30,  output: 2.50,  cached: 0.03,  reasoning: 3.75,   cache_creation: 0.30  } },
-  { pattern: "gemini-4-*",      pricing: { input: 2.00,  output: 10.00, cached: 0.10,  reasoning: 10.00,  cache_creation: 0.1875 } },
+  { pattern: "gemini-4-*",      pricing: { input: 2.00,  output: 10.00, cached: 0.10,  reasoning: 10.00,  cache_creation: 2.00 } },
   { pattern: "gemini-*",        pricing: { input: 0.50,  output: 3.00,  cached: 0.03,  reasoning: 4.50,   cache_creation: 0.50  } },
 
   // --- GPT (specific first, generic last) ---

@@ -15,6 +15,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
 import { recordModalityUsage } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
@@ -144,6 +145,7 @@ async function handleSystemoneImpl(request, requestId = null) {
           connectionId: credentials.connectionId,
           apiKey,
           endpoint: url.pathname,
+          ...clientMetaFromRequest(request),
           tokens: {
             ...result.usage,
             total_tokens: result.usage.prompt_tokens + result.usage.completion_tokens,
@@ -158,6 +160,7 @@ async function handleSystemoneImpl(request, requestId = null) {
         recordModalityUsage({
           provider, model, connectionId: credentials.connectionId, apiKey,
           endpoint: url.pathname, requestId,
+          clientMeta: clientMetaFromRequest(request),
           meta: { accrual: "request-only", reason: "provider reports no token usage" },
         });
       }

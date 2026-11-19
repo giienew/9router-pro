@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import Link from "next/link";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal, Tooltip } from "@/shared/components";
@@ -421,7 +422,7 @@ export default function APIPageClient({ machineId }) {
       polling = false;
       const data = await res.json();
       if (!res.ok) {
-        setTunnelStatus({ type: "error", message: data.error || "Failed to enable tunnel" });
+        setTunnelStatus({ type: "error", message: errorText(data, "Failed to enable tunnel") });
         return;
       }
 
@@ -455,7 +456,7 @@ export default function APIPageClient({ machineId }) {
         setShowDisableTunnelModal(false);
         setTunnelStatus({ type: "success", message: "Tunnel disabled" });
       } else {
-        setTunnelStatus({ type: "error", message: data.error || "Failed to disable tunnel" });
+        setTunnelStatus({ type: "error", message: errorText(data, "Failed to disable tunnel") });
       }
     } catch (error) {
       setTunnelStatus({ type: "error", message: error.message });
@@ -617,7 +618,7 @@ export default function APIPageClient({ machineId }) {
         return;
       }
 
-      setTsStatus({ type: "error", message: data.error || "Failed to connect" });
+      setTsStatus({ type: "error", message: errorText(data, "Failed to connect") });
     } catch (error) {
       setTsStatus({ type: "error", message: error.message });
     } finally {
@@ -647,7 +648,7 @@ export default function APIPageClient({ machineId }) {
         if (data.funnelNotEnabled) continue;
         if (data.error) {
           clearUserAuth();
-          setTsStatus({ type: "error", message: data.error });
+          setTsStatus({ type: "error", message: errorText(data, "Failed to check Tailscale status") });
           return;
         }
       } catch { /* retry */ }
@@ -668,7 +669,7 @@ export default function APIPageClient({ machineId }) {
         setShowDisableTsModal(false);
         setTsStatus({ type: "success", message: "Tailscale disabled" });
       } else {
-        setTsStatus({ type: "error", message: data.error || "Failed to disable Tailscale" });
+        setTsStatus({ type: "error", message: errorText(data, "Failed to disable Tailscale") });
       }
     } catch (e) {
       setTsStatus({ type: "error", message: e.message });
@@ -1853,7 +1854,7 @@ export default function APIPageClient({ machineId }) {
               Save this key now!
             </p>
             <p className="text-sm text-yellow-700 dark:text-yellow-300">
-              Store this key securely. You can view or copy it later from the API Keys list.
+              This is the only time you will see this key. Store it securely.
             </p>
           </div>
           <div className="flex gap-2">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { createProviderConnection } from "@/models";
 
 /**
@@ -132,6 +133,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("iFlow cookie auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "iflow_cookie_failed", message: "Failed to authenticate with iFlow" });
   }
 }

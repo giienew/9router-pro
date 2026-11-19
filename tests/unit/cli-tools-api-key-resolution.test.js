@@ -84,8 +84,13 @@ describe("resolveApiKey.js source checks (#4399)", () => {
     expect(src).toContain("resolveCliApiKey");
   });
 
-  it("resolveApiKey.js imports getApiKeys from DB", () => {
-    expect(src).toContain("getApiKeys");
+  it("resolveApiKey.js falls back to the internal service token, not a stored user key", () => {
+    // pro.29 (audit item 3 follow-up): router keys are hashed at rest, so a
+    // stored user key is no longer a usable plaintext credential. The
+    // fallback is the server-side internal service token, accepted by
+    // validateApiKey and never exposed via API.
+    expect(src).toContain("getInternalApiToken");
+    expect(src).not.toContain("getApiKeys");
   });
 
   it("resolveApiKey.js does not return sk_9router as a fallback value", () => {

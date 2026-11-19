@@ -13,6 +13,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
 import { recordModalityUsage, estimateTokensFromText } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
@@ -80,7 +81,7 @@ async function handleSttImpl(request, requestId = null) {
   log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   const apiKey = extractApiKey(request);
-  const usageCtx = { apiKey, endpoint: "/v1/audio/transcriptions", requestId };
+  const usageCtx = { apiKey, endpoint: "/v1/audio/transcriptions", requestId, clientMeta: clientMetaFromRequest(request) };
   const settings = await getSettings();
   if (settings.requireApiKey) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");

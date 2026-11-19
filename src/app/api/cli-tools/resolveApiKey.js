@@ -9,14 +9,15 @@
  *
  * Resolution order:
  *   1. The key supplied by the caller (non-empty string).
- *   2. The first active key in the dashboard's apiKeys table.
+ *   2. The server-side internal service token (router keys are hashed at
+ *      rest, so a stored user key is no longer usable plaintext).
  *   3. Empty string — the route writes no Authorization header value,
  *      which is fine for requireApiKey=false deployments.
  *
  * The placeholder "sk_9router" is NEVER written; it was never a real key.
  */
 
-import { getApiKeys } from "@/lib/db";
+import { getInternalApiToken } from "@/lib/auth/internalToken.js";
 
 /**
  * @param {string|null|undefined} callerKey  Key sent by the frontend.
@@ -26,10 +27,11 @@ export async function resolveCliApiKey(callerKey) {
   if (callerKey && callerKey.trim() && callerKey.trim() !== "sk_9router") {
     return callerKey.trim();
   }
+  // Router keys are hashed at rest, so a stored user key is no longer a
+  // usable plaintext credential. Fall back to the server-side internal
+  // service token (accepted by validateApiKey, never exposed via API).
   try {
-    const keys = await getApiKeys();
-    const active = keys.find((k) => k.isActive);
-    return active?.key || "";
+    return await getInternalApiToken();
   } catch {
     return "";
   }

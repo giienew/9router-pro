@@ -54,20 +54,20 @@ const nonEmptyString = (s) => typeof s === "string" && s.length > 0;
 
 // Anthropic Messages event.
 function inspectClaudeEvent(obj) {
-  let content = false, finishReason = null;
+  let content = false, finishReason = null, text = "";
   if (obj.type === CLAUDE_EVENT.CONTENT_BLOCK_DELTA) {
     const d = obj.delta || {};
-    if (d.type === CLAUDE_DELTA.TEXT && nonEmptyString(d.text)) content = true;
+    if (d.type === CLAUDE_DELTA.TEXT && nonEmptyString(d.text)) { content = true; text = d.text; }
     if (d.type === CLAUDE_DELTA.INPUT_JSON && nonEmptyString(d.partial_json)) content = true;
   } else if (obj.type === CLAUDE_EVENT.CONTENT_BLOCK_START) {
     const b = obj.content_block || {};
     if (b.type === CLAUDE_BLOCK.TOOL_USE) content = true;
-    if (b.type === CLAUDE_BLOCK.TEXT && nonEmptyString(b.text)) content = true;
+    if (b.type === CLAUDE_BLOCK.TEXT && nonEmptyString(b.text)) { content = true; text = b.text; }
   } else if (obj.type === CLAUDE_EVENT.MESSAGE_DELTA && obj.delta?.stop_reason) {
     // refusal → content_filter (the translator renders content_filter as refusal for Claude clients)
     finishReason = toOpenAIFinish(obj.delta.stop_reason, FORMATS.CLAUDE);
   }
-  return { content, finishReason };
+  return { content, finishReason, text };
 }
 
 // OpenAI Responses event. Tool calls are function_call / custom_tool_call output items or
@@ -79,15 +79,17 @@ const RESPONSES_INCOMPLETE_FINISH = {
   [RESPONSES_INCOMPLETE_REASON.MAX_OUTPUT_TOKENS]: OPENAI_FINISH.LENGTH,
 };
 function inspectResponsesEvent(obj) {
-  let content = false, finishReason = null;
+  let content = false, finishReason = null, text = "";
   switch (obj.type) {
     case RESPONSES_EVENT.OUTPUT_TEXT_DELTA:
     case RESPONSES_EVENT.FUNCTION_CALL_ARGUMENTS_DELTA:
     case RESPONSES_EVENT.CUSTOM_TOOL_CALL_INPUT_DELTA:
       content = nonEmptyString(obj.delta);
+      if (obj.type === RESPONSES_EVENT.OUTPUT_TEXT_DELTA && typeof obj.delta === "string") text = obj.delta;
       break;
     case RESPONSES_EVENT.OUTPUT_TEXT_DONE:
       content = nonEmptyString(obj.text);
+      if (typeof obj.text === "string") text = obj.text;
       break;
     case RESPONSES_EVENT.OUTPUT_ITEM_ADDED:
     case RESPONSES_EVENT.OUTPUT_ITEM_DONE:
@@ -103,23 +105,37 @@ function inspectResponsesEvent(obj) {
       finishReason = RESPONSES_STATUS.FAILED;
       break;
   }
-  return { content, finishReason };
+  return { content, finishReason, text };
 }
 
 // Inspect one complete client-format SSE line (parsed with the shared parseSSELine) and report
 // whether it carries content and/or a finish reason. Non-data lines and "[DONE]" carry nothing.
+// `text` is the assistant text carried by the frame ("" when none) — the banner check below
+// needs the words, not just the fact that content exists.
 export function inspectSSELine(line) {
   const parsed = parseSSELine(line.trimStart());
-  if (!parsed || parsed.done) return { content: false, finishReason: null };
+  if (!parsed || parsed.done) return { content: false, finishReason: null, text: "" };
   if (typeof parsed.type === "string" && !Array.isArray(parsed.choices)) {
     return parsed.type.startsWith(RESPONSES_EVENT_PREFIX) ? inspectResponsesEvent(parsed) : inspectClaudeEvent(parsed);
   }
-  let content = false, finishReason = null;
+  let content = false, finishReason = null, text = "";
   for (const choice of parsed.choices || []) {
     if (deltaHasClientContent(choice.delta || choice.message || {})) content = true;
     if (choice.finish_reason) finishReason = choice.finish_reason;
+    text += extractOpenAIText(choice.delta || choice.message || {});
   }
-  return { content, finishReason };
+  return { content, finishReason, text };
+}
+
+// Assistant text carried by one OpenAI chat delta/message: string content, or
+// the text parts of an array content. Tool calls carry no text.
+function extractOpenAIText(delta) {
+  const c = delta?.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) {
+    return c.map((p) => (p?.type === "text" && typeof p.text === "string" ? p.text : "")).join("");
+  }
+  return "";
 }
 
 // Scan the COMPLETE lines of a decoded SSE buffer and update the running decision.
@@ -132,8 +148,91 @@ export function scanSSEBuffer(text, state = { sawContent: false, finishReason: n
     const info = inspectSSELine(line);
     if (info.content) state.sawContent = true;
     if (info.finishReason) state.finishReason = info.finishReason;
+    if (info.text) state.contentText = (state.contentText || "") + info.text;
   }
   return state;
+}
+
+// Error-banner text: an upstream fault delivered as the turn's only content
+// with HTTP 200 (Antigravity's agent path reports e.g. "Agent execution
+// terminated due to error ..." as plain text + finishReason STOP/end_turn —
+// the Go agy-ACP shape). The peek's "any text = content" rule would commit
+// such a turn as success and combo failover would never advance, so a
+// banner-only stream is classified as retryable ("empty") instead.
+//
+// The bar is deliberately narrow: the WHOLE accumulated client text must be
+// banner-shaped (short, and matching a fault phrase). A real answer that
+// merely mentions "capacity" or "timeout" mid-text never matches, because the
+// match must cover the whole text. A banner split across SSE frames is held
+// open while the text is still a prefix of a known banner lead-in; once the
+// text outgrows the banner shape the stream commits as content immediately,
+// so the hold only ever applies to banner-suspect streams. A banner-suspect
+// stream that stalls is fail-open: the peek deadline still commits it as
+// content, exactly like any other stalled stream.
+export const ERROR_BANNER_MAX_CHARS = 2000;
+export const ERROR_BANNER_FINISH = "error-banner";
+
+const ERROR_BANNER_PATTERNS = [
+  /agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
+  /high\s+traffic/i,
+  /temporarily\s+unavailable/i,
+  /service\s+unavailable/i,
+  /quota\s+(exceeded|exhausted|reached)/i,
+  /rate\s*limit(?:ed| exceeded)?/i,
+  /stream\s+(ended|closed|terminated|interrupted)/i,
+  /empty\s+response/i,
+  /request\s+timed?\s*out/i,
+  /capacity\s+(exceeded|exhausted|reached|unavailable)/i,
+  /internal\s+(server\s+)?error/i,
+  /try\s+again\s+later/i,
+  /\bmodel\b.{0,40}\b(unavailable|overloaded|not\s+available)\b/i,
+];
+
+// Literal lead-ins a banner can be split across: while the accumulated text
+// is a strict prefix of one of these, the turn may still become a banner.
+const ERROR_BANNER_LEAD_INS = [
+  "agent execution terminated due to error",
+  "high traffic",
+  "temporarily unavailable",
+  "service unavailable",
+  "quota exceeded",
+  "quota exhausted",
+  "rate limit",
+  "stream ended",
+  "stream closed",
+  "stream terminated",
+  "stream interrupted",
+  "empty response",
+  "request timed out",
+  "capacity exceeded",
+  "internal error",
+  "try again later",
+];
+
+// True when the whole accumulated text is an upstream error banner, not an answer.
+// The fault phrase must BE the turn, not its opening line: strip every banner
+// phrase and require no substantial non-banner text to remain, so an answer
+// that merely mentions (or starts with) a fault phrase is not misclassified.
+export function isErrorBannerText(text) {
+  if (typeof text !== "string") return false;
+  const t = text.trim();
+  if (!t || t.length > ERROR_BANNER_MAX_CHARS) return false;
+  if (!ERROR_BANNER_PATTERNS.some((p) => p.test(t))) return false;
+  const combined = new RegExp(ERROR_BANNER_PATTERNS.map((p) => p.source).join("|"), "gi");
+  const rest = t.replace(combined, "").replace(/[\s.,;:!?—–\-()[\]"'“”]+/g, "");
+  return rest.length <= 40;
+}
+
+// True while the accumulated text could still resolve into a banner: it
+// already matches a banner pattern, or it is a strict prefix of a known
+// banner lead-in (banner split across SSE frames).
+export function isBannerSuspect(text) {
+  if (typeof text !== "string") return false;
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  if (isErrorBannerText(t)) return true;
+  if (t.length >= ERROR_BANNER_MAX_CHARS) return false;
+  return ERROR_BANNER_LEAD_INS.some((lead) => lead.startsWith(t));
 }
 
 // True when a finished, content-less stream should NOT be retried because the emptiness
@@ -145,15 +244,16 @@ export function isNoRetryFinish(finishReason) {
 }
 
 // Peek a streaming Response body: read frames until the first content frame (→ "content"),
-// the stream ends (→ "empty"), or the deadline elapses (→ "content", fail-open: never hold a
-// possibly-valid slow stream). Returns the decision, the buffered head bytes, the live reader,
-// and — if the deadline fired mid-read — the still-pending read() (`pendingRead`) so the caller
-// can resume from it WITHOUT abandoning the chunk it will deliver.
+// the stream ends (→ "empty", or "empty" with finishReason "error-banner" when the only
+// content was an upstream error banner), or the deadline elapses (→ "content", fail-open:
+// never hold a possibly-valid slow stream). Returns the decision, the buffered head bytes,
+// the live reader, and — if the deadline fired mid-read — the still-pending read()
+// (`pendingRead`) so the caller can resume from it WITHOUT abandoning the chunk it will deliver.
 export async function peekStreamForContent(body, { deadlineMs = EMPTY_PEEK_DEADLINE_MS } = {}) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const headChunks = [];
-  const state = { sawContent: false, finishReason: null };
+  const state = { sawContent: false, finishReason: null, contentText: "" };
   let textBuf = "";
 
   // Clamp: 0 / NaN / negative would otherwise disable the timeout and let a stalled-but-open
@@ -172,8 +272,10 @@ export async function peekStreamForContent(body, { deadlineMs = EMPTY_PEEK_DEADL
     } catch (err) {
       // Upstream errored mid-peek. Body is locked to this reader; hand it back so the caller
       // can reconstruct (the replay will surface the same error). The failed read is consumed.
+      // A banner-only stream that errors mid-read is still a retryable failure, not content.
       pendingRead = null;
-      return settle({ outcome: state.sawContent ? "content" : "empty", timedOut: false, head: headChunks, reader, pendingRead: null, finishReason: state.finishReason, error: err });
+      const bannerOnly = state.sawContent && isErrorBannerText(state.contentText);
+      return settle({ outcome: bannerOnly ? "empty" : (state.sawContent ? "content" : "empty"), timedOut: false, head: headChunks, reader, pendingRead: null, finishReason: bannerOnly ? ERROR_BANNER_FINISH : state.finishReason, error: err });
     }
     if (res === "__deadline__") {
       // Fail-open: commit whatever we have. Hand the STILL-PENDING read to the caller so its
@@ -184,13 +286,22 @@ export async function peekStreamForContent(body, { deadlineMs = EMPTY_PEEK_DEADL
     pendingRead = null;
     if (done) {
       if (textBuf) scanSSEBuffer(textBuf + "\n", state); // final line without a trailing newline
-      return settle({ outcome: state.sawContent ? "content" : "empty", timedOut: false, head: headChunks, reader, pendingRead: null, finishReason: state.finishReason });
+      // Banner-only turn: the only "content" was an upstream fault banner, so
+      // the combo must fall through to the next candidate (same as empty).
+      // finishReason "error-banner" is not in NO_RETRY_EMPTY_FINISH, so the
+      // combo treats it as retryable; on the last candidate it returns the
+      // reconstructed stream as-is, so the client still sees the banner.
+      const bannerOnly = state.sawContent && isErrorBannerText(state.contentText);
+      return settle({ outcome: bannerOnly ? "empty" : (state.sawContent ? "content" : "empty"), timedOut: false, head: headChunks, reader, pendingRead: null, finishReason: bannerOnly ? ERROR_BANNER_FINISH : state.finishReason });
     }
     headChunks.push(value);
     textBuf += decoder.decode(value, { stream: true });
     scanSSEBuffer(textBuf, state);
     textBuf = state.pending; // only the not-yet-complete line carries over
-    if (state.sawContent) {
+    // Commit on first real content — unless the text so far is banner-shaped
+    // (or still a prefix of a banner lead-in): keep reading until the turn
+    // ends, more non-banner text arrives, or the deadline fires (fail-open).
+    if (state.sawContent && !isBannerSuspect(state.contentText)) {
       return settle({ outcome: "content", timedOut: false, head: headChunks, reader, pendingRead: null, finishReason: state.finishReason });
     }
   }

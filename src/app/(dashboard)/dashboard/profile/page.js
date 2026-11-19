@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
@@ -511,7 +512,7 @@ export default function ProfilePage() {
           message: statusMessage,
         });
       } else {
-        setOidcTestStatus({ type: "error", message: data.error || "OIDC connection test failed" });
+        setOidcTestStatus({ type: "error", message: errorText(data, "OIDC connection test failed") });
       }
     } catch (err) {
       setOidcTestStatus({ type: "error", message: "An error occurred" });
@@ -664,7 +665,7 @@ export default function ProfilePage() {
       if (res.ok && data.ok) {
         setSamlTestStatus({ type: "success", message: data.message || "SAML configuration verified!" });
       } else {
-        setSamlTestStatus({ type: "error", message: data.error || "SAML configuration test failed" });
+        setSamlTestStatus({ type: "error", message: errorText(data, "SAML configuration test failed") });
       }
     } catch {
       setSamlTestStatus({ type: "error", message: "An error occurred while testing SAML configuration" });
@@ -1857,6 +1858,20 @@ export default function ProfilePage() {
               />
             </div>
 
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Least Busy</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Send each request to the account with the fewest live requests — spreads agent load across farmed keys
+                </p>
+              </div>
+              <Toggle
+                checked={settings.fallbackStrategy === "least-busy"}
+                onChange={() => updateFallbackStrategy("least-busy")}
+                disabled={loading}
+              />
+            </div>
+
             {/* Sticky Round Robin Limit */}
             {settings.fallbackStrategy === "round-robin" && (
               <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
@@ -1921,7 +1936,9 @@ export default function ProfilePage() {
                   ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
                   : settings.fallbackStrategy === "sticky-random"
                     ? "Currently sticking to one working account until it fails, then picking another at random (Sticky Random)."
-                    : "Currently using accounts in priority order (Fill First)."}
+                    : settings.fallbackStrategy === "least-busy"
+                      ? "Currently sending each request to the account with the fewest live requests (Least Busy) — agent load spreads across farmed keys."
+                      : "Currently using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
                 : settings.comboStrategy === "fallback"

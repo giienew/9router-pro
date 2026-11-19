@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
@@ -118,7 +119,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Import failed");
+      if (!res.ok || !data.success) throw new Error(errorText(data, "Import failed"));
       onSuccess?.(data.connection);
       onClose();
     } catch (err) {
@@ -140,7 +141,7 @@ export default function XiaomiMimoAuthModal({ isOpen, onSuccess, onClose }) {
         body: JSON.stringify({ region }),
       });
       const data = await res.json();
-      if (!res.ok || !data.pageUrl) throw new Error(data.error || "Failed to start login");
+      if (!res.ok || !data.pageUrl) throw new Error(errorText(data, "Failed to start login"));
       setSessPageUrl(data.pageUrl);
       window.open(data.pageUrl, "mimo-session-login", "width=500,height=760");
       setSessPolling(true);

@@ -10,7 +10,7 @@ function fmtMs(v) {
   return `${(v / 1000).toFixed(1)}s`;
 }
 
-const MAP = { today: "24h", "24h": "24h", "7d": "7d", "30d": "30d", "60d": "all", all: "all", custom: "all" };
+const MAP = { today: "24h", "24h": "24h", "7d": "7d", "30d": "30d", month: "month", "60d": "all", all: "all", custom: "all" };
 
 export default function LatencyCard({ period = "7d" }) {
   const [data, setData] = useState(null);
@@ -84,6 +84,9 @@ export default function LatencyCard({ period = "7d" }) {
           )}
           {data.period === "30d" && (
             <p className="text-xs text-text-muted">Window: last 30 days.</p>
+          )}
+          {data.period === "month" && (
+            <p className="text-xs text-text-muted">Window: this calendar month to date.</p>
           )}
           <div className="flex flex-wrap gap-6 text-sm">
             <span>Requests <b className="font-mono">{data.samples}</b></span>

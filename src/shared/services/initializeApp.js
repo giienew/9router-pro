@@ -2,7 +2,8 @@ import os from "os";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync } from "fs";
-import { cleanupProviderConnections, getSettings, updateSettings, getApiKeys } from "@/lib/localDb";
+import { cleanupProviderConnections, getSettings, updateSettings } from "@/lib/localDb";
+import { getInternalApiToken } from "@/lib/auth/internalToken.js";
 import {
   enableTunnel, enableTailscale,
   isTunnelManuallyDisabled, isTunnelReconnecting, isTailscaleReconnecting,
@@ -143,11 +144,14 @@ async function autoStartMitm(settings) {
       return;
     }
 
-    const keys = await getApiKeys();
-    const activeKey = keys.find(k => k.isActive !== false);
+    // Router keys are hashed at rest, so a stored user key is no longer a
+    // usable plaintext credential. The MITM server presents this key to the
+    // router, so it uses the server-side internal service token (accepted
+    // by validateApiKey, never exposed via API).
+    const internalKey = await getInternalApiToken().catch(() => null);
 
     console.log("[InitApp] MITM was enabled, auto-starting...");
-    await startMitm(activeKey?.key || "sk_9router", password);
+    await startMitm(internalKey || "sk_9router", password);
     console.log("[InitApp] MITM auto-started");
     try {
       await restoreToolDNS(password);

@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getSettings, updateSettings } from "@/lib/localDb";
+import {
+  ensurePasswordReady,
+  getTokenVersion,
+  setDashboardAuthCookie,
+  verifyStoredPassword,
+} from "@/lib/auth/dashboardSession";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { DATA_FILE } from "@/lib/db/paths.js";
+import { apiErrorResponse } from "@/lib/apiError.js";
 import { checkSsoOnlyGate, SSO_ONLY_MODES } from "@/lib/auth/ssoTestGate.js";
 import bcrypt from "bcryptjs";
 
@@ -16,12 +24,12 @@ const SETTINGS_RESPONSE_HEADERS = {
 // Secrets must never be mass-assigned from request body (CWE-915).
 // ssoLastTestOk is server-managed (SSO test gate) — a client must never be
 // able to forge a test pass through PATCH.
-const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted", "ssoLastTestOk"];
+const PROTECTED_SETTING_KEYS = ["password", "tokenVersion", "mitmSudoEncrypted", "ssoLastTestOk", "internalApiKey"];
 
 export async function GET() {
   try {
     const settings = await getSettings();
-    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
+    const { password, oidcClientSecret, mitmSudoEncrypted, internalApiKey, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     // opt44: the SSO test-pass fingerprint is server-managed — never expose
     // it through the dashboard API. databasePath is the real server-side
@@ -40,7 +48,7 @@ export async function GET() {
     }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error getting settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "settings_load_failed", message: "Failed to load settings. Please try again." });
   }
 }
 
@@ -58,32 +66,30 @@ export async function PATCH(request) {
       if (String(body.newPassword).length < 8) {
         return NextResponse.json({ error: "New password must be at least 8 characters" }, { status: 400 });
       }
-      const settings = await getSettings();
+      // First-boot/legacy migration first: a set INITIAL_PASSWORD is
+      // hashed into settings.password, so current-password verification
+      // below always runs against a bcrypt hash — there is no plaintext
+      // fallback list anymore.
+      const settings = await ensurePasswordReady();
       const currentHash = settings.password;
 
-      // Verify current password if it exists
+      // Verify current password if it exists (bcrypt-only).
       if (currentHash) {
         if (!body.currentPassword) {
           return NextResponse.json({ error: "Current password required" }, { status: 400 });
         }
-        const isValid = await bcrypt.compare(body.currentPassword, currentHash);
+        const isValid = await verifyStoredPassword(body.currentPassword, currentHash);
         if (!isValid) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
-      } else {
-        // First time setting password, no current password needed.
-        // Accept an empty currentPassword, the built-in default, or the
-        // operator's custom INITIAL_PASSWORD env value (opt46 P2: the old
-        // code rejected a correct custom env password with 401 even
-        // though GET reports hasPassword=true when the env is set).
-        const acceptedCurrent = ["9routerpro", process.env.INITIAL_PASSWORD].filter(Boolean);
-        if (body.currentPassword && !acceptedCurrent.includes(body.currentPassword)) {
-           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
       }
+      // No password configured yet: first-time set, no current password needed.
 
       const salt = await bcrypt.genSalt(10);
       body.password = await bcrypt.hash(body.newPassword, salt);
+      // Revoke every pre-change session: bump the token epoch so tokens
+      // issued before this change fail verification afterwards.
+      body.tokenVersion = getTokenVersion(settings) + 1;
       delete body.newPassword;
       delete body.currentPassword;
     }
@@ -125,7 +131,20 @@ export async function PATCH(request) {
       }
     }
 
+    const passwordChanged = Object.prototype.hasOwnProperty.call(body, "password");
     const settings = await updateSettings(body);
+
+    // The password change bumped tokenVersion above, which revokes every
+    // pre-change token — including the caller's own. Re-issue a fresh
+    // token for the caller so the legitimate admin stays logged in while
+    // stolen pre-change tokens die. Best-effort: the password change
+    // itself already succeeded even if cookie re-issue fails.
+    if (passwordChanged) {
+      try {
+        const cookieStore = await cookies();
+        await setDashboardAuthCookie(cookieStore, request);
+      } catch {}
+    }
 
     // Apply outbound proxy settings immediately (no restart required)
     if (
@@ -157,13 +176,13 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
-    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
+    const { password, oidcClientSecret, mitmSudoEncrypted, internalApiKey, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     delete safeSettings.ssoLastTestOk;
     safeSettings.databasePath = DATA_FILE;
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error updating settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "settings_update_failed", message: "Failed to update settings. Please try again." });
   }
 }

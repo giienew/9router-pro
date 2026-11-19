@@ -19,6 +19,7 @@ import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { recordModalityUsage } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 
 // Video generation is xAI-only today; requests without a provider prefix
 // (bare model id, or multipart bodies we deliberately don't parse) land here.
@@ -131,6 +132,7 @@ async function handleVideoCreateImpl(request, action, requestId = null) {
   const recordVideoAcceptance = (connectionId, provider, model) => {
     recordModalityUsage({
       provider, model: model || "video", connectionId, apiKey, endpoint, requestId,
+      clientMeta: clientMetaFromRequest(request),
       meta: { accrual: "request-only", reason: "async job billed on completion; no usage reported at acceptance" },
     });
   };

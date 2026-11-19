@@ -310,6 +310,24 @@ describe("OpenCode Free ids newer than the capability tables", () => {
     });
   });
 
+  it("resolves mixed-case vendor ids to the canonical exact entry (vision/pdf survive)", () => {
+    // dahl serves GLM-5.3-Flash mixed-case; the exact entry is lowercase.
+    // A case-sensitive miss used to fall through to the *glm-5* pattern (no
+    // vision), so the vision model was advertised as text-only and images
+    // were silently stripped.
+    expect(getCapabilitiesForModel("dahl", "zai-org/GLM-5.3-Flash")).toMatchObject({
+      vision: true,
+      pdf: true,
+      reasoning: true,
+      thinkingFormat: "zai",
+      contextWindow: 1000000,
+    });
+    expect(getCapabilitiesForModel("dahl", "glm-5.3-flash")).toMatchObject({ vision: true, pdf: true });
+    // Provider-override exact ids are case-insensitive too.
+    expect(getCapabilitiesForModel("opencode-go", "GLM-5.3-FLASH").thinkingFormat).toBe("openai");
+    expect(getCapabilitiesForModel("opencode-go", "glm-5.3-flash").thinkingFormat).toBe("openai");
+  });
+
   it("keeps per-id modalities and limits instead of a generic floor", () => {
     // text-only, small context — a shared pattern rule would overstate both.
     expect(getCapabilitiesForModel(undefined, "big-pickle")).toMatchObject({

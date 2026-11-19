@@ -13,6 +13,7 @@ const PERIODS = [
   { value: "24h", label: "24h" },
   { value: "7d", label: "7D" },
   { value: "30d", label: "30D" },
+  { value: "month", label: "Month" },
   { value: "60d", label: "60D" },
   { value: "all", label: "All" },
   { value: "custom", label: "Custom" },

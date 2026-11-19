@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -63,7 +64,7 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
+      if (!res.ok) throw new Error(errorText(data, "Import failed"));
       stopOwnedProxy();
       finishSuccess();
     } catch (err) {
@@ -270,7 +271,7 @@ export default function ZedAuthModal({ isOpen, providerInfo, onSuccess, onClose 
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Exchange failed");
+      if (!res.ok) throw new Error(errorText(data, "Exchange failed"));
       pollAbortRef.current = true;
       stopOwnedProxy();
       finishSuccess();

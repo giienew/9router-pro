@@ -64,6 +64,21 @@ export const LAST_USED_OVERLAY_PRUNE_AGE_MS = 3600 * 1000;
 export const LAST_USED_FLUSH_DELAY_MS = 5000;
 export const LAST_USED_FLUSH_MAX_BATCH = 1000;
 
+// Least-busy routing (9Router Pro): pick the eligible connection with the
+// lowest live load instead of spreading evenly. The load signal is cheap
+// and bounded: in-flight picks counted in memory at selection time, plus
+// recent failures inside a short window. No timer, no polling, no new
+// dependency — stale in-flight entries age out lazily on the next read, so
+// an outcome that never reports (aborted stream, flaky retry) stops
+// counting after the stale window instead of wedging a key forever.
+export const LEAST_BUSY_IN_FLIGHT_WEIGHT = 10;
+export const LEAST_BUSY_RECENT_ERROR_WEIGHT = 4;
+export const LEAST_BUSY_RECENT_ERROR_WINDOW_MS = 5 * 60 * 1000;
+export const LEAST_BUSY_IN_FLIGHT_STALE_MS = 10 * 60 * 1000;
+export const LEAST_BUSY_MAX_ENTRIES = 8192;
+export const LEAST_BUSY_MAX_ERRORS_PER_KEY = 16;
+export const LEAST_BUSY_MAX_IN_FLIGHT_PER_KEY = 64;
+
 // A failure only earns the dashboard "unavailable" label when its cooldown
 // is at least this long. Short transient locks (seconds) must not brand a
 // healthy key as dead — the label outlives the lock and misleads operators.

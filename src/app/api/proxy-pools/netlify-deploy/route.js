@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { createProxyPool } from "@/models";
 import {
   NETLIFY_API,
@@ -141,6 +142,6 @@ export async function POST(request) {
     return NextResponse.json({ proxyPool, deployUrl: relayUrl }, { status: 201 });
   } catch (error) {
     console.log("Error deploying Netlify relay:", error);
-    return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
+    return apiErrorResponse(error, { code: "netlify_deploy_failed", message: "Deploy failed" });
   }
 }

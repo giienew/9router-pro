@@ -17,6 +17,7 @@ import { withKeyAdmission } from "../services/keyAdmission.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 
 function exactEmbeddingUsage(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.estimated === true) return null;
@@ -156,6 +157,7 @@ async function handleEmbeddingsImpl(request, requestId = null) {
           connectionId: credentials.connectionId,
           apiKey,
           endpoint: url.pathname,
+          ...clientMetaFromRequest(request),
           tokens: usage,
           status: "success",
           requestId: requestId || undefined,

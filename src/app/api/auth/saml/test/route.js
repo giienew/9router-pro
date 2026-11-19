@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
 import { formatX509Certificate } from "@/lib/auth/saml.js";
@@ -71,6 +72,6 @@ export async function POST(request) {
       message: "SAML 2.0 configuration verified successfully.",
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "SAML test failed" }, { status: 500 });
+    return apiErrorResponse(error, { code: "saml_test_failed", message: "SAML test failed" });
   }
 }

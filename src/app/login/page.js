@@ -275,7 +275,7 @@ export default function LoginPage() {
                 </Button>
 
                 <p className="text-xs text-center text-text-muted mt-2">
-                  Default password is <code className="bg-sidebar px-1 rounded">9routerpro</code>
+                  Forgot your password? Reset it from the host via the 9Router CLI → Settings → Reset Password to Default.
                 </p>
                 {hasPassword === false && (
                   <p className="text-xs text-center text-amber-600 dark:text-amber-400">

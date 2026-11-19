@@ -1,5 +1,6 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
+import { apiErrorBody } from "@/lib/apiError";
 
 import { getProviderConnectionById } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
@@ -120,7 +121,7 @@ export async function GET(_request, { params }) {
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(apiErrorBody(error, { code: "codex_reset_credits_failed", message: "Failed to load Codex reset credits" }), { status: 500 });
   }
 }
 
@@ -157,6 +158,6 @@ export async function POST(request, { params }) {
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(apiErrorBody(error, { code: "codex_reset_credits_failed", message: "Failed to load Codex reset credits" }), { status: 500 });
   }
 }

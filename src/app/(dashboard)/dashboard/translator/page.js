@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import { Card, Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -65,7 +66,7 @@ export default function TranslatorPage() {
         setContent(stepId, data.content);
         if (stepId === 1) await detectMeta(data.content);
       } else {
-        notify.error(data.error || "File not found");
+        notify.error(errorText(data, "File not found"));
       }
     } catch (e) {
       notify.error(e.message);
@@ -109,7 +110,7 @@ export default function TranslatorPage() {
         body: JSON.stringify({ step: 2, body })
       });
       const data = await res.json();
-      if (!data.success) { notify.error(data.error); return; }
+      if (!data.success) { notify.error(errorText(data, "Request failed")); return; }
       const str = JSON.stringify(data.result.body, null, 2);
       setContent(3, str);
       openNext(3);
@@ -132,7 +133,7 @@ export default function TranslatorPage() {
         body: JSON.stringify({ step: 3, body: { ...openaiBody, provider: meta?.provider, model: meta?.model } })
       });
       const data = await res.json();
-      if (!data.success) { notify.error(data.error); return; }
+      if (!data.success) { notify.error(errorText(data, "Request failed")); return; }
       // Embed provider + model so Send works even without meta
       const step4Content = { ...data.result, provider: meta?.provider, model: meta?.model };
       setContent(4, JSON.stringify(step4Content, null, 2));

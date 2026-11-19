@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal, SegmentedControl } from "@/shared/components";
 import { errorText } from "@/shared/utils/errorText";
 import Pagination from "@/shared/components/Pagination";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -62,6 +62,7 @@ export default function ProxyPoolsPage() {
   const [failedCount, setFailedCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -89,6 +90,7 @@ export default function ProxyPoolsPage() {
         pageSize: String(pageSize),
       });
       if (appliedSearch) params.set("search", appliedSearch);
+      if (statusFilter !== "all") params.set("status", statusFilter);
       const res = await fetch(`/api/proxy-pools?${params}`, { cache: "no-store" });
       const data = await res.json();
       if (res.ok) {
@@ -106,7 +108,7 @@ export default function ProxyPoolsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, appliedSearch]);
+  }, [page, pageSize, appliedSearch, statusFilter]);
 
   useEffect(() => {
     fetchProxyPools();
@@ -261,6 +263,7 @@ export default function ProxyPoolsPage() {
       try {
         const params = new URLSearchParams({ idsOnly: "true" });
         if (appliedSearch) params.set("search", appliedSearch);
+        if (statusFilter !== "all") params.set("status", statusFilter);
         const res = await fetch(`/api/proxy-pools?${params}`, { cache: "no-store" });
         const data = await res.json();
         targets = res.ok ? (data.ids || []) : [];
@@ -607,7 +610,7 @@ export default function ProxyPoolsPage() {
         closeVercelModal();
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
-        notify.error(data.error || "Deploy failed");
+        notify.error(errorText(data, "Deploy failed"));
       }
     } catch (error) {
       console.log("Error deploying Vercel relay:", error);
@@ -632,7 +635,7 @@ export default function ProxyPoolsPage() {
         closeCloudflareModal();
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
-        notify.error(data.error || "Deploy failed");
+        notify.error(errorText(data, "Deploy failed"));
       }
     } catch (error) {
       console.log("Error deploying Cloudflare relay:", error);
@@ -657,7 +660,7 @@ export default function ProxyPoolsPage() {
         closeDenoModal();
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
-        notify.error(data.error || "Deploy failed");
+        notify.error(errorText(data, "Deploy failed"));
       }
     } catch (error) {
       console.log("Error deploying Deno relay:", error);
@@ -682,7 +685,7 @@ export default function ProxyPoolsPage() {
         closeNetlifyModal();
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
-        notify.error(data.error || "Deploy failed");
+        notify.error(errorText(data, "Deploy failed"));
       }
     } catch (error) {
       console.log("Error deploying Netlify relay:", error);
@@ -899,6 +902,17 @@ export default function ProxyPoolsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="min-w-[12rem] flex-1 sm:flex-none sm:w-64"
           />
+          <SegmentedControl
+            options={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+              { value: "failed", label: "Failed" },
+            ]}
+            value={statusFilter}
+            onChange={(v) => { setStatusFilter(v); setPage(1); }}
+            size="sm"
+          />
           {total > 0 && (
             <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
               <input
@@ -967,7 +981,7 @@ export default function ProxyPoolsPage() {
 
         {proxyPools.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-text-main font-medium mb-1">{appliedSearch ? `No pools match "${appliedSearch}"` : "No proxy pool entries yet"}</p>
+            <p className="text-text-main font-medium mb-1">{appliedSearch ? `No pools match "${appliedSearch}"` : statusFilter !== "all" ? `No ${statusFilter} pools` : "No proxy pool entries yet"}</p>
             <p className="text-sm text-text-muted mb-4">
               {appliedSearch ? "Try a different search." : "Create a proxy pool entry, then assign it to connections."}
             </p>

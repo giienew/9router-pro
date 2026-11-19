@@ -5,10 +5,14 @@ import {
   inspectSSELine,
   scanSSEBuffer,
   isNoRetryFinish,
+  isErrorBannerText,
+  isBannerSuspect,
+  ERROR_BANNER_FINISH,
   peekStreamForContent,
   reconstructStream,
 } from "../../open-sse/services/emptyFailover.js";
 import { NO_RETRY_EMPTY_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
+import { isZeroContentResponse } from "../../open-sse/services/combo.js";
 
 // The combo cases below build real streaming responses; keep request-detail writes off disk.
 vi.mock("@/lib/usageDb.js", () => ({
@@ -330,6 +334,14 @@ describe("combo fall-through per client format (real combo.js + streaming pipeli
         expect(tried).toEqual(["openai/m0", "openai/m1"]);
         expect(out).toContain("from-m1");
       });
+      it("error-banner-only first member (HTTP 200 fault as text + stop) → falls through", async () => {
+        // Antigravity/agy-ACP shape: upstream bills the fault as a 200 turn whose
+        // only content is the banner. The peek must NOT commit it as success.
+        const { out, tried } = await combo([[ROLE, C("Agent execution terminated due to error: quota exhausted"), STOP, DONE], [ROLE, C("from-m1"), STOP, DONE]], fmt);
+        expect(tried).toEqual(["openai/m0", "openai/m1"]);
+        expect(out).toContain("from-m1");
+        expect(out).not.toContain("Agent execution terminated");
+      });
       it("zero-byte first member, good second → falls through", async () => {
         const { out, tried } = await combo([[], [ROLE, C("from-m1"), STOP, DONE]], fmt);
         expect(tried).toEqual(["openai/m0", "openai/m1"]);
@@ -393,5 +405,133 @@ describe("combo fall-through per client format (real combo.js + streaming pipeli
       expect(tried).toEqual(["openai/m0"]);
       expect(out).toContain('"reason":"content_filter"');
     });
+  });
+});
+
+describe("error-banner classification (audit F-1: HTTP 200 fault as text)", () => {
+  it("isErrorBannerText: fault banners match, real answers do not", () => {
+    for (const banner of [
+      "Agent execution terminated due to error: quota exhausted",
+      "Agent terminated due to error",
+      "High traffic, please try again later.",
+      "Quota exceeded for this model",
+      "Rate limit exceeded — try again in a minute",
+      "Service temporarily unavailable",
+      "The request timed out",
+      "Capacity exceeded — no servers available",
+      "Empty response from upstream",
+      "Internal server error",
+    ]) expect(isErrorBannerText(banner)).toBe(true);
+    for (const real of [
+      "Our capacity planning for Q4 covers three regions and the budget.",
+      "The timeout setting lives in runtimeConfig.js — raise it to 60s.",
+      "High-quality answers need good prompts, not just a big model.",
+      "OK",
+      "",
+    ]) expect(isErrorBannerText(real)).toBe(false);
+    // Length cap: a long answer that merely mentions a banner phrase is not a banner.
+    expect(isErrorBannerText(`Intro. ${"x ".repeat(1200)}high traffic${" y".repeat(100)}`)).toBe(false);
+    expect(isErrorBannerText(null)).toBe(false);
+  });
+
+  it("isBannerSuspect: a banner split across frames stays suspect until it resolves", () => {
+    expect(isBannerSuspect("Agent execution terminated due to ")).toBe(true);
+    expect(isBannerSuspect("Agent execution terminated due to error: quota exhausted")).toBe(true);
+    // Banner phrase + a real continuation is an answer, not a banner — it resolves to content.
+    expect(isBannerSuspect("Agent execution terminated due to error: quota exhausted. Also, here is the full answer with more text after the banner.")).toBe(false);
+    expect(isBannerSuspect("Our capacity planning for Q4")).toBe(false);
+    expect(isBannerSuspect("OK")).toBe(false);
+    expect(isBannerSuspect("")).toBe(false);
+  });
+
+  it("inspectSSELine exposes the frame text for the banner check", () => {
+    const r = inspectSSELine(CONTENT.trim());
+    expect(r.text).toBe("OK");
+    expect(inspectSSELine(ROLE.trim()).text).toBe("");
+    const claude = inspectSSELine(ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "High traffic" } }));
+    expect(claude.text).toBe("High traffic");
+  });
+});
+
+describe("peekStreamForContent — error banners", () => {
+  const BANNER = (t) => `data: {"id":"x","choices":[{"index":0,"delta":{"content":"${t}"},"finish_reason":null}]}\n\n`;
+  const AGY_BANNER = "Agent execution terminated due to error: quota exhausted";
+
+  it("banner-only stream → outcome empty with finishReason error-banner (retryable)", async () => {
+    const p = await peekStreamForContent(sseStream([ROLE, BANNER(AGY_BANNER), EMPTY_STOP, DONE]));
+    expect(p.outcome).toBe("empty");
+    expect(p.finishReason).toBe(ERROR_BANNER_FINISH);
+    expect(isNoRetryFinish(p.finishReason)).toBe(false);
+  });
+
+  it("banner split across two content frames → still empty", async () => {
+    const p = await peekStreamForContent(sseStream([
+      ROLE,
+      BANNER("Agent execution terminated due to "),
+      BANNER("error: high traffic, please try again later."),
+      EMPTY_STOP,
+      DONE,
+    ]));
+    expect(p.outcome).toBe("empty");
+    expect(p.finishReason).toBe(ERROR_BANNER_FINISH);
+  });
+
+  it("real answer mentioning a banner word → content (no false positive)", async () => {
+    const p = await peekStreamForContent(sseStream([
+      ROLE,
+      BANNER("Our capacity planning for Q4 covers three regions and the budget."),
+      EMPTY_STOP,
+      DONE,
+    ]));
+    expect(p.outcome).toBe("content");
+  });
+
+  it("banner followed by a real answer in the same turn → content", async () => {
+    const p = await peekStreamForContent(sseStream([
+      ROLE,
+      BANNER("High traffic "),
+      BANNER("is expected today, and here is the full report you asked for with all the details."),
+      EMPTY_STOP,
+      DONE,
+    ]));
+    expect(p.outcome).toBe("content");
+  });
+
+  it("short legit answer → content", async () => {
+    const p = await peekStreamForContent(sseStream([ROLE, CONTENT, EMPTY_STOP, DONE]));
+    expect(p.outcome).toBe("content");
+  });
+
+  it("banner-only stream still replays byte-faithfully (last member delivers the banner)", async () => {
+    const frames = [ROLE, BANNER(AGY_BANNER), EMPTY_STOP, DONE];
+    const p = await peekStreamForContent(sseStream(frames));
+    expect(p.outcome).toBe("empty");
+    const rebuilt = reconstructStream(p.head, p.reader, p.pendingRead);
+    const rd = rebuilt.getReader(); let out = "";
+    while (true) { const { done, value } = await rd.read(); if (done) break; out += dec.decode(value); }
+    expect(out).toBe(frames.join(""));
+    expect(out).toContain(AGY_BANNER);
+  });
+});
+
+describe("isZeroContentResponse — non-streaming banner text (integration patch)", () => {
+  const banner = "Agent execution terminated due to error: quota exhausted";
+  it("OpenAI banner-only content counts as zero content", () => {
+    expect(isZeroContentResponse({ choices: [{ message: { content: banner }, finish_reason: "stop" }] })).toBe(true);
+  });
+  it("OpenAI real answer mentioning a fault phrase is content", () => {
+    expect(isZeroContentResponse({ choices: [{ message: { content: "Capacity is fine today, here is your answer with real content." }, finish_reason: "stop" }] })).toBe(false);
+  });
+  it("OpenAI banner with tool calls is content (tool path)", () => {
+    expect(isZeroContentResponse({ choices: [{ message: { content: banner, tool_calls: [{ id: "1", type: "function", function: { name: "f", arguments: "{}" } }] }, finish_reason: "tool_calls" }] })).toBe(false);
+  });
+  it("Anthropic banner-only content counts as zero content", () => {
+    expect(isZeroContentResponse({ content: [{ type: "text", text: banner }], stop_reason: "end_turn" })).toBe(true);
+  });
+  it("Anthropic real answer is content", () => {
+    expect(isZeroContentResponse({ content: [{ type: "text", text: "Here is a real answer." }], stop_reason: "end_turn" })).toBe(false);
+  });
+  it("Anthropic banner with tool_use is content", () => {
+    expect(isZeroContentResponse({ content: [{ type: "text", text: banner }, { type: "tool_use", id: "1", name: "f", input: {} }], stop_reason: "tool_use" })).toBe(false);
   });
 });

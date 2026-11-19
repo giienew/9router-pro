@@ -118,7 +118,7 @@ export async function POST(request, { params }) {
   } catch (error) {
     console.log("Error handling Gemini request:", error);
     return Response.json(
-      { error: { message: error.message, code: 500 } },
+      { error: { message: "Failed to handle Gemini request", code: 500 } },
       { status: 500 }
     );
   }

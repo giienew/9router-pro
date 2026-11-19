@@ -1,5 +1,6 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
+import { apiErrorBody } from "@/lib/apiError";
 
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
@@ -205,6 +206,6 @@ export async function GET(request, { params }) {
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Usage] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(apiErrorBody(error, { code: "usage_fetch_failed", message: "Failed to fetch usage" }), { status: 500 });
   }
 }

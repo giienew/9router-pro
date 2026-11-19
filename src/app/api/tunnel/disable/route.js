@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { disableTunnel } from "@/lib/tunnel";
 import { getSettings } from "@/lib/localDb";
 import { configureTunnelMonitoring } from "@/shared/services/initializeApp";
@@ -12,6 +13,6 @@ export async function POST() {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Tunnel disable error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "tunnel_disable_failed", message: "Failed to disable tunnel" });
   }
 }

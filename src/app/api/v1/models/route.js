@@ -10,6 +10,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants, resolveComboContextWindow } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
+import { enforceBlockedIp } from "@/lib/spamAbuse.js";
 import { AUTO_INTENTS } from "@/sse/services/autoRouting.js";
 import { getModelsListCache, setModelsListCache } from "@/sse/services/modelsListCache.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -24,6 +25,7 @@ import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { fetchLiveModelFeed, findLiveLimits } from "@/lib/liveModelFeed";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -176,12 +178,7 @@ const LIVE_MODEL_RESOLVERS = {
   },
 };
 
-const parseOpenAIStyleModels = (data) => {
-  if (Array.isArray(data)) return data;
-  return data?.data || data?.models || data?.results || [];
-};
-
-// Header sent by fetchCompatibleModelIds to detect cross-instance /models fetches
+// Header sent by fetchCompatibleModelFeed to detect cross-instance /models fetches
 // and break recursive loops between 9router instances connected to each other.
 const INTERNAL_MODELS_FETCH_HEADER = "x-9r-internal-models-fetch";
 
@@ -233,14 +230,14 @@ function inferKindFromUnknownModelId(modelId) {
   return LLM_KIND;
 }
 
-async function fetchCompatibleModelIds(connection) {
-  if (!connection?.apiKey) return [];
+async function fetchCompatibleModelFeed(connection) {
+  if (!connection?.apiKey) return null;
 
   const baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
     ? connection.providerSpecificData.baseUrl.trim().replace(/\/$/, "")
     : "";
 
-  if (!baseUrl) return [];
+  if (!baseUrl) return null;
 
   let url = `${baseUrl}/models`;
   const headers = {
@@ -259,35 +256,16 @@ async function fetchCompatibleModelIds(connection) {
     headers["anthropic-version"] = "2023-06-01";
     headers.Authorization = `Bearer ${connection.apiKey}`;
   } else {
-    return [];
+    return null;
   }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { ...headers, [INTERNAL_MODELS_FETCH_HEADER]: "1" },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const rawModels = parseOpenAIStyleModels(data);
-
-    return Array.from(
-      new Set(
-        rawModels
-          .map((model) => model?.id || model?.name || model?.model)
-          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
-      )
-    );
-  } catch {
-    return [];
-  }
+  // The feed carries ids AND limits; the fetcher caches ~5 min per
+  // credential and returns null on any failure, so the caller falls back
+  // to the static registry without ever emptying the provider.
+  return fetchLiveModelFeed({
+    url,
+    headers: { ...headers, [INTERNAL_MODELS_FETCH_HEADER]: "1" },
+  });
 }
 
 // Provider matches kindFilter when its serviceKinds intersect the requested kinds.
@@ -312,7 +290,7 @@ function comboMatchesKinds(combo, kindFilter) {
 // treated as a literal model and publishes the 200k floor. Expand nested
 // names (cycle-guarded) so the published window is the true min across the
 // whole chain.
-function comboSeatLimits(combo, combosByName, visiting = new Set()) {
+function comboSeatLimits(combo, combosByName, { visiting = new Set(), resolveSeatCaps = comboSeatCapabilities } = {}) {
   const name = typeof combo?.name === "string" ? combo.name : null;
   if (name) {
     if (visiting.has(name)) return { contextWindow: undefined, maxOutput: undefined };
@@ -329,7 +307,7 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
       if (slash <= 0) {
         const nested = combosByName.get(seat);
         if (nested) {
-          const nestedLimits = comboSeatLimits(nested, combosByName, visiting);
+          const nestedLimits = comboSeatLimits(nested, combosByName, { visiting, resolveSeatCaps });
           if (Number.isFinite(nestedLimits.contextWindow)) {
             contextWindow = Math.min(contextWindow, nestedLimits.contextWindow);
             maxContextWindow = Math.max(maxContextWindow, nestedLimits.contextWindow);
@@ -338,7 +316,7 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
           continue;
         }
       }
-      const caps = comboSeatCapabilities(seat) || getCapabilitiesForModel(null, seat);
+      const caps = resolveSeatCaps(seat) || getCapabilitiesForModel(null, seat);
       if (Number.isFinite(caps?.contextWindow)) {
         contextWindow = Math.min(contextWindow, caps.contextWindow);
         maxContextWindow = Math.max(maxContextWindow, caps.contextWindow);
@@ -369,7 +347,7 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
  */
 export async function buildModelsList(kindFilter, options = {}) {
   // When this header is present, the /v1/models request came from another
-  // 9router instance's fetchCompatibleModelIds — skip dynamic fetch to break
+  // 9router instance's fetchCompatibleModelFeed — skip dynamic fetch to break
   // cross-instance recursive loops.
   const skipDynamicFetch = options.skipDynamicFetch === true;
   let connections = [];
@@ -445,6 +423,60 @@ export async function buildModelsList(kindFilter, options = {}) {
   // Lookup map so aggregateComboCapabilities can recursively resolve nested combos
   const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
 
+  // Live /v1/models feeds for OpenAI/Anthropic-compatible nodes (Go PR #1261
+  // pattern): the gateway's own context_length / max_completion_tokens beat
+  // the static pattern tables. Fetched concurrently, cached ~5 min per
+  // credential inside the fetcher; any failure leaves the provider out of
+  // this map and the static registry decides, exactly as before. Skipped
+  // entirely on cross-instance fetches (skipDynamicFetch) so two 9router
+  // instances pointed at each other cannot recurse.
+  const liveFeedByProvider = new Map();
+  if (!skipDynamicFetch) {
+    const feedEntries = [...activeConnectionByProvider.entries()].filter(([providerId, conn]) =>
+      (isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId))
+      && typeof conn?.apiKey === "string" && conn.apiKey !== ""
+      && typeof conn?.providerSpecificData?.baseUrl === "string"
+      && conn.providerSpecificData.baseUrl.trim() !== ""
+    );
+    if (feedEntries.length) {
+      const settled = await Promise.all(feedEntries.map(async ([providerId, conn]) => {
+        try {
+          return [providerId, await fetchCompatibleModelFeed(conn)];
+        } catch (err) {
+          console.log(`Live model feed failed for ${providerId}: ${err?.message || err}`);
+          return [providerId, null];
+        }
+      }));
+      for (const [providerId, feed] of settled) if (feed) liveFeedByProvider.set(providerId, feed);
+    }
+  }
+
+  // Live limits for one combo seat ("alias/model"), resolved through the
+  // same alias -> provider map the static path uses. A seat whose provider
+  // has no live feed (or a custom prefix the alias map cannot resolve)
+  // returns null and the static capabilities decide.
+  const liveLimitsForSeat = (seat) => {
+    if (typeof seat !== "string") return null;
+    const slash = seat.indexOf("/");
+    if (slash <= 0) return null;
+    const providerId = ALIAS_TO_PROVIDER_ID[seat.slice(0, slash)] || seat.slice(0, slash);
+    const feed = liveFeedByProvider.get(providerId);
+    return feed ? findLiveLimits(feed.limits, seat.slice(slash + 1)) : null;
+  };
+  // Seat capabilities with live limits merged over the static ones, so a
+  // combo's `capabilities` block and its snake_case limits agree — agent
+  // clients reading either shape get the same window.
+  const liveSeatCapabilities = (seat) => {
+    const base = comboSeatCapabilities(seat);
+    const live = liveLimitsForSeat(seat);
+    if (!live) return base;
+    return {
+      ...(base || {}),
+      ...(Number.isFinite(live.contextWindow) ? { contextWindow: live.contextWindow } : {}),
+      ...(Number.isFinite(live.maxOutput) ? { maxOutput: live.maxOutput } : {}),
+    };
+  };
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -456,14 +488,14 @@ export async function buildModelsList(kindFilter, options = {}) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(combo.models, comboByName, comboSeatCapabilities);
+      const comboCaps = aggregateComboCapabilities(combo.models, comboByName, liveSeatCapabilities);
       if (comboCaps) entry.capabilities = comboCaps;
       // Advertised window follows the combo's context-window mode
       // (min/max/custom, default min). Combo entries were the only models
       // on this endpoint that published no limits at all, which leaves a
       // client to guess from the name — and it guesses high (see the
       // snake_case note on the per-provider path).
-      const { contextWindow, maxOutput } = comboSeatLimits(combo, combosByName);
+      const { contextWindow, maxOutput } = comboSeatLimits(combo, combosByName, { resolveSeatCaps: liveSeatCapabilities });
       if (Number.isFinite(contextWindow)) entry.context_length = contextWindow;
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
     }
@@ -619,8 +651,11 @@ export async function buildModelsList(kindFilter, options = {}) {
           )
         : providerModels.map((model) => model.id);
 
-      if (isCompatibleProvider && rawModelIds.length === 0 && !skipDynamicFetch) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
+      // No static models: the live feed is the model list (as before),
+      // now served from the shared 5-minute cache built above.
+      if (isCompatibleProvider && rawModelIds.length === 0) {
+        const feed = liveFeedByProvider.get(providerId);
+        if (feed?.ids?.length) rawModelIds = feed.ids;
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic
@@ -737,8 +772,27 @@ export async function buildModelsList(kindFilter, options = {}) {
             if (!Number.isFinite(contextWindow)) contextWindow = fallback.contextWindow;
             if (!Number.isFinite(maxOutput)) maxOutput = fallback.maxOutput;
           }
+          // Live feed wins over the static table when the gateway
+          // publishes the model: the gateway knows its own truncation
+          // point, the pattern table only guesses from the name. A
+          // missing feed or a model absent from it keeps today's values.
+          const liveLimits = liveFeedByProvider.has(providerId)
+            ? findLiveLimits(liveFeedByProvider.get(providerId).limits, modelId)
+            : null;
+          if (Number.isFinite(liveLimits?.contextWindow)) contextWindow = liveLimits.contextWindow;
+          if (Number.isFinite(liveLimits?.maxOutput)) maxOutput = liveLimits.maxOutput;
           if (Number.isFinite(contextWindow)) model.context_length = contextWindow;
           if (Number.isFinite(maxOutput)) model.max_completion_tokens = maxOutput;
+          // Keep the nested capabilities block consistent with the
+          // published snake_case limits, so agent clients reading either
+          // shape get the same window.
+          if (caps && liveLimits && (Number.isFinite(liveLimits.contextWindow) || Number.isFinite(liveLimits.maxOutput))) {
+            model.capabilities = {
+              ...caps,
+              ...(Number.isFinite(contextWindow) ? { contextWindow } : {}),
+              ...(Number.isFinite(maxOutput) ? { maxOutput } : {}),
+            };
+          }
           // Thinking/effort levels the model accepts (upstream 0.5.119 +
           // XRouter publish the same field). Null for models without
           // reasoning, so non-reasoning models stay unchanged.
@@ -798,6 +852,10 @@ export async function OPTIONS() {
  */
 export async function GET(request) {
   try {
+    // Spam/abuse IP blocklist: 403 before any catalog or live-model work.
+    // The dashboard login is a different route and is never gated by it.
+    const blocked = await enforceBlockedIp(request);
+    if (blocked) return blocked;
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
     const ctx = await getKeyAccessContext(request);
@@ -821,7 +879,7 @@ export async function GET(request) {
   } catch (error) {
     console.log("Error fetching models:", error);
     return Response.json(
-      { error: { message: error.message, type: "server_error" } },
+      { error: { message: "Failed to fetch models", type: "server_error" } },
       { status: 500 }
     );
   }

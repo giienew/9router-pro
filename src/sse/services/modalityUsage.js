@@ -37,6 +37,9 @@ export function recordModalityUsage({
   tokens,
   costOverride,
   meta,
+  // Spam/abuse attribution, precomputed by the handler from the live
+  // request ({ clientIp, country }) — forwarded into usageHistory.meta.
+  clientMeta,
 }) {
   saveRequestUsage({
     provider,
@@ -49,5 +52,7 @@ export function recordModalityUsage({
     requestId: requestId || undefined,
     ...(Number.isFinite(costOverride) ? { costOverride } : {}),
     ...(meta ? { meta } : {}),
+    ...(clientMeta?.clientIp ? { clientIp: clientMeta.clientIp } : {}),
+    ...(clientMeta?.country ? { country: clientMeta.country } : {}),
   }).catch(() => {});
 }

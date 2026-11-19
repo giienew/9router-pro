@@ -33,7 +33,7 @@ export default async function proxy(request) {
     // Anomaly: a login-flow XHR arrived without the session — the classic
     // cause of silent SPA "Something went wrong" 404s. Narrow to login paths
     // so unrelated unknown routes don't spam this.
-    console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] no-session ${pathname} (cookie header: ${cookies ? cookies.slice(0, 80) : "<none>"})`);
+    console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] no-session ${pathname} (cookie header present: ${cookies.length > 0})`);
   }
   if (hasSessionCookie) {
     const sess = sessionFromRequest(request);

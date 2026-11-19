@@ -1,5 +1,6 @@
 import { buildModelsList } from "../route.js";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
+import { enforceBlockedIp } from "@/lib/spamAbuse.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -40,6 +41,9 @@ function json(data, options = {}) {
  */
 export async function GET(request, { params }) {
   try {
+    // Spam/abuse IP blocklist: 403 before any catalog work.
+    const blocked = await enforceBlockedIp(request);
+    if (blocked) return blocked;
     const { model } = await params;
     const path = Array.isArray(model) ? model : [model];
     const identifier = path.filter(Boolean).join("/");
@@ -73,7 +77,7 @@ export async function GET(request, { params }) {
   } catch (error) {
     console.log("Error fetching model:", error);
     return json(
-      { error: { message: error.message, type: "server_error" } },
+      { error: { message: "Failed to fetch model", type: "server_error" } },
       { status: 500 },
     );
   }

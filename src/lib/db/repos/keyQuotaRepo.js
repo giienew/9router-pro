@@ -21,6 +21,7 @@
 
 import { makeKv } from "../helpers/kvStore.js";
 import { getAdapter } from "../driver.js";
+import { hashApiKey, isHashedApiKey } from "@/shared/utils/apiKey.js";
 
 const quotasKv = makeKv("keyQuotas");
 
@@ -87,6 +88,14 @@ export async function deleteKeyQuota(keyId) {
 // ignored, so a manual reset zeroes the counter without deleting history.
 // Lifetime mode (`absolute === true`, or legacy windowHours 0) = all time:
 // no window cutoff, only `since` applies.
+//
+// Audit item 3 (pro.29): usageHistory.apiKey stores the PLAINTEXT key the
+// client presented, but the dashboard passes the STORED value — which is
+// now a hash (`sha256:...`) for migrated rows. A plain `WHERE apiKey = ?`
+// then matches nothing and the display reads 0. So when `rawKey` is a
+// stored hash, match rows whose apiKey hashes to it (JS filter over the
+// window's rows). The hot enforcement path (checkKeyQuota) passes the
+// presented plaintext and keeps the fast indexed equality query.
 export async function getKeyUsageInWindow(rawKey, windowHours, since, absolute) {
   if (!rawKey) return 0;
   const lifetime = absolute === true || Number(windowHours) === 0;
@@ -94,12 +103,24 @@ export async function getKeyUsageInWindow(rawKey, windowHours, since, absolute) 
   const sinceMs = since ? Date.parse(since) : NaN;
   const cutoff = new Date(Math.max(windowCutoff, Number.isNaN(sinceMs) ? 0 : sinceMs)).toISOString();
   const db = await getAdapter();
-  const row = db.get(
-    `SELECT COALESCE(SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)), 0) AS used
-     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [rawKey, cutoff]
+  if (!isHashedApiKey(rawKey)) {
+    const row = db.get(
+      `SELECT COALESCE(SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)), 0) AS used
+       FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
+      [rawKey, cutoff]
+    );
+    return Number(row?.used) || 0;
+  }
+  const rows = db.all(
+    `SELECT apiKey, promptTokens, completionTokens FROM usageHistory WHERE timestamp >= ?`,
+    [cutoff]
   );
-  return Number(row?.used) || 0;
+  let used = 0;
+  for (const r of rows) {
+    if (!r.apiKey || typeof r.apiKey !== "string") continue;
+    if (r.apiKey === rawKey || hashApiKey(r.apiKey) === rawKey) used += (Number(r.promptTokens) || 0) + (Number(r.completionTokens) || 0);
+  }
+  return used;
 }
 
 // Total USD spend a raw key value burned inside the rolling window.
@@ -110,12 +131,24 @@ export async function getKeyCostInWindow(rawKey, windowHours, since, absolute) {
   const sinceMs = since ? Date.parse(since) : NaN;
   const cutoff = new Date(Math.max(windowCutoff, Number.isNaN(sinceMs) ? 0 : sinceMs)).toISOString();
   const db = await getAdapter();
-  const row = db.get(
-    `SELECT COALESCE(SUM(COALESCE(cost, 0)), 0) AS spent
-     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [rawKey, cutoff]
+  if (!isHashedApiKey(rawKey)) {
+    const row = db.get(
+      `SELECT COALESCE(SUM(COALESCE(cost, 0)), 0) AS spent
+       FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
+      [rawKey, cutoff]
+    );
+    return Number(row?.spent) || 0;
+  }
+  const rows = db.all(
+    `SELECT apiKey, cost FROM usageHistory WHERE timestamp >= ?`,
+    [cutoff]
   );
-  return Number(row?.spent) || 0;
+  let spent = 0;
+  for (const r of rows) {
+    if (!r.apiKey || typeof r.apiKey !== "string") continue;
+    if (r.apiKey === rawKey || hashApiKey(r.apiKey) === rawKey) spent += Number(r.cost) || 0;
+  }
+  return spent;
 }
 
 // Move a key's quota baseline to now (manual reset). Usage history is

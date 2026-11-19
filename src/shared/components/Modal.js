@@ -8,7 +8,20 @@ import Tooltip from "./Tooltip";
 
 // Open modals, topmost last. Escape closes only the topmost one, so a picker
 // opened over a form closes just the picker — not the form underneath it.
+// Drawer registers here too, so a drawer under a modal does not steal Escape.
 const openModals = [];
+
+export function registerTopmostModal(entry) {
+  openModals.push(entry);
+  return () => {
+    const i = openModals.indexOf(entry);
+    if (i !== -1) openModals.splice(i, 1);
+  };
+}
+
+export function isTopmostModal(entry) {
+  return openModals[openModals.length - 1] === entry;
+}
 
 export default function Modal({
   isOpen,
@@ -46,15 +59,14 @@ export default function Modal({
   useEffect(() => {
     if (!isOpen) return;
     const entry = { close: () => onCloseRef.current?.() };
-    openModals.push(entry);
+    const unregister = registerTopmostModal(entry);
     const handleEscape = (e) => {
-      if (e.key === "Escape" && openModals[openModals.length - 1] === entry) entry.close();
+      if (e.key === "Escape" && isTopmostModal(entry)) entry.close();
     };
     document.addEventListener("keydown", handleEscape);
     return () => {
       document.removeEventListener("keydown", handleEscape);
-      const i = openModals.indexOf(entry);
-      if (i !== -1) openModals.splice(i, 1);
+      unregister();
     };
   }, [isOpen]);
 

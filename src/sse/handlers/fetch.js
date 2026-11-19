@@ -15,6 +15,7 @@ import * as log from "../utils/logger.js";
 import { withKeyAdmission } from "../services/keyAdmission.js";
 import { requestIdFromRequest, attachRequestId } from "../utils/requestId.js";
 import { recordModalityUsage } from "../services/modalityUsage.js";
+import { clientMetaFromRequest } from "@/lib/spamAbuse.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -135,6 +136,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     const cost = providerConfig?.costPerQuery;
     recordModalityUsage({
       provider: providerId, model: "fetch", connectionId, apiKey, endpoint, requestId,
+      clientMeta: clientMetaFromRequest(request),
       ...(Number.isFinite(cost) ? { costOverride: cost } : {}),
       meta: Number.isFinite(cost)
         ? { accrual: "cost-only", fetches: 1 }

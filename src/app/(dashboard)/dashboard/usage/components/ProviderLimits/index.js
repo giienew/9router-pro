@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { errorText } from "@/shared/utils/errorText";
+import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import ProviderIcon from "@/shared/components/ProviderIcon";
@@ -409,7 +411,7 @@ export default function ProviderLimits() {
         const result = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(result.message || result.error || result.code || "Failed to reset limit");
+          throw new Error(errorText(result, "Failed to reset limit"));
         }
 
         await fetchQuota(connectionId, provider, { force: true, isActive });
@@ -434,7 +436,7 @@ export default function ProviderLimits() {
       const response = await fetch(`/api/usage/${connection.id}/codex-reset-credits`, { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.error || result.message || "Failed to load Codex reset credits");
+        throw new Error(errorText(result, "Failed to load Codex reset credits"));
       }
       const credits = Array.isArray(result.credits) ? [...result.credits] : [];
       credits.sort((a, b) => {
@@ -1639,7 +1641,7 @@ export default function ProviderLimits() {
         loading={bulkToggling}
       />
 
-      {resetCreditsState && (
+      {resetCreditsState && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-black/15 bg-white shadow-2xl ring-1 ring-black/10 dark:border-white/15 dark:bg-neutral-950 dark:ring-white/10">
             <div className="flex items-start justify-between gap-3 border-b border-black/10 bg-black/[0.03] px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
@@ -1747,7 +1749,8 @@ export default function ProviderLimits() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <EditConnectionModal

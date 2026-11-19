@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { createProxyPool } from "@/models";
 
 const VERCEL_API = "https://api.vercel.com";
@@ -138,6 +139,6 @@ export async function POST(request) {
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
   } catch (error) {
     console.log("Error deploying Vercel relay:", error);
-    return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
+    return apiErrorResponse(error, { code: "vercel_deploy_failed", message: "Deploy failed" });
   }
 }

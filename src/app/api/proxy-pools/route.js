@@ -50,6 +50,9 @@ function buildUsageMap(connections = []) {
 // No page/pageSize params → legacy full list (used by provider pickers).
 // With page/pageSize → one page + total/activeCount/failedCount.
 // ?search= filters by pool name (case-insensitive substring).
+// ?status=active|inactive|failed narrows to that pool status (all = no filter).
+// activeCount/failedCount are global (pre-filter) so the toolbar badges stay
+// meaningful while a search or status filter narrows the list itself.
 // ?idsOnly=1 returns just { ids, total } for the current filter+search
 // (bulk actions that target "all pools" without downloading every row).
 export async function GET(request) {
@@ -59,6 +62,8 @@ export async function GET(request) {
     const includeUsage = searchParams.get("includeUsage") === "true";
     const idsOnly = searchParams.get("idsOnly") === "true";
     const search = (searchParams.get("search") || "").trim().toLowerCase();
+    const statusRaw = searchParams.get("status") || "";
+    const status = ["active", "inactive", "failed"].includes(statusRaw) ? statusRaw : null;
     const hasPage = searchParams.has("page") || searchParams.has("pageSize");
     const page = Math.max(1, Number.parseInt(searchParams.get("page") || "1", 10) || 1);
     const pageSizeRaw = Number.parseInt(searchParams.get("pageSize") || "", 10);
@@ -70,8 +75,18 @@ export async function GET(request) {
     }
 
     let proxyPools = await getProxyPools(filter);
+    // Global counts, before the search/status narrowing below.
+    const activeCount = proxyPools.filter((pool) => pool.isActive === true).length;
+    const failedCount = proxyPools.filter((pool) => pool.testStatus === "error").length;
     if (search) {
       proxyPools = proxyPools.filter((pool) => (pool.name || "").toLowerCase().includes(search));
+    }
+    if (status === "active") {
+      proxyPools = proxyPools.filter((pool) => pool.isActive === true);
+    } else if (status === "inactive") {
+      proxyPools = proxyPools.filter((pool) => pool.isActive !== true);
+    } else if (status === "failed") {
+      proxyPools = proxyPools.filter((pool) => pool.testStatus === "error");
     }
 
     if (idsOnly) {
@@ -105,8 +120,6 @@ export async function GET(request) {
     }
 
     const total = proxyPools.length;
-    const activeCount = proxyPools.filter((pool) => pool.isActive === true).length;
-    const failedCount = proxyPools.filter((pool) => pool.testStatus === "error").length;
     const start = (page - 1) * pageSize;
     let pagePools = proxyPools.slice(start, start + pageSize);
 

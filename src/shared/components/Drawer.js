@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/shared/utils/cn";
+import { registerTopmostModal, isTopmostModal } from "./Modal";
 
 export default function Drawer({
   isOpen,
@@ -19,6 +21,9 @@ export default function Drawer({
     full: "w-full",
   };
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -28,17 +33,27 @@ export default function Drawer({
     return () => { document.body.style.overflow = ""; };
   }, [isOpen]);
 
+  // Same topmost rule as Modal: Escape closes this drawer only when no
+  // modal is open above it.
   useEffect(() => {
+    if (!isOpen) return;
+    const entry = { close: () => onCloseRef.current?.() };
+    const unregister = registerTopmostModal(entry);
     const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
+      if (e.key === "Escape" && isTopmostModal(entry)) entry.close();
     };
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      unregister();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  return (
+  // Render at <body> level (same reason as Modal): callers live inside
+  // containers whose backdrop-blur / transform traps position:fixed.
+  return createPortal(
     <div className="fixed inset-0 z-50">
       {/* Overlay */}
       <div
@@ -78,6 +93,7 @@ export default function Drawer({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

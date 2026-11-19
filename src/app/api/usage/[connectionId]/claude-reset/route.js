@@ -1,5 +1,6 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
+import { apiErrorBody } from "@/lib/apiError";
 
 import { getProviderConnectionById } from "@/lib/localDb";
 import { consumeClaudeResetGrant } from "open-sse/services/usage.js";
@@ -40,6 +41,6 @@ export async function POST(request, { params }) {
     return Response.json({ ...result, message: result.message || `Reset not applied: ${result.reason || result.result || "unknown"}` }, { status });
   } catch (error) {
     console.warn(`[Claude Reset] ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(apiErrorBody(error, { code: "claude_reset_failed", message: "Failed to reset Claude usage" }), { status: 500 });
   }
 }

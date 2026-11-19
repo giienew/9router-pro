@@ -5,6 +5,7 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
 import { emitUsageWebhook, maskApiKeyForWebhook } from "@/lib/webhookEvents.js";
 import { maskApiKey } from "@/shared/utils/maskApiKey.js";
+import { countryFlag } from "@/shared/utils/clientMeta.js";
 
 // Output bucket key for byApiKey stats. The full API key must never leave the
 // server inside a stats payload, but a bare mask can still collide between
@@ -145,6 +146,8 @@ async function ensureRingInitialized() {
         apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
         tokens: parseJson(r.tokens, {}),
         latencyMs: Number.isFinite(m.latencyMs) ? m.latencyMs : null,
+        clientIp: m.clientIp || "unknown", country: m.country || "unknown",
+        apiKeyMasked: m.apiKeyMasked || maskApiKey(r.apiKey),
       };
     });
   } catch {}
@@ -242,6 +245,8 @@ export async function getActiveRequests() {
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         status: e.status || "ok",
         latencyMs: Number.isFinite(e.latencyMs) ? e.latencyMs : null,
+        clientIp: e.clientIp || "unknown", country: e.country || "unknown",
+        apiKeyMasked: e.apiKeyMasked || maskApiKey(e.apiKey),
       };
     })
     .filter((e) => {
@@ -281,7 +286,15 @@ export async function saveRequestUsage(entry) {
     // Latency rides in the existing meta JSON column (no schema change):
     // callers that know total time pass latencyMs; rows without it keep
     // meta exactly as before and read back as null ("—" in the UI).
+    // Spam/abuse attribution rides the same way: client IP + country +
+    // masked key (never the full key) in meta, so no migration is needed.
     const storedMeta = { ...(entry.meta || {}) };
+    if (entry.clientIp) storedMeta.clientIp = entry.clientIp;
+    if (entry.country) storedMeta.country = entry.country;
+    if (entry.apiKey) storedMeta.apiKeyMasked = maskApiKey(entry.apiKey);
+    // The ring + webhook readers see the same entry object, so stamp the
+    // merged meta back on it before it is pushed to the ring below.
+    entry.meta = storedMeta;
     if (Number.isFinite(entry.latencyMs)) {
       storedMeta.latencyMs = Math.round(entry.latencyMs);
       entry.latencyMs = storedMeta.latencyMs;
@@ -397,12 +410,16 @@ export async function getUsageHistory(filter = {}) {
   // the export safe; pass filter.limit explicitly for a larger window.
   const limit = Math.min(10000, Math.max(1, Math.floor(Number(filter.limit)) || 1000));
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC LIMIT ?`, [...params, limit]);
+  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ${where} ORDER BY id ASC LIMIT ?`, [...params, limit]);
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,
     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
     cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
+    // Spam/abuse attribution from the row's meta (rows recorded before
+    // this feature read as "unknown"). Masked key only — never raw.
+    clientIp: (parseJson(r.meta, {}) || {}).clientIp || "unknown",
+    country: (parseJson(r.meta, {}) || {}).country || "unknown",
   }));
 }
 
@@ -504,8 +521,9 @@ function loadDaysInRange(adapter, maxDays) {
   return adapter.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? ORDER BY dateKey ASC`, [cutoffKey]);
 }
 
-// period: today | 24h | 7d | 30d | 60d | all | custom (custom needs
-// range = { startKey, endKey } as local YYYY-MM-DD keys, inclusive)
+// period: today | 24h | 7d | 30d | month | 60d | all | custom (custom needs
+// range = { startKey, endKey } as local YYYY-MM-DD keys, inclusive;
+// month = current calendar month to date, from the 1st of this month)
 export async function getUsageStats(period = "all", range = null) {
   const db = await getAdapter();
 
@@ -542,7 +560,7 @@ export async function getUsageStats(period = "all", range = null) {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, meta FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT timestamp, provider, model, apiKey, tokens, status, meta FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows
     .map((r) => {
@@ -555,6 +573,8 @@ export async function getUsageStats(period = "all", range = null) {
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
         status: r.status || "ok",
         latencyMs: Number.isFinite(m.latencyMs) ? m.latencyMs : null,
+        clientIp: m.clientIp || "unknown", country: m.country || "unknown",
+        apiKeyMasked: m.apiKeyMasked || maskApiKey(r.apiKey),
       };
     })
     .filter((e) => {
@@ -625,9 +645,16 @@ export async function getUsageStats(period = "all", range = null) {
     const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
     const maxDays = periodDays[period] || null;
     // Custom range reads whole-day rollups between the two date keys.
+    // Month reads whole-day rollups from the 1st of the current month.
+    const monthStartKey = (() => {
+      const n = new Date();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`;
+    })();
     const dayRows = period === "custom" && range?.startKey && range?.endKey
       ? db.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? ORDER BY dateKey ASC`, [range.startKey, range.endKey])
-      : loadDaysInRange(db, maxDays);
+      : period === "month"
+        ? db.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? ORDER BY dateKey ASC`, [monthStartKey])
+        : loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;
@@ -972,7 +999,8 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  // Month-to-date: one bucket per elapsed day of the current month.
+  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : period === "month" ? new Date().getDate() : 60;
   const today = new Date();
 
   // Build map of dateKey → day data
@@ -1009,7 +1037,7 @@ export async function getRecentLogs(limit = 200) {
   try {
     const db = await getAdapter();
     const rows = db.all(
-      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
+      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens, meta, apiKey FROM usageHistory ORDER BY id DESC LIMIT ?`,
       [limit],
     );
     if (!rows.length) return [];
@@ -1026,7 +1054,14 @@ export async function getRecentLogs(limit = 200) {
       const tk = r.tokens ? parseJson(r.tokens, {}) : {};
       const sent = r.promptTokens ?? tk.prompt_tokens ?? "-";
       const received = r.completionTokens ?? tk.completion_tokens ?? "-";
-      return `${ts} | ${m} | ${p} | ${account} | ${sent} | ${received} | ${r.status || "-"}`;
+      // Spam/abuse attribution: flag + client IP + masked key, from the
+      // usage row's meta (rows recorded before this feature show "—").
+      const meta = r.meta ? parseJson(r.meta, {}) : {};
+      const ip = meta.clientIp || "unknown";
+      const flag = countryFlag(meta.country || "unknown");
+      const key = meta.apiKeyMasked || maskApiKey(r.apiKey) || "-";
+      const attribution = ip === "unknown" ? "— | —" : `${flag ? `${flag} ` : ""}${ip} | ${key}`;
+      return `${ts} | ${m} | ${p} | ${account} | ${sent} | ${received} | ${r.status || "-"} | ${attribution}`;
     });
   } catch (e) {
     console.error("[usageRepo] getRecentLogs failed:", e.message);

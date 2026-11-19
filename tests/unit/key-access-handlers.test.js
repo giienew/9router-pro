@@ -20,7 +20,7 @@ vi.mock("@/lib/localDb", () => ({
   getComboByName: async (name) => fx.combos.find((c) => c.name === name) || null,
   getProviderNodes: async () => [],
   getCombos: async () => fx.combos,
-  getProviderConnections: async () => [],
+  getProviderConnections: async () => [{ id: "conn-openai", provider: "openai", isActive: true, data: {} }],
   getProviderConnectionById: async () => null,
   getCustomModels: async () => [],
   // Keep in sync with src/sse/handlers/chat.js imports: the mock replaces the
@@ -28,6 +28,13 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: async (k) => fx.keys[k] || null,
   getInjectVariants: async () => ({}),
   resolvePromptInjections: async () => ({}),
+  // pro.29 item A: the models route resolves combo seat limits through
+  // this pure helper (mirrors src/lib/db/repos/combosRepo.js).
+  resolveComboContextWindow: (mode, customValue, minWindow, maxWindow) => {
+    if (mode === "custom" && Number.isFinite(customValue) && customValue > 0) return customValue;
+    if (mode === "max" && Number.isFinite(maxWindow)) return maxWindow;
+    return Number.isFinite(minWindow) ? minWindow : undefined;
+  },
   // No injections configured in this fixture: empty stack, not a variant
   // pick — matches resolvePromptInjectionMeta's fail-open return shape.
   resolvePromptInjectionMeta: async () => ({ stack: [], isVariantPick: false }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -102,7 +103,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
 
       setStep("success");
       onSuccessRef.current?.();
@@ -121,7 +122,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         body: JSON.stringify({ code, state: authData.state }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
 
       setStep("success");
       onSuccessRef.current?.();
@@ -131,8 +132,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     }
   }, [authData]);
 
-  // Poll for device code token
-  const startPolling = useCallback(async (deviceCode, codeVerifier, interval, extraData, deadlineMs) => {
+  // Poll for device code token. The PKCE verifier is never sent by the
+  // browser: the server stored it at device-code time (audit item 6b) and
+  // the poll endpoint reads it back keyed by deviceCode.
+  const startPolling = useCallback(async (deviceCode, interval, extraData, deadlineMs) => {
     pollingAbortRef.current = false;
     setPolling(true);
     // Honor the upstream's expires_in when supplied (qoder sets 300s) so we
@@ -162,7 +165,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         const res = await fetch(`/api/oauth/${provider}/poll`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceCode, codeVerifier, extraData }),
+          body: JSON.stringify({ deviceCode, extraData }),
         });
 
         const data = await res.json();
@@ -311,7 +314,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         }
         const res = await fetch(deviceCodeUrl.toString());
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
 
         setDeviceData(data);
 
@@ -334,7 +337,6 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           ? {
               _qoderNonce: data._qoderNonce,
               _qoderMachineId: data._qoderMachineId,
-              _qoderVerifier: data.codeVerifier,
             }
           : (provider === "kimi" || provider === "kimi-coding")
           ? { _kimiDeviceId: data._kimiDeviceId }
@@ -347,7 +349,6 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           // MiniMax's device-code variant returns no device_code: the token
           // endpoint is polled with the user_code itself.
           data.device_code || data.user_code,
-          data.codeVerifier,
           data.interval || 5,
           extraData,
           // Use the upstream's expires_in if present so we don't time out
@@ -378,7 +379,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       }
       const res = await fetch(authorizeUrl.toString());
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
 
       // Codex: start proxy with server-side session (auto-exchange) + fallback to channels
       let codexProxyActive = false;
@@ -669,7 +670,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           body: JSON.stringify({ code: token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
         setStep("success");
         onSuccessRef.current?.();
         return;
@@ -693,7 +694,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
         setStep("success");
         onSuccessRef.current?.();
         return;

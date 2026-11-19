@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
-import { getSettings } from "@/lib/localDb";
-import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import {
+  ensurePasswordReady,
+  setDashboardAuthCookie,
+  verifyStoredPassword,
+} from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isTotpEnabled, verifyTotp, consumeBackupCode, getTotpConfig } from "@/lib/auth/totp.js";
-import { isLocalRequest } from "@/dashboardGuard";
 import { getAdapter } from "@/lib/db/driver.js";
+import { apiErrorResponse } from "@/lib/apiError.js";
 import { recordSecurityEvent } from "@/lib/trustEvents.js";
 
 const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
@@ -39,15 +41,17 @@ export async function POST(request) {
     }
 
     const { password, totpCode } = await request.json();
-    const settings = await getSettings();
+    // First-boot/legacy migration: a set INITIAL_PASSWORD is hashed into
+    // settings.password, and a legacy plaintext stored value is re-hashed
+    // in place, before any verification happens. After this point the only
+    // verification path is bcrypt against the stored hash — there is no
+    // default password and no plaintext fallback.
+    const settings = await ensurePasswordReady();
 
     // Block login via tunnel/tailscale if dashboard access is disabled
     if (isTunnelRequest(request, settings) && settings.tunnelDashboardAccess !== true) {
       return NextResponse.json({ error: "Dashboard access via tunnel is disabled" }, { status: 403 });
     }
-
-    // Default password is '9routerpro' if not set
-    const storedHash = settings.password;
 
     if (settings.authMode === "sso" || settings.authMode === "saml" || settings.authMode === "oidc") {
       const ssoType = settings.ssoType || (settings.authMode === "saml" ? "saml" : "oidc");
@@ -59,14 +63,7 @@ export async function POST(request) {
       }
     }
 
-    let isValid = false;
-    if (storedHash) {
-      isValid = await bcrypt.compare(password, storedHash);
-    } else {
-      // Use env var or default
-      const initialPassword = process.env.INITIAL_PASSWORD || "9routerpro";
-      isValid = password === initialPassword;
-    }
+    const isValid = await verifyStoredPassword(password, settings.password);
 
     if (isValid) {
       // TOTP second factor (password login only): no session cookie is
@@ -93,31 +90,6 @@ export async function POST(request) {
 
       recordSuccess(ip);
 
-      // Default password still in use on a remote client → force a password
-      // change before the dashboard is exposed remotely (keeps local UX intact).
-      const mustChangePassword =
-        !storedHash && !process.env.INITIAL_PASSWORD && !isLocalRequest(request);
-
-      if (mustChangePassword) {
-        // Do NOT issue a session token: a fresh install's default password is
-        // public knowledge ("9routerpro"), so handing out a valid JWT would let any
-        // remote attacker authenticate and (e.g.) PATCH /api/settings to disable
-        // authentication entirely (CVE-2026-56679 class). Require the password
-        // to be changed first.
-        //
-        // NOTE: this intentionally leaves no remote self-service password-change
-        // path — the change-password flow (PATCH /api/settings) requires a JWT,
-        // which we deliberately withhold. A remote fresh-install user must either
-        // change the password from the local machine or set INITIAL_PASSWORD
-        // before first launch. This is a deliberate security trade-off, not an
-        // oversight: issuing any credential before the default password is
-        // rotated re-opens the exact attack chain this branch closes.
-        return NextResponse.json(
-          { success: false, error: "Default password must be changed before remote access. Change it from the local machine (or set INITIAL_PASSWORD).", mustChangePassword },
-          { status: 403, headers: NO_STORE_HEADERS }
-        );
-      }
-
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
       audit("login", await isTotpEnabled() ? "Password + TOTP verified" : "Password verified");
@@ -139,6 +111,6 @@ export async function POST(request) {
       { status: 401 }
     );
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "login_failed", message: "Login failed. Please try again." });
   }
 }

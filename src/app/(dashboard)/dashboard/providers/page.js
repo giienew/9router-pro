@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import {
   Card,
@@ -1227,8 +1228,8 @@ export default function ProvidersPage() {
         }}
       />
 
-      {/* Test Results Modal */}
-      {testResults && (
+      {/* Test Results Modal — portaled to document.body (see Modal.js) */}
+      {testResults && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[6vh] sm:pt-[10vh]"
           onClick={() => setTestResults(null)}
@@ -1252,7 +1253,8 @@ export default function ProvidersPage() {
               <ProviderTestResultsView results={testResults} />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Fake count menu: All Connection Providers shelf only */}

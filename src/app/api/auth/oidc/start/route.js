@@ -9,7 +9,7 @@ import {
   getOidcRuntimeConfig,
   getPublicOrigin,
 } from "@/lib/auth/oidc";
-import { shouldUseSecureCookie } from "@/lib/auth/dashboardSession";
+import { shouldSetSecureCookie } from "@/lib/auth/secureCookie";
 
 export async function GET(request) {
   try {
@@ -36,7 +36,7 @@ export async function GET(request) {
     const cookieStore = await cookies();
     const baseOptions = {
       httpOnly: true,
-      secure: shouldUseSecureCookie(request),
+      secure: shouldSetSecureCookie(),
       sameSite: "lax",
       path: "/",
       maxAge: 10 * 60,

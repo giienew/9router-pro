@@ -1,4 +1,5 @@
 import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
+import { apiErrorBody } from "@/lib/apiError";
 import { getExecutor } from "open-sse/index.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
@@ -89,6 +90,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[Translator] Send error:", error);
-    return Response.json({ success: false, error: error.message }, { status: 500 });
+    return Response.json({ success: false, ...apiErrorBody(error, { code: "translator_send_failed", message: "Failed to send translation" }) }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
 import { providerBreakerGate, recordProviderFailure } from "./providerBreaker.js";
+import { pickLeastBusy, noteLeastBusyPick, noteLeastBusyRelease, leastBusyLoad } from "../../../open-sse/services/leastBusy.js";
 import * as log from "../utils/logger.js";
 
 // Dedicated mutex chain for round-robin / sticky-random account selection
@@ -400,6 +401,25 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           consecutiveUseCount: isFreshPick ? 1 : (connection.consecutiveUseCount || 0) + 1
         });
       }
+    } else if (strategy === "least-busy") {
+      // Least-busy (9Router Pro): within the clean tier, pick the
+      // connection carrying the fewest live requests, with recent
+      // failures as a penalty — agent clients hammering a multi-key
+      // provider (dahl) spread across farmed keys instead of piling
+      // onto one. Same clean-tier-first rule as balanced; only the
+      // within-tier rule differs (live load vs windowed LRU). Lock-free
+      // like balanced — the load counts are updated synchronously, so
+      // no mutex join is needed. The pick is stamped to the last-used
+      // overlay like balanced so the DB stamp stays consistent and
+      // concurrent picks keep spreading while a stream is still running.
+      const now = Date.now();
+      const clean = availableConnections.filter(c => connectionHealthTier(c, now, SUSPECT_PROBATION_MS) === 0);
+      const tier = clean.length > 0 ? clean : availableConnections;
+      connection = pickLeastBusy(tier, now, Math.random, leastBusyLoad, lastUsedOverlay);
+      if (connection) {
+        stampLastUsedOverlay(connection.id, now);
+        scheduleLastUsedFlush(connection.id, new Date(now).toISOString(), 1);
+      }
     } else if (strategy === "balanced") {
       // Balanced, lock-free (9Router Pro): clean accounts first — an
       // account that failed recently and has not proven itself since
@@ -425,6 +445,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // fill-first (already sorted by priority in getProviderConnections)
       connection = availableConnections[0];
     }
+
+    // Least-busy load accounting: every pick occupies its key until its
+    // outcome reports (clearAccountError on success,
+    // markAccountUnavailable on failure), whatever strategy picked it —
+    // the tracker only steers least-busy picks, but its in-flight counts
+    // must reflect real load. Synchronous here, before any await, so a
+    // concurrent pick in this process already sees this one as busy and
+    // spreads instead of piling on.
+    if (connection) noteLeastBusyPick(connection.id);
 
     const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
@@ -473,6 +502,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  // Least-busy: the key's in-flight slot frees now, and the failure
+  // counts as a recent error even when this error is request-scoped
+  // (shouldFallback false below) — the key really did fail, so the
+  // penalty is deserved either way.
+  noteLeastBusyRelease(connectionId, false);
   // Fail open: a locked or busy DB must not kill the request. If the read
   // fails, the lock just won't persist — the caller still falls back on
   // the cooldown computed from the status alone.
@@ -603,6 +637,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
  */
 export async function clearAccountError(connectionId, currentConnection, model = null) {
   if (!connectionId || connectionId === "noauth") return;
+  // Least-busy: the key's in-flight slot frees now that its request
+  // succeeded (streaming replies hold the slot until the stream ends,
+  // which is exactly the load least-busy must see).
+  noteLeastBusyRelease(connectionId, true);
   const conn = currentConnection._connection || currentConnection;
   const now = Date.now();
   const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));

@@ -11,11 +11,19 @@ const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 // ============================================================
 describe("AUDIT-002: API key masking", () => {
   it("source should contain maskApiKey function", () => {
-    const source = fs.readFileSync(
+    // pro.29 (audit item 3): maskApiKey lives in the shared module
+    // src/shared/utils/maskApiKey.js (it understands the hashed
+    // `sha256:...` format); usageRepo.js imports and uses it.
+    const shared = fs.readFileSync(
+      path.resolve(REPO_ROOT, "src/shared/utils/maskApiKey.js"),
+      "utf-8"
+    );
+    expect(shared).toContain("function maskApiKey");
+    const usage = fs.readFileSync(
       path.resolve(REPO_ROOT, "src/lib/db/repos/usageRepo.js"),
       "utf-8"
     );
-    expect(source).toContain("function maskApiKey");
+    expect(usage).toContain('import { maskApiKey } from "@/shared/utils/maskApiKey.js"');
   });
 
   it("getUsageHistory should use apiKeyMasked instead of apiKey", () => {

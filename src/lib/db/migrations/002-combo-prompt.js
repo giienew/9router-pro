@@ -8,6 +8,10 @@ export default {
   name: "combo-prompt",
   up(db) {
     const cols = db.all(`PRAGMA table_info(combos)`);
+    // A legacy DB may have no combos table at all (it is created by the
+    // additive sync in migrate.js with all columns); ALTER on a missing
+    // table fails boot, so skip when the table does not exist yet.
+    if (cols.length === 0) return;
     if (!cols.some((c) => c.name === "prompt")) {
       db.exec(`ALTER TABLE combos ADD COLUMN prompt TEXT`);
     }

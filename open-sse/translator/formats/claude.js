@@ -387,11 +387,32 @@ function markFinalToolResults(body) {
   return markLastCacheableBlock(last);
 }
 
-// Re-anchor cache breakpoints on a Claude passthrough body (same policy as
-// prepareClaudeRequest): last tool + last system block at 1h, last assistant at 5m.
-// The client's own markers point at pre-normalization offsets, so they are dropped.
-// Must run LAST, after every step that can reshape system/tools/messages
-// (normalize, tool dedupe, token savers) — otherwise the anchor drifts off the tail.
+// Does any block of this message carry a cache_control marker?
+function messageHasMarker(msg) {
+  return Array.isArray(msg?.content) && msg.content.some((b) => b?.cache_control);
+}
+
+// Strip only the markers Anthropic rejects: thinking/redacted_thinking blocks
+// do not accept cache_control. Every other block keeps the client's marker
+// exactly where the client put it, so a repeat prompt reuses the same cached
+// prefix instead of paying for a re-anchored one.
+function stripInvalidMessageMarkers(msg) {
+  if (!Array.isArray(msg?.content)) return;
+  for (const block of msg.content) {
+    if (block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING) {
+      delete block.cache_control;
+    }
+  }
+}
+
+// Re-anchor cache breakpoints on a Claude passthrough body: last tool + last
+// system block at 1h, last assistant at 5m. Client markers on message blocks
+// are preserved in place (position and value) — they mark the stable prefix
+// an agent client already paid to cache, and moving them would invalidate it.
+// Router anchors are added only where the client sent none and the 4-marker
+// budget has room. Must run LAST, after every step that can reshape
+// system/tools/messages (normalize, tool dedupe, token savers) — otherwise
+// the anchor drifts off the tail.
 export function anchorClaudeCache(body) {
   if (!body || typeof body !== "object") return body;
   if (Array.isArray(body.messages)) {
@@ -437,22 +458,25 @@ export function anchorClaudeCache(body) {
   }
 
   if (Array.isArray(body.messages)) {
-    let anchored = null;
+    // Keep the client's message markers where they are; strip only the ones
+    // Anthropic rejects (thinking blocks). The router anchor below fills in
+    // only where the client sent none and the budget has room.
+    for (const msg of body.messages) stripInvalidMessageMarkers(msg);
+    let anchored = body.messages.some(messageHasMarker);
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
-      if (!Array.isArray(msg.content)) continue;
-      for (const block of msg.content) delete block.cache_control;
-
-      // Prefer the last assistant turn: it ends a completed exchange, so the
-      // prefix up to it stays byte-stable across the following requests.
-      if (anchored || msg.role !== ROLE.ASSISTANT) continue;
+      if (msg.role !== ROLE.ASSISTANT || !Array.isArray(msg.content)) continue;
+      if (messageHasMarker(msg)) { anchored = true; break; }
+      if (countCacheControlBlocks(body) >= 4) break;
       anchored = markLastCacheableBlock(msg);
+      break;
     }
 
     // First turn of a conversation has no assistant yet — anchor the final
     // message instead, so the opening prompt is cached rather than paid twice.
     if (!anchored) {
       for (let i = body.messages.length - 1; i >= 0 && !anchored; i--) {
+        if (countCacheControlBlocks(body) >= 4) break;
         anchored = markLastCacheableBlock(body.messages[i]);
       }
     }
@@ -461,11 +485,16 @@ export function anchorClaudeCache(body) {
     markFinalToolResults(body);
   }
 
+  // Safety net: a client body plus router anchors must never exceed the
+  // 4-marker budget the upstream API accepts.
+  if (countCacheControlBlocks(body) > 4) capCacheControlBlocks(body);
+
   return body;
 }
 
 // Prepare request for Claude format endpoints
-// - Cleanup cache_control
+// - Preserve client cache_control markers in place (message blocks); add the
+//   router's own anchors only where the client sent none and budget allows
 // - Filter empty messages
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
@@ -563,15 +592,21 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const originalLastRole = body.messages[len - 1]?.role;
     let filtered = [];
 
-    // Pass 1: remove cache_control + filter empty messages
+    // Pass 1: keep the client's cache_control markers in place (except on
+    // thinking blocks, which Anthropic rejects) + filter empty messages.
+    // A marker is the client's cached-prefix boundary for a repeat prompt;
+    // deleting it and re-anchoring on the last assistant would invalidate
+    // the prefix the client already paid to cache.
     for (let i = 0; i < len; i++) {
       const msg = body.messages[i];
       normalizeMessageContent(msg);
 
-      // Remove cache_control from content blocks
+      // Remove cache_control only from thinking blocks (not allowed there)
       if (Array.isArray(msg.content)) {
         for (const block of msg.content) {
-          delete block.cache_control;
+          if (block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING) {
+            delete block.cache_control;
+          }
         }
       }
 
@@ -609,13 +644,21 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         // Add cache_control to last non-thinking block of first (from end) assistant with content
-        // thinking/redacted_thinking blocks do not support cache_control
+        // thinking/redacted_thinking blocks do not support cache_control.
+        // Only when that turn carries no client marker yet and the 4-marker
+        // budget has room — the tools step below still claims one slot for
+        // its own 1h anchor, so reserve it here. Client markers elsewhere
+        // in the history stay exactly where the client put them.
         if (!lastAssistantProcessed && msg.content.length > 0) {
-          for (let j = msg.content.length - 1; j >= 0; j--) {
-            const block = msg.content[j];
-            if (block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING) {
-              block.cache_control = { type: "ephemeral" };
-              break;
+          const hasClientMarker = msg.content.some((b) => b?.cache_control);
+          const toolAnchorReserved = Array.isArray(body.tools) && body.tools.length > 0 ? 1 : 0;
+          if (!hasClientMarker && countCacheControlBlocks(body) + toolAnchorReserved < 4) {
+            for (let j = msg.content.length - 1; j >= 0; j--) {
+              const block = msg.content[j];
+              if (block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING) {
+                block.cache_control = { type: "ephemeral" };
+                break;
+              }
             }
           }
           lastAssistantProcessed = true;
@@ -734,6 +777,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
   // A tool loop's final tool results: cached now, so the next step reads them.
   markFinalToolResults(body);
+
+  // Safety net: preserved client markers plus router anchors must never
+  // exceed the 4-marker budget the upstream API accepts.
+  if (countCacheControlBlocks(body) > 4) capCacheControlBlocks(body);
 
   // Apply cloaking for OAuth tokens (billing header + fake user ID)
   // session_id in user_id must match X-Claude-Code-Session-Id for fingerprint consistency

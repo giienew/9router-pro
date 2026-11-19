@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { getDefaultPricing, formatCost } from "open-sse/providers/pricing.js";
 import { ConfirmModal } from "./Modal";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -96,7 +97,9 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
   const allProviders = Object.keys(pricingData).sort();
   const pricingFields = ["input", "output", "cached", "reasoning", "cache_creation"];
 
-  return (
+  // Portaled like Modal: the pricing table is wide, and callers sit inside
+  // containers that trap position:fixed.
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-bg-base border border-border rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
@@ -214,6 +217,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
         message="This cannot be undone."
         confirmText="Reset"
       />
-    </div>
+    </div>,
+    document.body
   );
 }

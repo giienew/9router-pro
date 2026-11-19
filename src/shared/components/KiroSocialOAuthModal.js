@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { errorText } from "@/shared/utils/errorText";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -36,7 +37,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error);
+          throw new Error(errorText(data, "Authentication failed"));
         }
 
         setAuthData(data);
@@ -94,7 +95,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(errorText(data, "Authentication failed"));
 
       setStep("success");
       onSuccess?.();

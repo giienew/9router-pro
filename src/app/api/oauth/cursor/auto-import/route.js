@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorBody } from "@/lib/apiError";
 import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -279,7 +280,7 @@ export async function GET() {
   } catch (error) {
     console.log("Cursor auto-import error:", error);
     return NextResponse.json(
-      { found: false, error: error.message },
+      { found: false, ...apiErrorBody(error, { code: "cursor_auto_import_failed", message: "Failed to auto-detect Cursor tokens" }) },
       { status: 500 },
     );
   }

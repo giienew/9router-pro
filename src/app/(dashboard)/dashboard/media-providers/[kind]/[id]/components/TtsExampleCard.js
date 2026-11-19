@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Card } from "@/shared/components";
 import { AI_PROVIDERS, getProviderAlias } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -641,8 +642,8 @@ export function TtsExampleCard({ providerId }) {
         </div>
       </Card>
 
-      {/* Country Picker Modal */}
-      {modalOpen && (
+      {/* Country Picker Modal — portaled to document.body (see Modal.js) */}
+      {modalOpen && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
           style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
@@ -703,7 +704,8 @@ export function TtsExampleCard({ providerId }) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

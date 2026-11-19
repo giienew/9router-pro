@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { apiErrorResponse, apiErrorBody } from "@/lib/apiError";
 import {
   getProvider,
   generateAuthData,
@@ -45,6 +46,11 @@ import {
 } from "@/lib/oauth/utils/server";
 import { detectIdeInstalled } from "@/lib/oauth/utils/ideDetect";
 import { ZED_HOSTED_CONFIG } from "@/lib/oauth/constants/oauth";
+import {
+  storeDeviceCodeSession,
+  lookupDeviceCodeSession,
+  consumeDeviceCodeSession,
+} from "@/lib/oauth/utils/deviceCodeSessions";
 
 async function completeXaiManualCode(code, state) {
   const session = state ? getXaiSessionStatus(state) : null;
@@ -279,12 +285,19 @@ export async function GET(request, { params }) {
         deviceData = await requestDeviceCode(provider, authData.codeChallenge, deviceOptions);
       }
 
-      return NextResponse.json({
-        ...deviceData,
-        // Prefer the verifier the provider's requestDeviceCode generated for
-        // itself (qoder rolls its own PKCE pair); fall back to the generic one.
-        codeVerifier: deviceData.codeVerifier || authData.codeVerifier,
-      });
+      // Audit item 6b: the PKCE verifier never leaves the server. It is
+      // stored keyed by device_code (MiniMax polls with the user_code
+      // instead, so that is the fallback key) and re-read by the poll
+      // endpoint; the browser only ever sees the user-facing fields.
+      // Prefer the verifier the provider's requestDeviceCode generated for
+      // itself (qoder rolls its own PKCE pair); fall back to the generic one.
+      const codeVerifier = deviceData.codeVerifier || authData.codeVerifier;
+      const { codeVerifier: _droppedVerifier, ...deviceFields } = deviceData || {};
+      const pollKey = deviceData?.device_code || deviceData?.user_code;
+      if (pollKey && codeVerifier) {
+        storeDeviceCodeSession(pollKey, { codeVerifier, provider });
+      }
+      return NextResponse.json(deviceFields);
     }
 
     if (action === "lease-status") {
@@ -301,14 +314,14 @@ export async function GET(request, { params }) {
         return NextResponse.json({ found: true, dataDir, ...status });
       } catch (error) {
         const code = error instanceof AuthLeaseError ? error.code : "INTERNAL_ERROR";
-        return NextResponse.json({ found: false, dataDir, error: code, message: error.message });
+        return NextResponse.json({ found: false, dataDir, ...apiErrorBody(error, { code: code || "lease_status_failed", message: "Failed to check MiniMax desktop status" }) });
       }
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.log("OAuth GET error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "oauth_failed", message: "OAuth request failed" });
   }
 }
 
@@ -339,7 +352,7 @@ export async function POST(request, { params }) {
         await requestLease(dataDir);
       } catch (error) {
         const code = error instanceof AuthLeaseError ? error.code : "INTERNAL_ERROR";
-        return NextResponse.json({ error: error.message, code }, { status: 409 });
+        return apiErrorResponse(error, { code: code || "lease_connect_failed", message: "Failed to connect MiniMax desktop", status: 409 });
       }
 
       // Idempotent: one lease connection per (provider, data dir).
@@ -435,7 +448,7 @@ export async function POST(request, { params }) {
         } catch (err) {
           clearXiaomiMimoSession(state);
           stopXiaomiMimoProxy();
-          return NextResponse.json({ error: err.message }, { status: 500 });
+          return apiErrorResponse(err, { code: "oauth_exchange_failed", message: "Failed to complete sign-in" });
         }
       }
 
@@ -467,7 +480,7 @@ export async function POST(request, { params }) {
             }
           });
         } catch (err) {
-          return NextResponse.json({ error: err.message }, { status: 500 });
+          return apiErrorResponse(err, { code: "oauth_exchange_failed", message: "Failed to complete sign-in" });
         }
       }
 
@@ -556,6 +569,13 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Missing device code" }, { status: 400 });
       }
 
+      // Audit item 6b: prefer the verifier stored server-side at
+      // device-code time. A client-supplied verifier is accepted only as
+      // a fallback for modals minted before this change; the server never
+      // returns a verifier, so a fresh client cannot supply one.
+      const stored = lookupDeviceCodeSession(deviceCode);
+      const resolvedVerifier = stored?.codeVerifier || codeVerifier || extraData?._qoderVerifier || null;
+
       // Providers that don't use PKCE for device code
       const noPkceProviders = ["github", "kimi", "kimi-coding", "kilocode", "codebuddy-cn", "codebuddy-intl", "glm", "nous"];
       let result;
@@ -569,19 +589,21 @@ export async function POST(request, { params }) {
         // Qoder needs both the PKCE verifier (codeVerifier) and the machineId
         // captured at device-code time (extraData._qoderMachineId) so
         // mapTokens can persist it for COSY signing.
-        if (!codeVerifier) {
+        if (!resolvedVerifier) {
           return NextResponse.json({ error: "Missing code verifier" }, { status: 400 });
         }
-        result = await pollForToken(provider, deviceCode, codeVerifier, extraData);
+        result = await pollForToken(provider, deviceCode, resolvedVerifier, extraData);
       } else {
         // Qwen and other PKCE providers
-        if (!codeVerifier) {
+        if (!resolvedVerifier) {
           return NextResponse.json({ error: "Missing code verifier" }, { status: 400 });
         }
-        result = await pollForToken(provider, deviceCode, codeVerifier);
+        result = await pollForToken(provider, deviceCode, resolvedVerifier);
       }
 
       if (result.success) {
+        // Single-use: the stored verifier dies with the completed exchange.
+        consumeDeviceCodeSession(deviceCode);
         // Save to database (legacy kimi-coding OAuth → dual-auth kimi)
         const providerId = provider === "kimi-coding" ? "kimi" : provider;
         const connection = await createProviderConnection({
@@ -628,6 +650,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.log("OAuth POST error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "oauth_failed", message: "OAuth request failed" });
   }
 }

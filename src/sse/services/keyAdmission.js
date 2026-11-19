@@ -24,6 +24,7 @@ import { extractApiKey } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import * as log from "../utils/logger.js";
 import { emitQuotaWebhook } from "@/lib/webhookEvents.js";
+import { enforceBlockedIp } from "@/lib/spamAbuse.js";
 
 const LIMIT_MESSAGES = {
   rpm: (v) => `API key rate limit exceeded (${v.used}/${v.limit} requests in the last minute)`,
@@ -145,6 +146,13 @@ function wrapResponseWithRelease(response, release, onFinish) {
 // is fully produced (immediately for non-streaming, at stream end for
 // streaming) and only for keys that actually have a quota configured.
 export async function withKeyAdmission(request, fn, onComplete) {
+  // Spam/abuse IP blocklist: checked FIRST, before key admission and before
+  // any provider call, so a blacklisted spammer burns no quota. It applies
+  // with or without an API key. Fail-open inside enforceBlockedIp. The
+  // dashboard login never passes through here, so blocking an IP can never
+  // lock the admin out of the dashboard.
+  const blocked = await enforceBlockedIp(request);
+  if (blocked) return blocked;
   let admission = null;
   try {
     admission = await admitKey(request);

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/apiError";
 import { updateSettings } from "@/lib/localDb";
 
 // Reset dashboard password to default by clearing the stored hash.
@@ -8,6 +9,6 @@ export async function POST() {
     await updateSettings({ password: null });
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiErrorResponse(error, { code: "reset_password_failed", message: "Failed to reset password" });
   }
 }
