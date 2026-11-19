@@ -23,7 +23,7 @@ follows these releases.
 - **Stale-chunk self-heal**: after a rebuild, a ChunkLoadError reloads the page once (60-second guard) instead of leaving a broken dashboard.
 - **Kiro region guard**: a stored invalid Kiro region now falls back to us-east-1 instead of corrupting the AWS endpoint URL.
 - **Antigravity Gemini 4**: `gemini-4-hydrogen-sonar` added (bare id, verified live); 7 tiered carbon/argon entries removed — every form 404s when probed live. Note: the Antigravity account quota is exhausted until ~24 Nov 2026, so even proven models 429 until then.
-- **Tests**: 4,715 passed / 36 failed — the 36 are pre-existing categories (translator golden headers, Codex images, key-access migration/handlers, OpenCode User-Agent, favicon candidates, mimo-free.live network test, security-audit maskApiKey, pair-strategy, bulk-add-pool, rival-combo-advisor, commandcode-executor, api-key-visibility-guidance, reasoningContentInjector), none in files this release touched; 48 new tests for this release pass (36 optimization batch + 8 welcome popup + 4 PI edit-template).
+- **Tests**: 4,715 passed / 36 failed — the 36 are pre-existing categories (translator golden headers, Codex images, key-access migration/handlers, OpenCode User-Agent, favicon candidates, mimo-free.live network test, security-audit maskApiKey, pair-strategy, bulk-add-pool, rival-combo-advisor, commandcode-executor, api-key-visibility-guidance, reasoningContentInjector), none in files this release touched; 48 new tests for this release pass.
 
 ## v0.5.109-pro.27
 
