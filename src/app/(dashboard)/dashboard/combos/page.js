@@ -1404,6 +1404,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
   const existingPrompt = combo?.prompt && typeof combo.prompt === "object" ? combo.prompt : null;
   const [promptText, setPromptText] = useState(existingPrompt?.mode === "single" ? existingPrompt.content || "" : "");
   const [promptPosition, setPromptPosition] = useState(existingPrompt?.position === "prepend" ? "prepend" : "append");
+  // Prompt templates (same library as Prompt Injection): pick one to fill the combo prompt
+  const [templates, setTemplates] = useState([]);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [pinMember, setPinMember] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -1432,11 +1434,32 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
   const fetchModalData = async () => {
     try {
       const aliasesRes = await fetch("/api/models/alias");
-      if (!aliasesRes.ok) return;
-      const aliasesData = await aliasesRes.json();
-      setModelAliases(aliasesData.aliases || {});
+      if (aliasesRes.ok) {
+        const aliasesData = await aliasesRes.json();
+        setModelAliases(aliasesData.aliases || {});
+      }
     } catch (error) {
       console.error("Error fetching modal data:", error);
+    }
+    try {
+      const injRes = await fetch("/api/prompt-injection");
+      if (injRes.ok) {
+        const inj = await injRes.json();
+        const list = Array.isArray(inj.templates) ? inj.templates : [];
+        // Combo prompt is single-mode only: chat-script templates have no content to fill
+        setTemplates(list.filter((t) => t.mode !== "chat" && (t.content || "").trim()));
+      }
+    } catch (error) {
+      console.error("Error fetching prompt templates:", error);
+    }
+  };
+
+  const handleTemplatePick = (e) => {
+    const template = templates.find((t) => String(t.id) === e.target.value);
+    if (!template) return;
+    setPromptText(template.content || "");
+    if (template.position === "prepend" || template.position === "append") {
+      setPromptPosition(template.position);
     }
   };
 
@@ -1592,6 +1615,17 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, prefi
           {/* Combo prompt (issue #2): one prompt for every member, fired before each member's own prompt */}
           <div>
             <label className="text-sm font-medium mb-1.5 block">Combo prompt <span className="text-text-muted font-normal">(optional)</span></label>
+            {templates.length > 0 && (
+              <div className="mb-1.5">
+                <Select
+                  options={templates.map((t) => ({ value: String(t.id), label: t.name }))}
+                  value=""
+                  onChange={handleTemplatePick}
+                  placeholder="Use a template…"
+                  selectClassName="py-1.5 text-xs"
+                />
+              </div>
+            )}
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
