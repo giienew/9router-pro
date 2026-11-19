@@ -43,6 +43,13 @@
 - **A dashboard made to be shown off** — a single dark neumorphism theme: floating glass cards, pill buttons and inputs, gradient toggles, hero-style numbers, spectrum charts, an opaque navbar, and Nunito throughout. No preset switching, no light mode — one look, done right on phone and laptop.
 - **Custom colours, dark to light** — pick any hue, then pick its shade: 6 dark-to-light dots per hue, with an exact-colour dot and hex readout. Your accent, your brightness.
 - **Monitoring Dashboard** — a new first sidebar item: VPS specs, fastest and most-used providers, most-used API key, totals for providers, proxies, combos and keys, plus usage charts — all live, nothing fabricated.
+- **Admin menu — the control room** — one place to run everything: a security center (encryption status, login lockouts, session revoke), the API key manager (masked keys, pause/resume, usage reset, regenerate), a spam/abuse ranking with IP blacklist, system status, and VPS maintenance (clear caches, restart, reset breakers, VACUUM, backup, disk cleanup). Minimalist by design: big numbers, short labels, and charts instead of walls of text.
+- **Spam / Abuse ranking** — top callers ranked by request volume, errors and 429s, with the client IP, country flag and masked key per request. Block an IP in two taps and it gets a 403 on every public LLM endpoint before any provider call is made; the dashboard login is never blocked. VPN or proxied requests show as unknown.
+- **Cloudflare Workers AI provider** — 53 models (chat, image, SystemOne) with live pricing, served through your own Cloudflare account.
+- **Least-busy routing** — a selectable fallback strategy that routes to the provider with the fewest in-flight requests and recent errors, alongside the default Balanced strategy.
+- **Live context windows** — `/v1/models` and combo seat limits publish real `context_length` and `max_completion_tokens` from compatible gateways' live model feeds, instead of static tables.
+- **Per-model rate limiting** — a per-model request cap (default 120 req/60s per key, provider and model), enforced with HTTP 429 + `Retry-After`; combos fail over to the next member.
+- **Encryption at rest** — provider credentials are encrypted in the database with AES-256-GCM (set `PRO_CREDENTIAL_KEY`); router keys are stored hashed and never returned whole except once at creation; sessions are revocable; logs are redacted so no credential ever lands in a log line.
 - **Built-in prompt templates** — a library of ready templates, titled by model and marked **Bawaan** (built-in). Read-only: copy or apply one to your own target yourself. Nothing is auto-applied or bound to any model.
 - **Template carousel** — the template library swipes like cards on phone (arrows + dots on laptop), and the Templates header carries an icon-only reference button to an external prompt collection.
 - **Lightweight by design** — no extra services, no database server: one Next.js app and a single SQLite file, the same footprint class as upstream.
@@ -149,6 +156,11 @@ Pro is designed to sit in front of an AI agent (Hermes-style setups) as its sing
 | Per-key token quotas | ❌ (removed upstream) | ❌ | ✅ 24h / 7d / 30d / All time budgets |
 | Per-model editing (caps, context, max output) | ❌ | ❌ | ✅ edit + add custom models |
 | Per-key rate limits (RPM/TPM/RPD/concurrency) | ❌ | ❌ | ✅ per key, 429 + Retry-After |
+| Admin menu (security, keys, spam, maintenance) | ❌ | ❌ | ✅ the control room |
+| Spam ranking + IP blacklist | ❌ | ❌ | ✅ ranked by volume/errors/429s |
+| Credentials encrypted at rest | ❌ | ❌ | ✅ AES-256-GCM, keys hashed |
+| Cloudflare Workers AI provider | ❌ | ❌ | ✅ 53 models, live pricing |
+| Least-busy routing | ❌ | ❌ | ✅ selectable strategy |
 | Test All per provider section (incl. custom) | ❌ | ❌ | ✅ |
 | Proxy pool health check + dead-pool cleanup | ❌ | ❌ | ✅ server-side, all pools |
 | Per-provider proxy rotation subsets | ❌ | ❌ | ✅ random / round-robin over picked pools |
@@ -164,7 +176,7 @@ npm install -g 9router-pro
 9router-pro        # dashboard on http://localhost:20127
 ```
 
-Then open the dashboard and log in. On a fresh install with no saved password, sign in with `INITIAL_PASSWORD` if you set one, otherwise the fallback `9routerpro`. From a non-local address, the fallback password alone is refused with a 403 until you change the password from the local machine or set `INITIAL_PASSWORD` — that is deliberate, not a bug.
+Then open the dashboard and log in. On a fresh install, set `INITIAL_PASSWORD` before first boot and sign in with it; there is no default password. Change it from the dashboard after your first login.
 
 Then add a provider, and visit **Prompt Injection** to set up your injections.
 
@@ -189,7 +201,7 @@ docker build -t 9router-pro .
 docker run -d --name 9router-pro -p 20127:20127 -v 9router-data:/app/data 9router-pro
 ```
 
-**Easypanel / VPS:** deploy from this GitHub repo's branch (the release branch, e.g. `pro28-release`, or `master`). Installs come from the repo, not from npm.
+**Easypanel / VPS:** deploy from this GitHub repo's branch (the release branch, e.g. `pro30-release`, or `master`). Installs come from the repo, not from npm.
 
 > Already running the original 9Router? Keep your providers, combos and keys — follow the [migration guide](./MIGRATION.md) (about two minutes, via backup export/import).
 
@@ -213,11 +225,11 @@ It speaks the **OpenAI-compatible `/v1` API**, so it drops in front of the tools
 - **Stack:** Next.js 16 / React 19, one app, one SQLite file. No database server, no Redis, no extra services — the same footprint class as upstream.
 - **API:** OpenAI-compatible `/v1/chat/completions` and `/v1/models`, plus the dashboard's own `/api` routes. Overrides from the per-model editor are published through `/api/models` and `/v1/models`.
 - **Token saving:** RTK and Headroom token savers are built in (inherited from upstream), plus Pro's own hot-path optimizations — snapshot-cached injection resolution and grouped system prompts.
-- **Tested:** Pro features ship with unit tests (4,700+ passing in pro.28); the release gate is live deploy + live check + "stable" before any GitHub or npm release.
+- **Tested** — the Pro features ship with unit tests (5,040+ passing in pro.30); the release gate is live deploy + live check + "stable" before any GitHub or npm release.
 
 ## 🤝 Contributing & support
 
-- **Issues & suggestions:** open an issue on [GitHub](https://github.com/giienew/9router-pro/issues) — bugs, feature requests, and patch suggestions are all welcome. The pro.28 release was built from community suggestions.
+- **Issues & suggestions:** open an issue on [GitHub](https://github.com/giienew/9router-pro/issues) — bugs, feature requests, and patch suggestions are all welcome. The pro.28, pro.29 and pro.30 releases were built from community suggestions.
 - **Telegram:** [@Gieneticc](https://t.me/Gieneticc) for reports and questions.
 - **Donate:** the dashboard's Donate button goes to this project's own channels ([Saweria](https://saweria.co/gienetic)) — it keeps Pro improving.
 
