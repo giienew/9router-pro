@@ -113,7 +113,7 @@ export async function PUT(request, { params }) {
     updated.quota = savedQuota;
     // Usage is keyed by key string: after a value change the NEW key counts,
     // so the response never reports the dead key's usage as the live one's.
-    updated.quotaUsed = savedQuota ? await getKeyUsageInWindow(updated.key, savedQuota.windowHours) : 0;
+    updated.quotaUsed = savedQuota ? await getKeyUsageInWindow(updated.key, savedQuota.windowHours, savedQuota.resetAt, savedQuota.absolute) : 0;
 
     // Pro: rate limits live in KV too. `limits: null` clears them.
     // opt46 (M1-key): same stored-first merge as bulk PATCH.

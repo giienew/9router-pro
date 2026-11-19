@@ -28,40 +28,55 @@ describe("provider breaker", () => {
     expect(providerBreakerGate("dahl", 2000)).toBe("allow");
     expect(getProviderBreakerSnapshot(2000).dahl.state).toBe("closed");
   });
-  it("trips on 5 failures across 2 connections in the window", () => {
-    fail("dahl", "c1", 1000);
-    fail("dahl", "c1", 1100);
-    fail("dahl", "c2", 1200);
-    fail("dahl", "c2", 1300);
-    expect(providerBreakerGate("dahl", 1400)).toBe("allow");
-    fail("dahl", "c1", 1500);
-    expect(providerBreakerGate("dahl", 1600)).toBe("skip");
-    expect(getProviderBreakerSnapshot(1600).dahl.state).toBe("open");
+  it("trips on 50 failures across 10 connections in the window", () => {
+    // Provider bar (2026-11-18, second retune): 50 failures / 10
+    // connections. A burst of 15 failures / 5 keys STILL tripped the
+    // provider under Hermes' load — that is the per-model cooldown's
+    // job, not the provider's.
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    for (let i = 0; i < 49; i++) fail("dahl", conns[i % 10], 1000 + i * 100);
+    expect(providerBreakerGate("dahl", 6000)).toBe("allow");
+    fail("dahl", "c10", 6000);
+    expect(providerBreakerGate("dahl", 6100)).toBe("skip");
+    expect(getProviderBreakerSnapshot(6100).dahl.state).toBe("open");
+  });
+  it("stays closed on a burst that used to trip it — 15 failures from 5 connections is not a provider outage", () => {
+    // Second retune (2026-11-18): 15 failures / 5 keys in 5 min tripped
+    // the provider under Hermes' load and parked all of dahl. That burst
+    // must NOT trip the provider anymore — it is the per-model
+    // cooldown's job.
+    const conns = ["c1", "c2", "c3", "c4", "c5"];
+    for (let i = 0; i < 15; i++) fail("dahl", conns[i % 5], 1000 + i * 100);
+    expect(providerBreakerGate("dahl", 3000)).toBe("allow");
+    expect(getProviderBreakerSnapshot(3000).dahl.state).toBe("closed");
   });
   it("ignores failures outside the window", () => {
-    fail("dahl", "c1", 1000);
-    fail("dahl", "c2", 2000);
-    fail("dahl", "c1", 3000);
-    fail("dahl", "c2", 4000);
-    // Window is 5 min; failures at t=1000..4000 are all inside it, so one
-    // more trips — but aged past the window they no longer count.
+    // 49 failures in the window, then one more 5 min later. The first
+    // 49 are pruned by the 5-min window, so the provider stays closed;
+    // if they were counted, 50 failures would trip it.
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    for (let i = 0; i < 49; i++) fail("dahl", conns[i % 10], 1000 + i * 100);
     fail("dahl", "c1", 1000 + PROVIDER_BREAKER_WINDOW_MS + 5000);
     expect(providerBreakerGate("dahl", 1000 + PROVIDER_BREAKER_WINDOW_MS + 6000)).toBe("allow");
+    expect(getProviderBreakerSnapshot(1000 + PROVIDER_BREAKER_WINDOW_MS + 6000).dahl.state).toBe("closed");
   });
-  it("half-opens after OPEN_MS, re-opens on probe failure, closes on success", () => {
+  it("half-opens after OPEN_MS, tolerates one probe failure, re-opens on the second, closes on success", () => {
     const t0 = 10000;
-    for (const [c, t] of [["c1", 0], ["c2", 100], ["c1", 200], ["c2", 300], ["c1", 400]]) {
-      fail("dahl", c, t0 + t);
-    }
-    const trippedAt = t0 + 400; // openedAt = time of the tripping failure
-    expect(providerBreakerGate("dahl", t0 + 500)).toBe("skip");
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    for (let i = 0; i < 50; i++) fail("dahl", conns[i % 10], t0 + i * 100);
+    const trippedAt = t0 + 49 * 100; // openedAt = time of the tripping failure
+    expect(providerBreakerGate("dahl", t0 + 5000)).toBe("skip");
     expect(providerBreakerGate("dahl", trippedAt + PROVIDER_BREAKER_OPEN_MS + 100)).toBe("allow");
     expect(getProviderBreakerSnapshot(trippedAt + PROVIDER_BREAKER_OPEN_MS + 100).dahl.state).toBe("half-open");
-    // Probe failure re-opens immediately.
+    // First probe failure is tolerated — still half-open.
     fail("dahl", "c1", trippedAt + PROVIDER_BREAKER_OPEN_MS + 200);
-    expect(providerBreakerGate("dahl", trippedAt + PROVIDER_BREAKER_OPEN_MS + 300)).toBe("skip");
+    expect(providerBreakerGate("dahl", trippedAt + PROVIDER_BREAKER_OPEN_MS + 300)).toBe("allow");
+    expect(getProviderBreakerSnapshot(trippedAt + PROVIDER_BREAKER_OPEN_MS + 300).dahl.state).toBe("half-open");
+    // Second probe failure re-opens.
+    fail("dahl", "c2", trippedAt + PROVIDER_BREAKER_OPEN_MS + 400);
+    expect(providerBreakerGate("dahl", trippedAt + PROVIDER_BREAKER_OPEN_MS + 500)).toBe("skip");
     // Second probe window, then a success closes it.
-    const reopenedAt = trippedAt + PROVIDER_BREAKER_OPEN_MS + 200;
+    const reopenedAt = trippedAt + PROVIDER_BREAKER_OPEN_MS + 400;
     expect(providerBreakerGate("dahl", reopenedAt + PROVIDER_BREAKER_OPEN_MS + 100)).toBe("allow");
     recordProviderSuccess("dahl", reopenedAt + PROVIDER_BREAKER_OPEN_MS + 200);
     expect(providerBreakerGate("dahl", reopenedAt + PROVIDER_BREAKER_OPEN_MS + 300)).toBe("allow");
@@ -69,21 +84,19 @@ describe("provider breaker", () => {
   });
   it("a quiet probe window closes the breaker", () => {
     const t0 = 50000;
-    for (const [c, t] of [["c1", 0], ["c2", 100], ["c1", 200], ["c2", 300], ["c1", 400]]) {
-      fail("dahl", c, t0 + t);
-    }
-    const halfOpenAt = t0 + 400 + PROVIDER_BREAKER_OPEN_MS + 100;
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    for (let i = 0; i < 50; i++) fail("dahl", conns[i % 10], t0 + i * 100);
+    const halfOpenAt = t0 + 49 * 100 + PROVIDER_BREAKER_OPEN_MS + 100;
     expect(providerBreakerGate("dahl", halfOpenAt)).toBe("allow");
     expect(providerBreakerGate("dahl", halfOpenAt + PROVIDER_BREAKER_PROBE_MS + 100)).toBe("allow");
     expect(getProviderBreakerSnapshot(halfOpenAt + PROVIDER_BREAKER_PROBE_MS + 100).dahl).toBeUndefined();
   });
   it("failures while open do not extend the open window", () => {
     const t0 = 90000;
-    for (const [c, t] of [["c1", 0], ["c2", 100], ["c1", 200], ["c2", 300], ["c1", 400]]) {
-      fail("dahl", c, t0 + t);
-    }
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    for (let i = 0; i < 50; i++) fail("dahl", conns[i % 10], t0 + i * 100);
     fail("dahl", "c2", t0 + 5000); // ignored while open
-    expect(providerBreakerGate("dahl", t0 + 400 + PROVIDER_BREAKER_OPEN_MS + 100)).toBe("allow");
+    expect(providerBreakerGate("dahl", t0 + 49 * 100 + PROVIDER_BREAKER_OPEN_MS + 100)).toBe("allow");
   });
   it("snapshot never exposes connection ids", () => {
     fail("dahl", "secret-conn-id", 1000);
@@ -121,15 +134,22 @@ describe("per-model cooldowns", () => {
   });
 
   it("a broad outage still trips the provider — failures spread thin across models", () => {
-    // No single model reaches 5 failures, but the provider bucket does.
-    for (const [c, m, t] of [
-      ["c1", "model-a", 1000], ["c2", "model-b", 1100], ["c1", "model-c", 1200],
-      ["c2", "model-a", 1300], ["c1", "model-b", 1400], ["c2", "model-c", 1500],
-    ]) {
-      failModel("dahl", c, m, t);
+    // No single model reaches its own 5-failure cooldown, but the
+    // provider bucket (50 failures / 10 connections) does.
+    const models = ["model-a", "model-b", "model-c", "model-d", "model-e", "model-f", "model-g", "model-h", "model-i", "model-j", "model-k", "model-l", "model-m"];
+    const conns = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    let t = 1000;
+    let n = 0;
+    for (const m of models) {
+      const perModel = m === "model-m" ? 2 : 4; // 12*4 + 2 = 50
+      for (let i = 0; i < perModel; i++) {
+        failModel("dahl", conns[n % 10], m, t);
+        t += 100;
+        n++;
+      }
     }
-    expect(providerBreakerGate("dahl", "model-a", 1600)).toBe("skip");
-    expect(getProviderBreakerSnapshot(1600).dahl.state).toBe("open");
+    expect(providerBreakerGate("dahl", "model-a", t + 100)).toBe("skip");
+    expect(getProviderBreakerSnapshot(t + 100).dahl.state).toBe("open");
   });
 
   it("cooldown expires, then a repeat failure escalates the next cooldown", () => {

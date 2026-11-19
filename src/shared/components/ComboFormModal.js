@@ -61,6 +61,11 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+  // Context-window mode (rival-ref sweep 2026-11-19): how /v1/models
+  // advertises this combo's window — min (default), max, or a custom
+  // token count. Legacy combos (no stored mode) read as "min".
+  const [contextWindowMode, setContextWindowMode] = useState(combo?.contextWindowMode || "min");
+  const [contextWindow, setContextWindow] = useState(combo?.contextWindow ? String(combo.contextWindow) : "");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,7 +107,12 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    await onSave({
+      name: forcePrefix + name.trim(),
+      models,
+      contextWindowMode,
+      contextWindow: contextWindowMode === "custom" ? Number(contextWindow) || null : null,
+    });
     setSaving(false);
   };
 
@@ -155,6 +165,35 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               <span className="material-symbols-outlined text-[16px]">add</span>
               Add Model
             </button>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Context window</label>
+            <div className="flex gap-1 rounded-lg border border-black/10 dark:border-white/10 p-1 bg-black/[0.02] dark:bg-white/[0.02]">
+              {[
+                { value: "min", label: "Min", title: "Advertise the smallest member's window (safest)" },
+                { value: "max", label: "Max", title: "Advertise the largest member's window" },
+                { value: "custom", label: "Custom", title: "Advertise a fixed token count" },
+              ].map((opt) => (
+                <button key={opt.value} type="button" onClick={() => setContextWindowMode(opt.value)} title={opt.title}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${contextWindowMode === opt.value
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5"}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {contextWindowMode === "custom" && (
+              <input type="number" min="1" step="1000" value={contextWindow}
+                onChange={(e) => setContextWindow(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="e.g. 200000"
+                className="mt-2 w-full rounded border border-black/10 dark:border-white/10 bg-white dark:bg-black/20 px-2 py-1.5 font-mono text-sm outline-none focus:border-primary" />
+            )}
+            <p className="text-[10px] text-text-muted mt-0.5">
+              {contextWindowMode === "min" && "Advertises the smallest member's window — every member can serve it."}
+              {contextWindowMode === "max" && "Advertises the largest member's window — only the biggest members can serve long requests."}
+              {contextWindowMode === "custom" && "Advertises this exact token count in /v1/models."}
+            </p>
           </div>
 
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">

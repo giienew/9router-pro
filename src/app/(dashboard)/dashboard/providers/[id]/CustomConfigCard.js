@@ -80,11 +80,15 @@ export default function CustomConfigCard({ providerId }) {
   }, [rows, builtin, providerId, notify]);
 
   const resetToBuiltin = () => {
-    setRows(Object.entries(builtin).map(([name, value]) => ({ name, value })));
+    const base = Object.entries(builtin).map(([name, value]) => ({ name, value }));
+    setRows(base.length ? base : [{ name: "", value: "" }]);
   };
 
-  // Only render when there is something to customize: registry headers or existing overrides
-  if (Object.keys(builtin).length === 0 && !hasOverride) return null;
+  // Always render: a provider with no registry headers still needs a way
+  // to ADD custom headers (e.g. a User-Agent override for an API that
+  // rejects the router's default). Hiding the card when there is nothing
+  // to customize left those providers with no way to set headers at all.
+  // (2026-11-18, user suggestion via Cristaline.)
 
   return (
     <Card padding="xs">

@@ -7,7 +7,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getInjectVariants, resolveComboContextWindow } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
 import { AUTO_INTENTS } from "@/sse/services/autoRouting.js";
@@ -320,6 +320,7 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
   }
 
   let contextWindow = Infinity;
+  let maxContextWindow = -Infinity;
   let maxOutput = Infinity;
   try {
     for (const seat of Array.isArray(combo?.models) ? combo.models : []) {
@@ -329,21 +330,35 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
         const nested = combosByName.get(seat);
         if (nested) {
           const nestedLimits = comboSeatLimits(nested, combosByName, visiting);
-          if (Number.isFinite(nestedLimits.contextWindow)) contextWindow = Math.min(contextWindow, nestedLimits.contextWindow);
+          if (Number.isFinite(nestedLimits.contextWindow)) {
+            contextWindow = Math.min(contextWindow, nestedLimits.contextWindow);
+            maxContextWindow = Math.max(maxContextWindow, nestedLimits.contextWindow);
+          }
           if (Number.isFinite(nestedLimits.maxOutput)) maxOutput = Math.min(maxOutput, nestedLimits.maxOutput);
           continue;
         }
       }
       const caps = comboSeatCapabilities(seat) || getCapabilitiesForModel(null, seat);
-      if (Number.isFinite(caps?.contextWindow)) contextWindow = Math.min(contextWindow, caps.contextWindow);
+      if (Number.isFinite(caps?.contextWindow)) {
+        contextWindow = Math.min(contextWindow, caps.contextWindow);
+        maxContextWindow = Math.max(maxContextWindow, caps.contextWindow);
+      }
       if (Number.isFinite(caps?.maxOutput)) maxOutput = Math.min(maxOutput, caps.maxOutput);
     }
   } finally {
     if (name) visiting.delete(name);
   }
 
+  // Context-window mode (rival-ref sweep 2026-11-19): "min" (default)
+  // advertises the smallest member's window; "max" the largest;
+  // "custom" the stored value. A nested combo already resolved its own
+  // mode, so the parent's min/max aggregates the nested effective values.
+  const effectiveWindow = resolveComboContextWindow(
+    combo?.contextWindowMode, combo?.contextWindow, contextWindow, maxContextWindow
+  );
+
   return {
-    contextWindow: Number.isFinite(contextWindow) ? contextWindow : undefined,
+    contextWindow: effectiveWindow,
     maxOutput: Number.isFinite(maxOutput) ? maxOutput : undefined,
   };
 }
@@ -443,10 +458,11 @@ export async function buildModelsList(kindFilter, options = {}) {
     } else {
       const comboCaps = aggregateComboCapabilities(combo.models, comboByName, comboSeatCapabilities);
       if (comboCaps) entry.capabilities = comboCaps;
-      // Any seat can serve the request, so the only window a combo can promise is
-      // its smallest. Combo entries were the only models on this endpoint that
-      // published no limits at all, which leaves a client to guess from the name —
-      // and it guesses high (see the snake_case note on the per-provider path).
+      // Advertised window follows the combo's context-window mode
+      // (min/max/custom, default min). Combo entries were the only models
+      // on this endpoint that published no limits at all, which leaves a
+      // client to guess from the name — and it guesses high (see the
+      // snake_case note on the per-provider path).
       const { contextWindow, maxOutput } = comboSeatLimits(combo, combosByName);
       if (Number.isFinite(contextWindow)) entry.context_length = contextWindow;
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
@@ -466,14 +482,31 @@ export async function buildModelsList(kindFilter, options = {}) {
   // above already lists it) so the transition never duplicates ids.
   // Listed regardless of `enabled` — `enabled` only gates prompt
   // injection, not routability (same as their backing combos were).
+  // PATCH-ABCE (C): a variant may be backed by a combo name (no "/") —
+  // list it too; capabilities come from the combo's first member when
+  // the backing is a combo, else from the provider/model.
   if (kindFilter.includes(LLM_KIND)) {
     const variants = await getInjectVariants().catch(() => ({}));
     for (const [name, entry] of Object.entries(variants)) {
       if (combosByName.has(name)) continue;
-      if (typeof entry?.model !== "string" || !entry.model.includes("/")) continue;
-      const slash = entry.model.indexOf("/");
-      const alias = entry.model.slice(0, slash);
-      const modelId = entry.model.slice(slash + 1);
+      if (typeof entry?.model !== "string" || !entry.model) continue;
+      let alias = "";
+      let modelId = entry.model;
+      if (entry.model.includes("/")) {
+        const slash = entry.model.indexOf("/");
+        alias = entry.model.slice(0, slash);
+        modelId = entry.model.slice(slash + 1);
+      } else {
+        // Combo-backed variant: capabilities from the combo's first
+        // member (best-effort; a missing combo just lists without caps).
+        const comboRow = combosByName.get(entry.model);
+        const firstMember = comboRow?.models?.[0];
+        if (typeof firstMember === "string" && firstMember.includes("/")) {
+          const slash = firstMember.indexOf("/");
+          alias = firstMember.slice(0, slash);
+          modelId = firstMember.slice(slash + 1);
+        }
+      }
       let capabilities;
       try {
         capabilities = getCapabilitiesForModel(alias, modelId) || undefined;

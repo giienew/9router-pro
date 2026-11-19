@@ -211,8 +211,12 @@ describe("combo prompt storage (migration + repo round-trip)", () => {
     const db = await driver.getAdapter();
     const cols = db.all(`PRAGMA table_info(combos)`).map((c) => c.name);
     assert.ok(cols.includes("prompt"), `combos columns: ${cols.join(",")}`);
+    // Migration 003 (combo context-window mode) added contextWindowMode
+    // + contextWindow and bumped the schema version to 8.
+    assert.ok(cols.includes("contextWindowMode"), `combos columns: ${cols.join(",")}`);
+    assert.ok(cols.includes("contextWindow"), `combos columns: ${cols.join(",")}`);
     const { SCHEMA_VERSION } = await import("@/lib/db/schema.js");
-    assert.equal(SCHEMA_VERSION, 7);
+    assert.equal(SCHEMA_VERSION, 8);
   });
 
   it("create/update/get preserve the prompt; legacy NULL rows read null", async () => {

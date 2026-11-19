@@ -39,6 +39,30 @@ function upsert(db, p) {
   );
 }
 
+// Proxy URLs are consumed by undici's ProxyAgent, which only speaks
+// http/https. A bare `host:port` (or `user:pass@host:port`) is normalized
+// to http:// at use time. Any other scheme (ftp://, socks5://, ...) would
+// fail confusingly at request time, so reject it at creation/update.
+// Returns an error string, or null when the URL is acceptable.
+export function validateProxyUrl(proxyUrl) {
+  const value = typeof proxyUrl === "string" ? proxyUrl.trim() : "";
+  if (!value) return "Proxy URL is required";
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//.exec(value);
+  if (schemeMatch && schemeMatch[1].toLowerCase() !== "http" && schemeMatch[1].toLowerCase() !== "https") {
+    return "Proxy URL scheme must be http:// or https://";
+  }
+  let parsed;
+  try {
+    parsed = new URL(schemeMatch ? value : `http://${value}`);
+  } catch {
+    return "Proxy URL is not a valid URL";
+  }
+  if (!parsed.hostname) {
+    return "Proxy URL must include a host";
+  }
+  return null;
+}
+
 export async function getProxyPools(filter = {}) {
   const db = await getAdapter();
   const where = [];

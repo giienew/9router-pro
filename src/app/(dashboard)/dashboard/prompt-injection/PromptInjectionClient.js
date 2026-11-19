@@ -9,6 +9,7 @@ import Input from "@/shared/components/Input";
 import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { nodePrefixById, displayBacking } from "@/shared/utils/friendlyBacking";
+import { suggestVariantName } from "@/shared/utils/variantNames";
 import { getCurrentLocale, onLocaleChange, translate } from "@/i18n/runtime";
 import { InjectionTester } from "./InjectExtras";
 
@@ -43,7 +44,7 @@ function nextRole(turns) {
 
 // One editor for one prompt. Two modes: a single system prompt, or a
 // scripted chat whose turns are injected as fake history.
-function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
+function InjectEditor({ initial, onSave, onClear, onCancel, saving, clearLabel }) {
   const [mode, setMode] = useState(initial?.mode || "single");
   const [content, setContent] = useState(initial?.content || "");
   const [turns, setTurns] = useState(
@@ -167,8 +168,7 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
               + Add {nextRole(turns) === "user" ? "your message" : "bot reply"}
             </button>
             <span className="text-xs text-text-muted">
-              Injected as a conversation that already happened, right before the real chat.
-              Ending with a Bot reply keeps the roles alternating cleanly.
+              Injected as past conversation, right before the real chat.
             </span>
           </div>
         </>
@@ -207,6 +207,11 @@ function InjectEditor({ initial, onSave, onClear, saving, clearLabel }) {
           Enabled
         </label>
         <div className="ml-auto flex gap-2">
+          {onCancel && (
+            <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
+              Cancel
+            </Button>
+          )}
           {onClear && (
             <Button variant="dangerOutline" size="sm" onClick={onClear} disabled={saving}>
               {clearLabel || "Clear"}
@@ -326,7 +331,7 @@ function ConfirmButton({ label, icon, onConfirm }) {
 function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount = 0 }) {
   const isCopied = copiedId === `tpl:${template.id}`;
   return (
-    <Card padding="sm" className="w-[260px] shrink-0 sm:w-[300px]">
+    <Card padding="sm" className="w-[62vw] max-w-[260px] shrink-0 sm:w-[260px]">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <span
@@ -335,7 +340,9 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount
           >
             <span className="material-symbols-outlined text-[18px]">bookmarks</span>
           </span>
-          <p className="min-w-0 flex-1 break-words text-sm font-semibold">{template.name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold">{template.name}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 pl-10">
           {template.builtin && (
             <span className="shrink-0 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-400">
               Bawaan
@@ -346,32 +353,31 @@ function TemplateCard({ template, copiedId, onCopy, onEdit, onDelete, usageCount
         <p className="line-clamp-3 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
           {entryText(template)}
         </p>
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-xs text-text-muted">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-muted">
+          <span>
             ~{estimateTokens(entryText(template))} tokens
           </span>
           {usageCount > 0 && (
-            <span className="text-xs text-text-muted">
+            <span>
               Used by {usageCount} {usageCount === 1 ? "injection" : "injections"}
             </span>
           )}
-          <span className="flex-1" />
+        </div>
+        <div className="flex items-center justify-end gap-1 border-t border-border-subtle pt-2">
           <button
             type="button"
             onClick={onCopy}
             title={translate("Copy prompt text")}
             className={`${actionBtnClass} ${isCopied ? "text-emerald-500 hover:text-emerald-500" : ""}`}
           >
-            <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
-            {isCopied ? "Copied" : "Copy"}
+            <span className="material-symbols-outlined text-[18px]">{isCopied ? "check" : "content_copy"}</span>
           </button>
           {!template.builtin && (
             <>
               <button type="button" onClick={onEdit} title={translate("Edit template")} className={actionBtnClass}>
-                <span className="material-symbols-outlined text-[16px]">edit</span>
-                Edit
+                <span className="material-symbols-outlined text-[18px]">edit</span>
               </button>
-              <ConfirmButton label="Delete" icon="delete" onConfirm={onDelete} />
+              <ConfirmButton label="" icon="delete" onConfirm={onDelete} />
             </>
           )}
         </div>
@@ -508,6 +514,7 @@ function TemplateModal({ template, onClose, onSave, saving, usages = [] }) {
 function coordId(c) {
   if (c.scope === "global") return c.keyId ? `key:${c.keyId}` : "global";
   if (c.scope === "variant") return `variant:${c.name || ""}`;
+  if (c.scope === "combo") return `combo:${c.model || ""}`;
   return c.keyId ? `km:${c.keyId}::${c.model}` : `model:${c.model}`;
 }
 
@@ -520,11 +527,14 @@ function InjectionForm({
   keyName,
   templates,
   modelOptions,
+  combos = [],
+  variantNames = [],
   namePicker = true,
   allowTemplateSource,
   saving,
   onSave,
   onClear,
+  onCancel,
   // Edit mode (card-inline form): the form edits ONE existing entry.
   // Its content stays bound to that source entry while the target
   // coordinate remains editable as the move destination — changing the
@@ -545,8 +555,8 @@ function InjectionForm({
   // One prompt, one custom-named model: a variant is a name (no "/")
   // backed by exactly one routed "provider/model". Picking the variant
   // serves that model WITH the prompt; picking the raw model serves it
-  // WITHOUT any prompt. Combos are built on the Combos page, never here
-  // — a variant routes directly to its backing model, no combo is created for it.
+  // WITHOUT any prompt. A combo target sets that combo's own prompt
+  // (pro.27) — it applies to every member of the combo.
   const mainName = model.trim();
 
   // In edit mode the form is bound to the entry it opened with, captured
@@ -557,6 +567,10 @@ function InjectionForm({
   );
   const sourceScope = lockSource ? initialCoord.scope : null;
   const boundToSource = lockSource && scope === sourceScope;
+  // Applying a template in edit mode must not silently re-enable a
+  // disabled entry: keep the entry being edited's enabled state.
+  // In create mode a new entry is enabled (template has no say).
+  const templateEnabled = lockSource ? sourceEntry?.enabled !== false : true;
 
   // The variant's custom name: it IS the coordinate (not a display field).
   // In edit mode it starts at the source variant's name; changing it
@@ -565,6 +579,17 @@ function InjectionForm({
   const [name, setName] = useState(() =>
     lockSource ? initialCoord.name || "" : ""
   );
+
+  // Auto variant name (create mode only): picking a model suggests
+  // "<slug>-JB", "-JB2" … when taken. Typing the name by hand stops the
+  // auto-fill; clearing it re-arms it. Programmatic setName never fires
+  // onChange, so an auto-filled name stays auto-fillable.
+  const [nameTouched, setNameTouched] = useState(false);
+  useEffect(() => {
+    if (scope !== "variant" || lockSource || nameTouched) return;
+    const suggestion = suggestVariantName(model, variantNames);
+    if (suggestion && suggestion !== name) setName(suggestion);
+  }, [model, scope, nameTouched, lockSource, variantNames, name]);
 
   // R7 locked sampling params for variants (prompt text untouched).
   const [samplingState, setSamplingState] = useState({ temperature: "", top_p: "", max_tokens: "" });
@@ -590,6 +615,13 @@ function InjectionForm({
       );
       return;
     }
+    if (scope === "combo") {
+      onSave(
+        { scope, model: mainName },
+        fromTemplate ? { ...fields, templateName: template.name } : fields
+      );
+      return;
+    }
     onSave(
       { scope, model: mainName, keyId },
       fromTemplate ? { ...fields, templateName: template.name } : fields
@@ -598,13 +630,22 @@ function InjectionForm({
   // Add mode: the editor shows the entry that already lives at the chosen
   // coordinate — picking a target is also how you edit it. Edit mode: the
   // editor stays on the source entry; only the destination moves.
-  const currentEntry = entryAt
-    ? entryAt(
-        scope === "variant"
-          ? { scope, name: name.trim(), model: model.trim() }
-          : { scope, model: model.trim(), keyId }
-      )
-    : null;
+  // Combo targets live on the combo itself (pro.27), not in the injection
+  // store, so a combo pick loads that combo's stored prompt instead.
+  const comboEntry =
+    scope === "combo"
+      ? (combos.find((c) => c.name === model.trim())?.prompt || null)
+      : null;
+  const currentEntry =
+    scope === "combo"
+      ? comboEntry
+      : entryAt
+        ? entryAt(
+            scope === "variant"
+              ? { scope, name: name.trim(), model: model.trim() }
+              : { scope, model: model.trim(), keyId }
+          )
+        : null;
   const baseEntry = boundToSource ? sourceEntry : currentEntry;
   // Load the variant's saved sampling params when the variant target changes.
   useEffect(() => {
@@ -619,7 +660,7 @@ function InjectionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, name]);
   const editorInitial = fromTemplate
-    ? { ...template, enabled: true }
+    ? { ...template, enabled: templateEnabled }
     : baseEntry;
   const editorKey = fromTemplate
     ? `tpl-${template.id}`
@@ -628,7 +669,9 @@ function InjectionForm({
       : `coord-${coordId(
           scope === "variant"
             ? { scope, name: name.trim(), model: model.trim() }
-            : { scope, model: model.trim(), keyId }
+            : scope === "combo"
+              ? { scope, model: model.trim() }
+              : { scope, model: model.trim(), keyId }
         )}-${currentEntry?.updatedAt || "new"}`;
 
   return (
@@ -655,14 +698,23 @@ function InjectionForm({
             >
               Global
             </button>
+            <button
+              type="button"
+              onClick={() => setScope("combo")}
+              className={`rounded-full px-3 py-2 font-medium transition-colors ${
+                scope === "combo" ? "bg-primary text-white" : "text-text-muted hover:text-text-main"
+              }`}
+            >
+              Combo
+            </button>
           </div>
         </div>
-        {(scope === "variant" || scope === "model") && (
+        {(scope === "variant" || scope === "model" || scope === "combo") && (
           <div className="order-3 flex min-w-0 basis-full gap-2 sm:order-2 sm:basis-auto sm:flex-1">
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder={scope === "variant" ? translate("provider/model — backing model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731") : translate("provider/model")}
+              placeholder={scope === "variant" ? translate("provider/model — backing model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731") : scope === "combo" ? translate("combo name, e.g. uncensoreds_models") : translate("provider/model")}
               list="pi-model-names"
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
             />
@@ -692,7 +744,9 @@ function InjectionForm({
 
       {scope === "variant" && model.trim() && !model.includes("/") && (
         <p className="-mt-1 text-[11px] leading-snug text-text-muted">
-          Backing model must be a provider/model, e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731.
+          {combos.some((c) => c.name === model.trim())
+            ? `Backing is combo "${model.trim()}" — its members share this prompt, with fallback and rotation.`
+            : "Backing must be a provider/model (e.g. dahl/…) or an existing combo name."}
         </p>
       )}
 
@@ -702,12 +756,21 @@ function InjectionForm({
         </p>
       )}
 
+      {scope === "combo" && (
+        <p className="-mt-1 text-[11px] leading-snug text-text-muted">
+          Sets the combo's prompt for all its members.
+        </p>
+      )}
+
       {scope === "variant" && (
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-text-muted">Variant name (required)</span>
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameTouched(e.target.value.trim() !== "");
+            }}
             placeholder={translate("e.g. dahlunce — this model's custom name")}
             className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px]"
           />
@@ -716,7 +779,7 @@ function InjectionForm({
 
       {scope === "variant" && (
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-text-muted">Locked sampling (variant only — overrides client defaults; blank = client default)</span>
+          <span className="text-xs font-medium text-text-muted">Locked sampling (variant only — blank = client default)</span>
           <div className="flex flex-wrap gap-2">
             <label className="flex flex-1 min-w-[120px] flex-col gap-1">
               <span className="text-[11px] text-text-muted">temperature (0–2)</span>
@@ -815,8 +878,8 @@ function InjectionForm({
                 onClick={() =>
                   submitEntry(
                     template.mode === "chat"
-                      ? { mode: "chat", turns: template.turns, position: template.position, enabled: true }
-                      : { mode: "single", content: template.content, position: template.position, enabled: true }
+                      ? { mode: "chat", turns: template.turns, position: template.position, enabled: templateEnabled }
+                      : { mode: "single", content: template.content, position: template.position, enabled: templateEnabled }
                   )
                 }
               >
@@ -838,6 +901,7 @@ function InjectionForm({
             saving={saving}
             onSave={submitEntry}
             onClear={onClear}
+            onCancel={onCancel}
             clearLabel="Delete"
           />
         </>
@@ -850,7 +914,7 @@ function InjectionForm({
           setPickerOpen(false);
         }}
         title={translate("Select model")}
-        hideCombos
+        hideCombos={scope !== "combo" && scope !== "variant"}
         hideInjections
       />
     </div>
@@ -883,6 +947,7 @@ export default function PromptInjectionClient() {
   const [templates, setTemplates] = useState([]);
   const [keys, setKeys] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [nodePrefixes, setNodePrefixes] = useState({});
   const [saving, setSaving] = useState("");
   const [editingTemplate, setEditingTemplate] = useState(undefined); // undefined=closed, null=new
@@ -893,11 +958,12 @@ export default function PromptInjectionClient() {
 
   const load = useCallback(async () => {
     try {
-      const [injRes, keyRes, modelsRes, nodesRes] = await Promise.all([
+      const [injRes, keyRes, modelsRes, nodesRes, combosRes] = await Promise.all([
         fetch(API),
         fetch("/api/keys"),
         fetch("/api/models"),
         fetch("/api/provider-nodes"),
+        fetch("/api/combos"),
       ]);
       // Usage stats are a convenience, never a load blocker.
       fetch(`${API}/stats?days=14`)
@@ -914,8 +980,9 @@ export default function PromptInjectionClient() {
       const list = Array.isArray(keyData?.keys) ? keyData.keys : Array.isArray(keyData) ? keyData : [];
       setKeys(list);
       // Suggestion list for injection targets: routed provider models
-      // only. Combo names are never targets anymore, and bare ids never
-      // match, so neither belongs in the picker.
+      // only. Bare ids never match, so they do not belong in the picker.
+      // (Combo targets are picked from the modal's Combos section, not
+      // from this list — see the Combo scope in InjectionForm.)
       const names = new Set();
       try {
         const modelsData = await modelsRes.json();
@@ -930,6 +997,12 @@ export default function PromptInjectionClient() {
         const nodesData = await nodesRes.json();
         setNodePrefixes(nodePrefixById(nodesData?.nodes || []));
       } catch { /* labels are a convenience, not a requirement */ }
+      // Combo list for the Combo target: name + stored prompt, so picking
+      // a combo loads its prompt for editing (2026-11-18, user suggestion).
+      try {
+        const combosData = await combosRes.json();
+        setCombos(Array.isArray(combosData?.combos) ? combosData.combos : []);
+      } catch { setCombos([]); }
     } catch {
       showToast("Failed to load prompt injections", "error");
     } finally {
@@ -1037,13 +1110,52 @@ export default function PromptInjectionClient() {
   // changed, the entry moves: write the new coordinate, delete the old —
   // and refuse to land on a coordinate that already has an injection.
   const saveInjection = async (fromCoord, toCoord, fields) => {
+    // Combo target (2026-11-18, user suggestion): a combo's prompt lives
+    // on the combo itself (pro.27), not in the injection store — so a
+    // combo pick writes to the combos API, not /api/prompt-injection.
+    if (toCoord.scope === "combo") {
+      const name = (toCoord.model || "").trim();
+      const combo = combos.find((c) => c.name === name);
+      if (!name || !combo) {
+        showToast("Pick a combo first", "error");
+        return false;
+      }
+      setSaving(`combo:${name}`);
+      try {
+        const res = await fetch(`/api/combos/${combo.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: fields }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || "Failed to save combo prompt", "error");
+          return false;
+        }
+        // Moving an injection entry onto a combo: drop the old entry.
+        if (fromCoord && coordId(fromCoord) !== `combo:${name}`) {
+          await deleteCoord(fromCoord).catch(() => {});
+        }
+        showToast("Combo prompt saved", "success");
+        if (fromCoord) setEditingCoordId(null);
+        await load();
+        return true;
+      } catch {
+        showToast("Failed to save combo prompt", "error");
+        return false;
+      } finally {
+        setSaving("");
+      }
+    }
     if (toCoord.scope === "variant") {
       if (!toCoord.name || toCoord.name.includes("/")) {
         showToast("Variant name is required and must not contain \"/\"", "error");
         return false;
       }
-      if (!toCoord.model || !toCoord.model.includes("/")) {
-        showToast("Backing model is required — pick a provider/model", "error");
+      // PATCH-ABCE (C): backing may be a provider/model or an existing
+      // combo name (the server re-checks the combo exists).
+      if (!toCoord.model || (!toCoord.model.includes("/") && !combos.some((c) => c.name === toCoord.model.trim()))) {
+        showToast("Backing model is required — pick a provider/model or an existing combo", "error");
         return false;
       }
     }
@@ -1207,8 +1319,11 @@ export default function PromptInjectionClient() {
   };
   const validVariant = (name, model) => {
     const n = typeof name === "string" ? name.trim() : "";
+    // PATCH-ABCE (C): backing may be a provider/model or an existing
+    // combo name.
     return !!n && n.length <= 80 && !n.includes("/") && n !== "global" && n !== "user" &&
-      typeof model === "string" && model.includes("/");
+      typeof model === "string" && model.trim() &&
+      (model.includes("/") || combos.some((c) => c.name === model.trim()));
   };
   const planImport = (data) => {
     const items = [];
@@ -1337,15 +1452,6 @@ export default function PromptInjectionClient() {
     }
   };
 
-  const slugVariant = (model) => {
-    const slash = model.indexOf("/");
-    const provider = slash > 0 ? model.slice(0, slash) : "custom";
-    const providerPart = provider.startsWith("openai-compatible-chat-") ? "custom" : provider;
-    const last = model.slice(model.lastIndexOf("/") + 1);
-    const slugged = last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "model";
-    return `${providerPart}-${slugged}`.slice(0, 80);
-  };
-
   // ---- Stack Preview — re-runs automatically on any change ----
   const [pvModel, setPvModel] = useState("");
   const [pvKeyId, setPvKeyId] = useState("");
@@ -1433,13 +1539,13 @@ export default function PromptInjectionClient() {
                         <button
                           type="button"
                           onClick={() => setEditingCoordId(isEditing ? null : id)}
-                          title={translate("Edit")}
+                          title={translate(isEditing ? "Cancel" : "Edit")}
                           className={actionBtnClass}
                         >
                           <span className="material-symbols-outlined text-[16px]">
-                            {isEditing ? "expand_less" : "edit"}
+                            {isEditing ? "close" : "edit"}
                           </span>
-                          Edit
+                          {isEditing ? "Cancel" : "Edit"}
                         </button>
                         <ConfirmButton
                           label="Delete"
@@ -1457,12 +1563,15 @@ export default function PromptInjectionClient() {
                           keys={keys}
                           keyName={keyName}
                           modelOptions={modelOptions}
+                          combos={combos}
+                          variantNames={Object.keys(variants)}
                           templates={templates}
-                          allowTemplateSource={false}
+                          allowTemplateSource
                           lockSource
                           saving={saving === id}
                           onSave={(newCoord, fields) => saveInjection(coord, newCoord, fields)}
                           onClear={() => deleteCoord(coord)}
+                          onCancel={() => setEditingCoordId(null)}
                         />
                       </div>
                     )}
@@ -1483,7 +1592,7 @@ export default function PromptInjectionClient() {
           <div className="min-w-0">
             <h1 className="text-xl font-bold sm:text-2xl">Prompt Injection</h1>
             <p className="mt-0.5 text-sm text-text-muted">
-              Attach a prompt to a custom name your clients call — picking the name serves its model with the prompt, picking the raw model serves it without.
+              Attach a prompt to a custom name — call the name, get the prompt.
             </p>
           </div>
         </div>
@@ -1558,15 +1667,14 @@ export default function PromptInjectionClient() {
                 </>
               }
             >
-              A library of reusable prompts. Using a template copies its content into an
-              injection — the template itself never runs.
+              Reusable prompts. Copy one into an injection — templates never run on their own.
             </SectionTitle>
             {templates.length === 0 ? (
               <>
                 <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-6 text-center">
                   <span className="material-symbols-outlined text-[28px] text-text-muted">bookmarks</span>
                   <p className="text-sm text-text-muted">
-                    No templates yet — save a prompt you reuse, then apply it anywhere in one pick.
+                    No templates yet — save a prompt you reuse.
                   </p>
                 </div>
                 <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
@@ -1610,7 +1718,7 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              One prompt per target — a variant name or Global, optionally scoped to a single API key.
+              One prompt per target: a variant name or Global.
             </SectionTitle>
             <Card>
               <p className="mb-3 text-sm font-semibold">New injection</p>
@@ -1622,6 +1730,8 @@ export default function PromptInjectionClient() {
                 keyName={keyName}
                 templates={templates}
                 modelOptions={modelOptions}
+                combos={combos}
+                variantNames={Object.keys(variants)}
                 allowTemplateSource
                 saving={createSaving}
                 onSave={async (coord, fields) => {
@@ -1643,7 +1753,7 @@ export default function PromptInjectionClient() {
                     <span className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-90">chevron_right</span>
                     {translate("More targets")} ({foldedRows.length})
                   </summary>
-                  <p className="pb-2 text-xs text-text-muted">{translate("Per-key and model + key targets — kept here so the main list stays focused on variants.")}</p>
+                  <p className="pb-2 text-xs text-text-muted">{translate("Per-key and model + key targets.")}</p>
                   <div className="flex flex-col gap-2">
                     {foldedRows.map(renderRow)}
                   </div>
@@ -1676,7 +1786,7 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              The exact injections one request would receive, in stacking order. Nothing is sent.
+              Which injections one request gets, in order. Nothing is sent.
             </SectionTitle>
             <Card>
               <div className="flex flex-col gap-3">
@@ -1756,8 +1866,7 @@ export default function PromptInjectionClient() {
                 ],
               }}
             >
-              Send a real request through the router and read the verdict — injections applied,
-              exactly as a client receives it.
+              Send a real request, read the verdict — injections applied, like a client sees it.
             </SectionTitle>
             <Card>
               <InjectionTester />

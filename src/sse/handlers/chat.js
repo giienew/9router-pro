@@ -51,6 +51,12 @@ export async function handleChat(request, clientRawRequest = null) {
 // Per-combo member pins live in comboDispatch.js (memberPinFor) so the
 // top-level and nested combo branches share one definition.
 
+// PATCH-ABCE (C): a variant may be backed by a combo name. Variant→combo
+// resolution recurses through handleSingleModelChat/dispatchCombo, so a
+// variant and a combo that point at each other would loop forever.
+// Cap the variant→combo hops per request; deeper chains 400.
+export const VARIANT_COMBO_MAX_DEPTH = 8;
+
 // Capacity ordering reads every provider's connections; cache the snapshot
 // briefly so a capacity-strategy request doesn't scan the whole table each
 // time. Staleness only affects ORDER, never correctness — failover still
@@ -213,6 +219,7 @@ async function handleChatImpl(request, clientRawRequest = null, requestId = null
       getCapacityConnections,
       recordBreakerSuccess: true,
       comboPrompt,
+      variantDepth: 0,
     });
   }
 
@@ -272,16 +279,30 @@ function withFlakyRetriesHeader(response, retries) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null, pinnedConnectionId = null, comboPrompt = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, injectModelName = null, comboMemberAttemptCap = null, abortSignal = null, pinnedConnectionId = null, comboPrompt = null, variantDepth = 0) {
   // Direct variant pick without a backing combo: a bare name that names a
   // variant routes straight to its backing model, with the variant name
   // carried so its prompt still fires. This covers both direct picks and
   // combo members that name variants — no combo object is created per
   // variant, so the Kombinasi page shows only combos the user made.
+  // PATCH-ABCE (C): the backing may be a combo name (no "/") — then the
+  // request enters the normal combo path (fallback, sticky, breaker).
+  // A variant→combo hop increments variantDepth; deeper chains 400.
   if (typeof modelStr === "string" && !modelStr.includes("/")) {
     const directVariants = await getInjectVariants().catch(() => ({}));
     const directVariant = directVariants[modelStr];
-    if (directVariant && typeof directVariant.model === "string" && directVariant.model.includes("/")) {
+    if (directVariant && typeof directVariant.model === "string" && directVariant.model) {
+      const backing = directVariant.model;
+      if (!backing.includes("/")) {
+        if (variantDepth >= VARIANT_COMBO_MAX_DEPTH) {
+          return errorResponse(HTTP_STATUS.BAD_REQUEST, `Variant/combo backing loop detected: ${modelStr}`);
+        }
+        // Combo-backed variant: recurse into the combo name. The combo
+        // branch below (getComboModels) dispatches it; the variant name
+        // is carried as injectModelName so its prompt still fires.
+        const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
+        return handleSingleModelChat({ ...body, model: backing }, backing, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId, comboPrompt, variantDepth + 1);
+      }
       // A direct pick used to run through its single-member combo, so it
       // inherited the member attempt cap; without it the pick grinds the
       // whole pool (a dahl direct pick timed out at 150s). Resolve the
@@ -289,7 +310,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const directCap = comboMemberAttemptCap ?? resolveComboMemberAttemptCap(await getSettings().catch(() => ({})));
       // A combo member naming a variant keeps its combo's prompt through
       // the recursion into the backing model.
-      return handleSingleModelChat({ ...body, model: directVariant.model }, directVariant.model, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId, comboPrompt);
+      return handleSingleModelChat({ ...body, model: backing }, backing, clientRawRequest, request, apiKey, requestedModel, modelStr, directCap, abortSignal, pinnedConnectionId, comboPrompt, variantDepth);
     }
   }
   const modelInfo = await getModelInfo(modelStr);
@@ -335,6 +356,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         getCapacityConnections,
         recordBreakerSuccess: false,
         comboPrompt: innerComboPrompt,
+        variantDepth,
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });

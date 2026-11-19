@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
+import WelcomeModal, { WELCOME_STORAGE_KEY } from "../WelcomeModal";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -33,9 +34,33 @@ function getToastStyle(type) {
 
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+
+  // Welcome popup — shown once on first dashboard open. The seen flag is
+  // versioned (WELCOME_STORAGE_KEY) so a future release can re-show it
+  // by bumping the version.
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && !window.localStorage.getItem(WELCOME_STORAGE_KEY)) {
+        setWelcomeOpen(true);
+      }
+    } catch {
+      // Storage unavailable (private mode, blocked cookies) — still show it.
+      setWelcomeOpen(true);
+    }
+  }, []);
+
+  const closeWelcome = () => {
+    try {
+      window.localStorage.setItem(WELCOME_STORAGE_KEY, "1");
+    } catch {
+      // Ignore storage failures — the modal still closes.
+    }
+    setWelcomeOpen(false);
+  };
 
   // Preload heavy usage charts in background when browser is idle
   useEffect(() => {
@@ -115,6 +140,7 @@ export default function DashboardLayout({ children }) {
           <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
         </div>
       </main>
+      <WelcomeModal isOpen={welcomeOpen} onClose={closeWelcome} />
     </div>
   );
 }

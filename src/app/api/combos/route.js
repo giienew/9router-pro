@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCombos, createCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry } from "@/lib/localDb";
+import { getCombos, createCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry, cleanComboContextWindow } from "@/lib/localDb";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +83,15 @@ export async function POST(request) {
       }
     }
 
-    const combo = await createCombo({ name, models: await normalizeRoutableMembers(memberList), kind: kind || null, prompt });
+    const combo = await createCombo({
+      name,
+      models: await normalizeRoutableMembers(memberList),
+      kind: kind || null,
+      prompt,
+      // Context-window mode (rival-ref sweep 2026-11-19): invalid modes
+      // fall back to "min" inside cleanComboContextWindow.
+      ...cleanComboContextWindow(body.contextWindowMode, body.contextWindow),
+    });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {

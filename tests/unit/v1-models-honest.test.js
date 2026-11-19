@@ -8,7 +8,20 @@ const db = vi.hoisted(() => ({
   getInjectVariants: vi.fn(async () => ({})),
 }));
 
-vi.mock("@/lib/localDb", () => db);
+vi.mock("@/lib/localDb", async (importOriginal) => {
+  // Spread the real module so pure helpers the route imports (e.g.
+  // resolveComboContextWindow for the combo context-window mode) keep
+  // their real implementation; only the DB-backed readers are mocked.
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getProviderConnections: db.getProviderConnections,
+    getCombos: db.getCombos,
+    getCustomModels: db.getCustomModels,
+    getModelAliases: db.getModelAliases,
+    getInjectVariants: db.getInjectVariants,
+  };
+});
 vi.mock("@/lib/disabledModelsDb", () => ({
   getDisabledModels: vi.fn(async () => ({})),
 }));

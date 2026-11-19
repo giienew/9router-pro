@@ -4,6 +4,7 @@ import {
   getProviderConnections,
   getProxyPoolById,
   updateProxyPool,
+  validateProxyUrl,
 } from "@/models";
 
 function normalizeProxyPoolUpdate(body = {}) {
@@ -21,6 +22,10 @@ function normalizeProxyPoolUpdate(body = {}) {
     const proxyUrl = typeof body?.proxyUrl === "string" ? body.proxyUrl.trim() : "";
     if (!proxyUrl) {
       return { error: "Proxy URL is required" };
+    }
+    const schemeError = validateProxyUrl(proxyUrl);
+    if (schemeError) {
+      return { error: schemeError };
     }
     updates.proxyUrl = proxyUrl;
   }

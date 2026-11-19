@@ -16,7 +16,7 @@ export default function Navigation() {
           onClick={() => router.push("/")}
           aria-label="Navigate to home"
         >
-          <img src="/logo-pro.png" alt="9Router Pro" className="size-8 rounded" />
+          <img src="/logo-pro-v3.png" alt="9Router Pro" className="size-10 rounded" />
           <h2 className="text-white text-xl font-bold tracking-tight">9Router Pro</h2>
         </button>
 

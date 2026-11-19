@@ -19,7 +19,7 @@ export async function GET() {
       for (const key of keys) {
         const quota = quotas[key.id] || null;
         key.quota = quota;
-        key.quotaUsed = quota ? await getKeyUsageInWindow(key.key, quota.windowHours) : 0;
+        key.quotaUsed = quota ? await getKeyUsageInWindow(key.key, quota.windowHours, quota.resetAt, quota.absolute) : 0;
         // R2 quota-pressure: deduped in recordQuotaPressure, and cleared
         // (re-arming) when usage drops below 90% — fire-and-forget.
         if (quota && Number(quota.limit) > 0) {
@@ -150,6 +150,12 @@ export async function PATCH(request) {
       }
       if (updates.quota.windowHours !== undefined && updates.quota.windowHours !== null && !Number.isFinite(Number(updates.quota.windowHours))) {
         return NextResponse.json({ error: "Bulk quota window must be a number" }, { status: 400 });
+      }
+      if (updates.quota.absolute !== undefined && updates.quota.absolute !== null && typeof updates.quota.absolute !== "boolean") {
+        return NextResponse.json({ error: "Bulk quota absolute must be a boolean" }, { status: 400 });
+      }
+      if (updates.quota.resetAt !== undefined && updates.quota.resetAt !== null && !Number.isFinite(new Date(updates.quota.resetAt).getTime())) {
+        return NextResponse.json({ error: "Bulk quota resetAt must be an ISO date or null" }, { status: 400 });
       }
     }
     if (updates.limits && typeof updates.limits === "object") {

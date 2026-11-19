@@ -45,13 +45,17 @@ export default {
     clientSecret: "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",
   },
   models: [
-    { id: "gemini-4-carbon-high", name: "Gemini 4 Carbon (High)", upstreamModelId: "gemini-4-carbon-high(high)" },
-    { id: "gemini-4-carbon-medium", name: "Gemini 4 Carbon (Medium)", upstreamModelId: "gemini-4-carbon-medium(medium)" },
-    { id: "gemini-4-carbon-low", name: "Gemini 4 Carbon (Low)", upstreamModelId: "gemini-4-carbon-low(low)" },
-    { id: "gemini-4-carbon", name: "Gemini 4 Carbon", upstreamModelId: "gemini-4-carbon-medium(medium)" },
-    { id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", upstreamModelId: "gemini-4-argon-high(high)" },
-    { id: "gemini-4-argon-medium", name: "Gemini 4 Argon (Medium)", upstreamModelId: "gemini-4-argon-medium(medium)" },
-    { id: "gemini-4-argon-low", name: "Gemini 4 Argon (Low)", upstreamModelId: "gemini-4-argon-low(low)" },
+    // Gemini 4 (live-verified 2026-11-19 on the owner's Antigravity
+    // account via fetchAvailableModels + direct generateContent probes):
+    // gemini-4-hydrogen-sonar is the ONLY gemini-4 model that is enabled
+    // with quota — it passes validation and reaches the quota gate (429
+    // while the account's weekly quota is exhausted, resets 2026-11-24).
+    // The tiered carbon/argon entries (high/medium/low, bare) were REMOVED
+    // the same day: every form 404s upstream (bare, tiered (high)/(medium),
+    // and the catalog's -disabled keys), so they were dead entries.
+    // gemini-4-neon is likewise 404. Do NOT re-add a gemini-4 tiered
+    // entry without a live probe proving it returns 200/429, not 404.
+    { id: "gemini-4-hydrogen-sonar", name: "Gemini 4 Hydrogen (Sonar)" },
     { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", upstreamModelId: "gemini-3.8-flash-high(high)" },
     { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", upstreamModelId: "gemini-3.8-flash-medium(medium)" },
     { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", upstreamModelId: "gemini-3.8-flash-low(low)" },

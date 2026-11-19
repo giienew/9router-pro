@@ -102,3 +102,25 @@ export async function putSemanticEntry(db, scopeKey, model, prompt, json, ttlSec
     console.warn("[SemanticCache] put failed:", e?.message || e);
   }
 }
+
+// Invalidate semantic-cache entries. With a model, only that model's
+// entries are removed; without one, the whole semantic cache is cleared.
+// Returns the number of entries removed (0 when the table is absent).
+export function invalidateSemanticEntries(db, model = null) {
+  if (!db) return 0;
+  try {
+    ensureTable(db);
+    const row = model
+      ? db.get(`SELECT COUNT(*) as c FROM semanticCache WHERE model = ?`, [model])
+      : db.get(`SELECT COUNT(*) as c FROM semanticCache`);
+    const count = row?.c ?? 0;
+    if (model) {
+      db.run(`DELETE FROM semanticCache WHERE model = ?`, [model]);
+    } else {
+      db.run(`DELETE FROM semanticCache`);
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}

@@ -140,11 +140,22 @@ export async function PUT(request) {
           { status: 400 }
         );
       }
-      if (typeof v.model !== "string" || !v.model.includes("/")) {
+      // PATCH-ABCE (C): a backing may be a combo name (no "/") as well as
+      // a provider/model. A bare name must name an existing combo.
+      if (typeof v.model !== "string" || !v.model.trim()) {
         return NextResponse.json(
-          { error: "Variant needs a backing provider/model (e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731)" },
+          { error: "Variant needs a backing provider/model (e.g. dahl/deepseek-ai/DeepSeek-V4-Flash-0731) or a combo name" },
           { status: 400 }
         );
+      }
+      if (!v.model.includes("/")) {
+        const combo = await getComboByName(v.model.trim()).catch(() => null);
+        if (!combo) {
+          return NextResponse.json(
+            { error: `No combo named "${v.model.trim()}" — pick a provider/model or an existing combo` },
+            { status: 400 }
+          );
+        }
       }
       const existing = (await getInjectVariants())[name];
       if (!existing && (await getComboByName(name).catch(() => null))) {

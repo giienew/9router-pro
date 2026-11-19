@@ -96,6 +96,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let passthroughAtBoundary = true;  // passthrough: emitted stream is at an SSE event boundary (last output ended with a blank line)
   let finalized = false;
   let completionFlushTimer = null;
 
@@ -313,8 +314,19 @@ export function createSSEStream(options = {}) {
             }
           }
 
+          // [DONE] must be its own SSE event: strict OpenAI clients abort when
+          // the sentinel rides on the previous data line (no blank line in
+          // between). Upstreams sometimes glue it, so close the open event
+          // first. Mark it sent so flush() does not emit a duplicate.
+          const isDoneLine = trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]";
+          if (isDoneLine) {
+            if (!passthroughAtBoundary) output = "\n" + output;
+            streamDoneSent = true;
+          }
+
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
+          passthroughAtBoundary = output === "\n" || isDoneLine;
           // Responses clients (codex CLI) close on response.completed instead of [DONE]
           if (responsesTerminal) finalizeStream();
           continue;
@@ -488,8 +500,16 @@ export function createSSEStream(options = {}) {
             if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
               output = "data: " + buffer.slice(5);
             }
+            const bufferIsDone = output.trim().startsWith("data:") && output.trim().slice(5).trim() === "[DONE]";
+            // Terminate the leftover line, and close its event when it is a
+            // data line, so a following [DONE] starts its own event instead
+            // of gluing onto this line.
+            if (!output.endsWith("\n")) output += "\n";
+            if (output.trimStart().startsWith("data:")) output += "\n";
+            if (bufferIsDone) streamDoneSent = true;
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
+            passthroughAtBoundary = output.endsWith("\n\n");
           }
 
           // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
@@ -499,7 +519,10 @@ export function createSSEStream(options = {}) {
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
           const isGeminiFamily = provider === "antigravity" || provider === "gemini" || provider === "vertex";
           if (!streamDoneSent && !isGeminiFamily) {
-            const doneOutput = "data: [DONE]\n\n";
+            // Close the open event first when the last emitted line was a
+            // data line without a following blank line, so [DONE] is its
+            // own event.
+            const doneOutput = (passthroughAtBoundary ? "" : "\n") + "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }

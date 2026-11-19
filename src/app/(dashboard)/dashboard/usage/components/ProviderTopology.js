@@ -13,7 +13,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { getProviderIconSrc, getNameIconSrc, getTypeBrandIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
-import starfieldBg from "./topology-starfield.jpg";
 
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
@@ -93,20 +92,14 @@ ProviderNode.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
-// Center 9Router node — the "sun": a flat circle, single brand accent.
-// No glow, no shadow, no animation; the circle + orbit rings carry the
-// solar-system read while the node itself stays a plain bordered disc.
-// Label, logo, and count badge keep their previous sizes.
-function RouterNode({ data }) {
-  const powering = (data.activeCount || 0) > 0;
+// Center 9Router node — icon only: the Pro logo image itself (gradient
+// square + syringe + PRO pill, public/logo-pro-v3.png). No circle, no text, no
+// separate pill, no count badge — the logo carries the branding.
+function RouterNode() {
   return (
     <div
-      className={`relative z-[1] flex flex-col items-center justify-center gap-1 rounded-full border-2 ${
-        powering
-          ? "border-primary bg-primary/10"
-          : "border-primary bg-primary/5"
-      }`}
-      style={{ width: "112px", height: "112px" }}
+      className="relative z-[1]"
+      style={{ width: "120px", height: "120px" }}
     >
       <Handle type="source" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
@@ -114,20 +107,12 @@ function RouterNode({ data }) {
       <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !border-0 !w-0 !h-0" />
 
       <img
-        src="/favicon.svg"
-        alt="9Router"
-        className="w-7 h-7"
+        src="/logo-pro-v3.png"
+        alt="9Router Pro"
+        className="w-full h-full rounded-[28px] object-cover"
         loading="lazy"
         decoding="async"
       />
-      <span className="text-sm font-bold text-primary">
-        9Router
-      </span>
-      {data.activeCount > 0 && (
-        <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[11px] leading-none font-bold">
-          {data.activeCount}
-        </span>
-      )}
     </div>
   );
 }
@@ -164,17 +149,17 @@ OrbitRing.propTypes = {
   data: PropTypes.object.isRequired,
 };
 
-// Edge: one solid stroke per state (active/last/error/idle), plus a
-// pure-CSS "current" overlay on ACTIVE edges only: short flat dashes
-// flowing along the same bezier path, provider → router (the live
-// response stream converging into the sun). No halo, plasma, particles,
-// sparks, filters, glow, or shadow — the overlay is a flat white segment
-// at 0.55 opacity over the existing solid state color, so it stays
-// inside the current palette. Idle/last/error edges keep their single
-// static stroke. The animation is CSS-only (no JS timers); under
-// prefers-reduced-motion the overlay is hidden, leaving the solid edge
-// exactly as before. The active flag is the same signal as the existing
-// active edge color and node dot (see ProviderTopology props).
+// Edge: modern gradient line — a smooth bezier that fades from the
+// router's violet (#8B5CF6) into the provider's own brand color, so each
+// line reads as a connection between the two. Active edges get the full
+// gradient + a pure-CSS "current" overlay (short flat dashes flowing
+// provider → router, the live response stream). Last edges keep the
+// gradient at lower opacity; idle edges stay a single faint static
+// stroke; error edges stay solid red so the signal is unambiguous.
+// No halo, plasma, particles, sparks, filters, glow, or shadow — flat
+// gradient only. The animation is CSS-only (no JS timers); under
+// prefers-reduced-motion the overlay is hidden. The active flag is the
+// same signal as the existing node dot (see ProviderTopology props).
 function TopologyEdge({
   id,
   sourceX,
@@ -194,9 +179,31 @@ function TopologyEdge({
     targetY,
     targetPosition,
   });
-  const stroke = style.stroke || "var(--color-border)";
+  const providerColor = data?.color || "#6b7280";
+  const useGradient = data?.active || data?.last;
+  const gradId = `topology-grad-${id}`;
+  const stroke = data?.error
+    ? "#ef4444"
+    : useGradient
+      ? `url(#${gradId})`
+      : style.stroke || "var(--color-border)";
   return (
     <>
+      {useGradient && (
+        <defs>
+          <linearGradient
+            id={gradId}
+            gradientUnits="userSpaceOnUse"
+            x1={sourceX}
+            y1={sourceY}
+            x2={targetX}
+            y2={targetY}
+          >
+            <stop offset="0%" stopColor={data?.active ? "#8B5CF6" : "#f59e0b"} />
+            <stop offset="100%" stopColor={providerColor} />
+          </linearGradient>
+        </defs>
+      )}
       <BaseEdge id={id} path={edgePath} style={{ ...style, stroke }} />
       {data?.active && (
         <path
@@ -237,8 +244,8 @@ const edgeTypes = { topology: TopologyEdge };
 function buildLayout(providers, activeSet, lastSet, errorSet) {
   const nodeW = 180;
   const nodeH = 30;
-  const routerW = 112;
-  const routerH = 112;
+  const routerW = 120;
+  const routerH = 120;
   const nodeGap = 24;
 
   const count = providers.length;
@@ -285,9 +292,11 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
   });
 
   const edgeStyle = (active, last, error) => {
+    // Stroke color comes from the gradient (TopologyEdge); here only
+    // width + opacity per state. Error keeps its solid red stroke.
     if (error) return { stroke: "#ef4444", strokeWidth: 2.5, opacity: 0.9 };
-    if (active) return { stroke: "var(--color-primary)", strokeWidth: 2.5, opacity: 1 };
-    if (last) return { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.7 };
+    if (active) return { strokeWidth: 2.5, opacity: 1 };
+    if (last) return { strokeWidth: 2, opacity: 0.7 };
     return { stroke: "var(--color-border)", strokeWidth: 1, opacity: 0.3 };
   };
 
@@ -339,7 +348,7 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
       targetHandle,
       // Flat static edge; React Flow animation stays off.
       animated: false,
-      data: { active },
+      data: { active, last, error, color: config.color || "#6b7280" },
       style: edgeStyle(active, last, error),
     });
   });
@@ -430,7 +439,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   }, [nodes.length]);
 
   return (
-    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border sm:h-[480px]" style={{ backgroundImage: `url(${starfieldBg.src})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}>
+    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-bg sm:h-[480px]">
       {/* Current-flow keyframes for active edges. Dash period is 16px
           (6 dash + 10 gap), so 0 → 16px loops seamlessly. Positive
           dashoffset moves dashes toward the path start (the router),

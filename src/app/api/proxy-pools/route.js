@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { createProxyPool, getProviderConnections, getProxyPools, validateProxyUrl } from "@/models";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -23,6 +23,11 @@ function normalizeProxyPoolInput(body = {}) {
 
   if (!proxyUrl) {
     return { error: "Proxy URL is required" };
+  }
+
+  const schemeError = validateProxyUrl(proxyUrl);
+  if (schemeError) {
+    return { error: schemeError };
   }
 
   return { name, proxyUrl, noProxy, isActive, strictProxy, type };

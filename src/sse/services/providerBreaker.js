@@ -29,17 +29,21 @@
 //
 // State machine per provider: CLOSED → OPEN → HALF_OPEN → CLOSED.
 //   CLOSED: failures counted in a sliding window. Trip when >=
-//     MIN_FAILURES failures from >= MIN_CONNECTIONS distinct connections
-//     inside WINDOW_MS. Auth failures never count (callers filter them).
-//     Single-connection providers never trip: their one account's
-//     cooldown (layer 2) already covers them; the breaker exists for
-//     fleets, where per-account locks cannot express "the provider
-//     itself is down".
+//     PROVIDER_MIN_FAILURES failures from >=
+//     PROVIDER_MIN_CONNECTIONS distinct connections inside WINDOW_MS.
+//     The provider bar is deliberately higher than the per-model bar
+//     (MIN_FAILURES / MIN_CONNECTIONS): a small burst from one flaky
+//     model must park that model, not the whole provider. Auth failures
+//     never count (callers filter them). Single-connection providers
+//     never trip: their one account's cooldown (layer 2) already covers
+//     them; the breaker exists for fleets, where per-account locks cannot
+//     express "the provider itself is down".
 //   OPEN: no traffic (selection skips the provider) until OPEN_MS passes.
-//   HALF_OPEN: traffic flows for PROBE_MS; the FIRST failure re-opens
-//     immediately, a success closes, and a quiet window expiry closes too
-//     (no news is treated as recovered — the next failure re-trips fast
-//     because fresh failures still count toward the threshold).
+//   HALF_OPEN: traffic flows for PROBE_MS; the probe tolerates
+//     PROBE_MAX_FAILURES failures before re-opening, a success closes,
+//     and a quiet window expiry closes too (no news is treated as
+//     recovered — the next failure re-trips fast because fresh failures
+//     still count toward the threshold).
 //
 // Single-process assumption, like the sticky/rate-limit/proxy state: the
 // live deploy is single-process, so this map is the breaker. Under
@@ -54,6 +58,9 @@ import {
   PROVIDER_BREAKER_WINDOW_MS,
   PROVIDER_BREAKER_MIN_FAILURES,
   PROVIDER_BREAKER_MIN_CONNECTIONS,
+  PROVIDER_BREAKER_PROVIDER_MIN_FAILURES,
+  PROVIDER_BREAKER_PROVIDER_MIN_CONNECTIONS,
+  PROVIDER_BREAKER_PROBE_MAX_FAILURES,
   PROVIDER_BREAKER_OPEN_MS,
   PROVIDER_BREAKER_PROBE_MS,
   PROVIDER_BREAKER_MODEL_COOLDOWN_MAX_MS,
@@ -64,7 +71,7 @@ const states = new Map();
 function entryFor(provider) {
   let e = states.get(provider);
   if (!e) {
-    e = { state: "closed", failures: [], openedAt: null, halfOpenUntil: null, models: new Map() };
+    e = { state: "closed", failures: [], openedAt: null, halfOpenUntil: null, probeFailures: 0, models: new Map() };
     states.set(provider, e);
   }
   return e;
@@ -139,6 +146,7 @@ export function providerBreakerGate(provider, model = null, now = Date.now()) {
     if (now >= e.openedAt + PROVIDER_BREAKER_OPEN_MS) {
       e.state = "half-open";
       e.halfOpenUntil = now + PROVIDER_BREAKER_PROBE_MS;
+      e.probeFailures = 0;
       return "allow";
     }
     return "skip";
@@ -149,6 +157,7 @@ export function providerBreakerGate(provider, model = null, now = Date.now()) {
     e.failures = [];
     e.openedAt = null;
     e.halfOpenUntil = null;
+    e.probeFailures = 0;
     return "allow";
   }
   // Probing: do not burn the probe on a model already known-bad — the
@@ -174,11 +183,17 @@ export function recordProviderFailure(provider, connectionId, model = null, now 
   if (!provider || !connectionId) return;
   const e = entryFor(provider);
   if (e.state === "half-open") {
-    // First failure in the probe window re-opens immediately.
+    // Probe tolerance (2026-11-18): the probe used to re-open on the
+    // FIRST failure, so a flaky-but-mostly-up provider almost never
+    // recovered. Now the probe tolerates PROBE_MAX_FAILURES failures
+    // and only re-opens once that many have burned.
+    e.probeFailures += 1;
+    if (e.probeFailures < PROVIDER_BREAKER_PROBE_MAX_FAILURES) return;
     e.state = "open";
     e.openedAt = now;
     e.halfOpenUntil = null;
     e.failures = [];
+    e.probeFailures = 0;
     return;
   }
   if (e.state === "open") return;
@@ -214,8 +229,8 @@ export function recordProviderFailure(provider, connectionId, model = null, now 
   prune(e, now);
   const distinct = new Set(e.failures.map((f) => f.connectionId));
   if (
-    e.failures.length >= PROVIDER_BREAKER_MIN_FAILURES &&
-    distinct.size >= PROVIDER_BREAKER_MIN_CONNECTIONS
+    e.failures.length >= PROVIDER_BREAKER_PROVIDER_MIN_FAILURES &&
+    distinct.size >= PROVIDER_BREAKER_PROVIDER_MIN_CONNECTIONS
   ) {
     e.state = "open";
     e.openedAt = now;
@@ -253,6 +268,7 @@ export function recordProviderSuccess(provider, model = null, now = Date.now()) 
     e.failures = [];
     e.openedAt = null;
     e.halfOpenUntil = null;
+    e.probeFailures = 0;
     return;
   }
   if (e.state === "closed") prune(e, now);

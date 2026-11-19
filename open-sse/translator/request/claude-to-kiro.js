@@ -245,11 +245,15 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const { specs: toolSpecs, nameMap } = normalizeKiroToolSpecs(tools);
   const { history, currentMessage } = convertClaudeMessagesToKiro(messages, upstreamModel);
 
-  // api_key / idc / external_idp must never use the shared default ARN (belongs
+  // api_key / external_idp must never use the shared default ARN (belongs
   // to another account → 403 "bearer token invalid"); OAuth/social fall back to it.
+  // Pro change 2026-11-17: IDC joins the default fallback. Upstream now REQUIRES
+  // an explicit profileArn on every call (400 "profileArn is required" when the
+  // field is absent), and the shared default was verified live to answer HTTP 200
+  // for an IDC token (q surface, via proxy egress).
   const authMethod = credentials?.providerSpecificData?.authMethod;
   const accountBoundAuth =
-    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
+    authMethod === "api_key" || authMethod === "external_idp";
   const profileArn = accountBoundAuth
     ? (credentials?.providerSpecificData?.profileArn || "")
     : (credentials?.providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));

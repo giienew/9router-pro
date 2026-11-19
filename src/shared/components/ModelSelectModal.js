@@ -91,10 +91,10 @@ export default function ModelSelectModal({
   addedModelValues = [],
   closeOnSelect = true,
   allowProviderWildcard = false,
-  // Injection targets are provider models only: the injection form hides
-  // both the Combos section (combos are never injection targets) and the
-  // Custom Injections section (already-injected models are edited from
-  // the entries list, never re-injected from the picker).
+  // The injection form hides the Combos section except in its Combo scope
+  // (a combo pick sets that combo's own prompt) and hides the Custom
+  // Injections section (already-injected models are edited from the
+  // entries list, never re-injected from the picker).
   hideCombos = false,
   hideInjections = false,
 }) {

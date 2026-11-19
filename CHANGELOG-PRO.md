@@ -4,6 +4,29 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.28
+
+- **Welcome popup**: saat pertama kali membuka dashboard, muncul kartu sambutan 9Router Pro — logo, ucapan terima kasih telah memakai Mod Edition, ajakan memberi saran dan laporan, ajakan Star di GitHub + bagikan ke grup/komunitas/teman, dan tombol Donasi / Telegram / Star GitHub. Muncul sekali per browser (tersimpan di localStorage, kunci berversi).
+- **Saran komunitas, sudah dibangun (terima kasih @cristalineeee dan @Appsheet_Indonesia)**:
+  - **Custom Headers untuk semua provider**: kartu Custom Headers sekarang tampil di semua provider, bukan cuma 25 yang punya builtin header — dahl dan 80 provider lain sebelumnya tersembunyi. Header per-provider (mis. `User-Agent`) dikirim di setiap panggilan upstream.
+  - **Combo di Prompt Injection**: memilih model di Prompt Injection sekarang ada opsi Combo — prompt combo berlaku untuk semua member-nya, dengan fallback dan rotasi.
+  - **Kuota All time + Reset**: kuota key kini punya mode All time (seumur hidup) dengan tombol Reset — hitungan mulai ulang dari titik reset, riwayat tetap disimpan. Endpoint khusus `POST /api/keys/:id/reset` disertakan.
+  - **Variant boleh dibackup combo**: variant Prompt Injection kini bisa dibackup nama combo polos (tanpa `/`) — member combo berbagi prompt dengan fallback dan rotasi. Siklus variant↔combo ditolak dengan 400 yang jelas, bukan hang.
+- **Graf dashboard, dibangun ulang**: background starfield dihapus (lebih ringan); tengah graf kini hanya logo Pro, lebih besar dengan pill PRO yang lebih besar; garis-garisnya gradien modern (violet → warna provider).
+- **UI Prompt Injection, dirapikan**: deskripsi lebih singkat di semua section; memilih model otomatis mengisi nama variant `<slug>-JB`; ada tombol Cancel saat edit; kartu Template responsif (62vw, maks 260px) dengan header dua baris dan tombol aksi icon-only. **Menu edit kini juga punya pilihan template**: saat mengedit injection, ada 'New prompt / From template' + dropdown template — pilih satu untuk mengganti prompt-nya (bisa di-customize dulu atau langsung Save); entry yang sedang nonaktif tetap nonaktif saat prompt-nya diganti.
+- **Logo baru (Gemini)**: logo Pro diganti ke desain baru — jarum suntik dengan node terhubung di atas gradient violet→pink, pill PRO — di semua tempat: sidebar, landing, tengah graf, popup welcome, favicon tab, dan PWA icon. File aset bernama `logo-pro-v3.png` supaya browser tidak lagi menyajikan logo lama dari cache.
+- **Perbaikan Provider Tercepat**: kartu provider tercepat tidak lagi menampilkan UUID mentah dari provider yang sudah dihapus — provider yang tidak bisa dikenali dilewati, jadi kartu menampilkan nama asli.
+- **Breaker di-retune**: trip provider kini 50 kegagalan di 10 koneksi (sebelumnya 15/5) — lonjakan dahl biasa tidak lagi memarkir semua model dahl selama 60 detik. Cooldown per-model (5/2) tidak berubah.
+- **Perbaikan Kiro**: client Kiro IDE 1.4.178 dengan profileArn default bersama — akun IDC kembali bisa dipakai tanpa profileArn per akun.
+- **Perbaikan SSE `[DONE]`**: di mode passthrough, `[DONE]` penutup kini selalu jadi event sendiri dan tidak pernah ganda — client OpenAI yang ketat tidak lagi abort atau hang karena framing menempel.
+- **Context window combo**: combo kini bisa memilih Min / Max / Custom context window (default Min = perilaku lama), dengan picker di form combo. Schema v8, migrasi 003.
+- **Invalidate semantic cache**: `POST /api/cache/semantic/invalidate` (auth dashboard) membersihkan semantic cache, opsional per satu model.
+- **Validasi skema proxy**: pool proxy kini hanya menerima URL http:// atau https:// — pool ftp/socks sebelumnya tersimpan lalu gagal membingungkan saat request.
+- **Self-heal stale-chunk**: setelah rebuild, ChunkLoadError me-reload halaman sekali (pengaman 60 detik) alih-alih meninggalkan dashboard rusak.
+- **Pengaman region Kiro**: region Kiro tersimpan yang tidak valid kini jatuh ke us-east-1, bukan merusak URL endpoint AWS.
+- **Antigravity Gemini 4**: `gemini-4-hydrogen-sonar` ditambahkan (bare id, terverifikasi live); 7 entri carbon/argon bertingkat dihapus — semua bentuknya 404 saat dicek live. Catatan: kuota akun Antigravity habis sampai ~24 Nov 2026, jadi model yang sudah terbukti pun 429 sampai saat itu.
+- **Tests**: 4,715 passed / 36 failed — the 36 are pre-existing categories (translator golden headers, Codex images, key-access migration/handlers, OpenCode User-Agent, favicon candidates, mimo-free.live network test, security-audit maskApiKey, pair-strategy, bulk-add-pool, rival-combo-advisor, commandcode-executor, api-key-visibility-guidance, reasoningContentInjector), none in files this release touched; 48 new tests for this release pass (36 optimization batch + 8 welcome popup + 4 PI edit-template).
+
 ## v0.5.109-pro.27
 
 - **Combo prompt injection (GitHub issue #2)**: every combo now has an optional prompt — one prompt applies to all members, including variants. Injection order: global → key → combo → variant → model+key. Nested combos: the inner combo's prompt replaces the outer one. Manage it from the Create/Edit Combo form (with prepend/append choice), a Prompt badge on the combo card, and a preview in Prompt Injection.

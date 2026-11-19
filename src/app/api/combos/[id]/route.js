@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry } from "@/lib/localDb";
+import { getComboById, updateCombo, deleteCombo, getComboByName, normalizeRoutableMembers, getInjectVariants, getModelAliases, cleanEntry, cleanComboContextWindow } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -89,9 +89,19 @@ export async function PUT(request, { params }) {
     
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
+    // Context-window mode (rival-ref sweep 2026-11-19): a partial update
+    // (mode only, or value only) resolves against the stored combo, so
+    // changing the mode alone never drops the custom value and vice versa.
+    let cwPatch = {};
+    if (body.contextWindowMode !== undefined || body.contextWindow !== undefined) {
+      cwPatch = cleanComboContextWindow(
+        body.contextWindowMode !== undefined ? body.contextWindowMode : prev?.contextWindowMode,
+        body.contextWindow !== undefined ? body.contextWindow : prev?.contextWindow
+      );
+    }
     const patch = Array.isArray(body.models)
-      ? { ...body, models: await normalizeRoutableMembers(body.models), ...promptPatch }
-      : { ...body, ...promptPatch };
+      ? { ...body, models: await normalizeRoutableMembers(body.models), ...promptPatch, ...cwPatch }
+      : { ...body, ...promptPatch, ...cwPatch };
     const combo = await updateCombo(id, patch);
     
     if (!combo) {

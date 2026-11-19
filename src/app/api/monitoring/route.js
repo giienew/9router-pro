@@ -89,10 +89,13 @@ export async function GET() {
 
     const providerNames = {};
     for (const node of nodes) if (node.id && node.name) providerNames[node.id] = node.name;
+    // Returns null when the provider no longer exists (e.g. a deleted
+    // custom node whose 7-day history still has samples) — callers skip
+    // those rows instead of showing a raw "openai-compatible-chat-<uuid>".
     const resolveName = (id) => {
       if (providerNames[id]) return providerNames[id];
       const cfg = getProviderByAlias(id) || AI_PROVIDERS[id];
-      return cfg?.name || id;
+      return cfg?.name || null;
     };
 
     let fastest = null;
@@ -100,13 +103,13 @@ export async function GET() {
       const db = await getAdapter();
       const latency = await getLatencyStats(db, since7d);
       const entries = Object.entries(latency?.byProvider || {})
-        .map(([id, v]) => ({ id, samples: v.samples || 0, p50: v.totalP50 }))
-        .filter((e) => Number.isFinite(e.p50) && e.samples > 0);
+        .map(([id, v]) => ({ id, name: resolveName(id), samples: v.samples || 0, p50: v.totalP50 }))
+        .filter((e) => Number.isFinite(e.p50) && e.samples > 0 && e.name);
       const reliable = entries.filter((e) => e.samples >= 5);
       const pool = reliable.length ? reliable : entries;
       pool.sort((a, b) => a.p50 - b.p50);
       if (pool.length) {
-        fastest = { id: pool[0].id, name: resolveName(pool[0].id), p50Ms: Math.round(pool[0].p50), samples: pool[0].samples };
+        fastest = { id: pool[0].id, name: pool[0].name, p50Ms: Math.round(pool[0].p50), samples: pool[0].samples };
       }
     } catch {}
 
@@ -117,15 +120,16 @@ export async function GET() {
       const entries = Object.entries(usage?.byProvider || {})
         .map(([id, d]) => ({
           id,
+          name: resolveName(id),
           requests: d.requests || 0,
           tokens: (d.promptTokens || 0) + (d.completionTokens || 0),
         }))
-        .filter((e) => e.requests > 0);
+        .filter((e) => e.requests > 0 && e.name);
       entries.sort((a, b) => b.requests - a.requests);
       if (entries.length) {
         mostUsed = {
           id: entries[0].id,
-          name: resolveName(entries[0].id),
+          name: entries[0].name,
           requests: entries[0].requests,
           tokens: entries[0].tokens,
           sharePct: usage.totalRequests ? Math.round((entries[0].requests / usage.totalRequests) * 100) : null,
@@ -168,11 +172,14 @@ export async function GET() {
         if (c.isActive !== false) entry.active += 1;
         byProvider.set(id, entry);
       }
-      const ranked = [...byProvider.values()].sort((a, b) => b.total - a.total);
+      const ranked = [...byProvider.values()]
+        .map((e) => ({ ...e, name: resolveName(e.id) }))
+        .filter((e) => e.name)
+        .sort((a, b) => b.total - a.total);
       if (ranked.length && ranked[0].total > 0) {
         mostKeys = {
           id: ranked[0].id,
-          name: resolveName(ranked[0].id),
+          name: ranked[0].name,
           total: ranked[0].total,
           active: ranked[0].active,
           sharePct: connections.length ? Math.round((ranked[0].total / connections.length) * 100) : null,

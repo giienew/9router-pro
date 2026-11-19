@@ -4,6 +4,7 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { resolveDefaultProfileArn } from "../../config/kiroConstants.js";
+import { buildKiroIdentityHeaders } from "../../shared/kiroIdentity.js";
 import { U, parseResetTime } from "./shared.js";
 
 /**
@@ -59,6 +60,10 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   const apiKeyHeaders = isApiKey ? { tokentype: "API_KEY" } : {};
   const externalIdpHeaders = isExternalIdp ? { TokenType: "EXTERNAL_IDP" } : {};
 
+  // Same identity as inference on every attempt, so the quota call passes Kiro's
+  // client-version gate too (#5613).
+  const identityHeaders = buildKiroIdentityHeaders({ accessToken, providerSpecificData });
+
   // For api-key auth, never inject the shared default placeholder profileArn —
   // CodeWhisperer 403s a request whose profileArn isn't owned by the key's
   // account. Only send a profileArn actually resolved for this connection.
@@ -83,8 +88,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
           headers: {
             "Authorization": `Bearer ${accessToken}`,
             "Accept": "application/json",
-            "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
-            "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
+            ...identityHeaders,
             ...apiKeyHeaders,
             ...externalIdpHeaders,
           },
@@ -101,6 +105,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
           "Content-Type": "application/x-amz-json-1.0",
           "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
           "Accept": "application/json",
+          ...identityHeaders,
           ...apiKeyHeaders,
           ...externalIdpHeaders,
         },
@@ -124,6 +129,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
           headers: {
             "Authorization": `Bearer ${accessToken}`,
             "Accept": "application/json",
+            ...identityHeaders,
             ...apiKeyHeaders,
             ...externalIdpHeaders,
           },

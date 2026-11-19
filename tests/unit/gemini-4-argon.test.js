@@ -4,11 +4,16 @@ import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
-import { applyThinking, stripThinkingSuffix } from "../../open-sse/translator/concerns/thinkingUnified.js";
+import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
 
-describe("Gemini 4 Argon capabilities", () => {
+describe("Gemini 4 Hydrogen (Sonar) capabilities", () => {
+  // Live-verified 2026-11-19: gemini-4-hydrogen-sonar is the only gemini-4
+  // model enabled with quota on the owner's Antigravity account (the tiered
+  // carbon/argon entries 404 upstream in every form and were removed from
+  // the registry). Capabilities come from the *gemini-4* pattern, so the
+  // sonar variant inherits the family's level-based reasoning.
   it.each(["gemini", "vertex", "antigravity"])("declares level-based always-on reasoning on %s", (provider) => {
-    const model = provider === "antigravity" ? "gemini-4-argon-high" : "gemini-4-argon";
+    const model = provider === "antigravity" ? "gemini-4-hydrogen-sonar" : "gemini-4-argon";
     const caps = getCapabilitiesForModel(provider, model);
     expect(caps.reasoning).toBe(true);
     expect(caps.thinkingFormat).toBe("gemini-level");
@@ -47,32 +52,28 @@ describe("Gemini 4 Argon thinking clamp", () => {
   });
 });
 
-describe("Gemini 4 Argon Antigravity tier", () => {
-  it.each([
-    ["gemini-4-argon-high", "high"],
-    ["gemini-4-argon-medium", "medium"],
-    ["gemini-4-argon-low", "low"],
-  ])("maps %s to the wire model with a %s thinking level", (modelId, expectedLevel) => {
-    const upstreamModel = getModelUpstreamId("ag", modelId);
-    expect(upstreamModel).toBe(`${modelId}(${expectedLevel})`);
+describe("Gemini 4 Hydrogen (Sonar) Antigravity model", () => {
+  // The sonar variant is used bare — no tier suffix. A tiered suffix
+  // (gemini-4-hydrogen-sonar(high)) 404s upstream (live probe 2026-11-19),
+  // and the tiered carbon/argon entries were removed for the same reason.
+  it("resolves to the bare model id upstream (no tier suffix)", () => {
+    expect(getModelUpstreamId("ag", "gemini-4-hydrogen-sonar")).toBe("gemini-4-hydrogen-sonar");
+  });
 
+  it("passes the model through transformRequest unchanged", () => {
     const body = {
-      model: stripThinkingSuffix(upstreamModel),
+      model: "gemini-4-hydrogen-sonar",
       request: {
         contents: [{ role: "user", parts: [{ text: "hello" }] }],
         generationConfig: {},
       },
     };
-
-    applyThinking("antigravity", upstreamModel, body, "antigravity");
     const finalBody = new AntigravityExecutor().transformRequest(
-      modelId,
+      "gemini-4-hydrogen-sonar",
       body,
       true,
       { projectId: "project", connectionId: "connection" }
     );
-
-    expect(finalBody.model).toBe(modelId);
-    expect(finalBody.request.generationConfig.thinkingConfig).toEqual({ thinkingLevel: expectedLevel, includeThoughts: true });
+    expect(finalBody.model).toBe("gemini-4-hydrogen-sonar");
   });
 });

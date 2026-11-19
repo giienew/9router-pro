@@ -1,3 +1,9 @@
+# Unreleased
+
+## Fixes
+- **Kiro**: identify as Kiro IDE 1.4.178 on inference, model catalog, usage, profile lookup and API-key validation — Kiro's client-version gate rejected the old `kiro-ide/1.0.0` / `KiroIDE-0.10.32` identities with "This version of Kiro is no longer supported" (upstream #5613, PR #5622). All callers now share one identity builder, so they cannot drift apart again. Pro uses 1.4.178 (current stable 2026-11-13) instead of the PR's 1.4.154.
+- **Kiro (Pro)**: IDC accounts now fall back to the shared default profileArn like OAuth/social — upstream now requires an explicit profileArn on every call (400 "profileArn is required" when absent), and the shared default was verified live to answer HTTP 200 for an IDC token. The TLS curve change from upstream PR #5622 is skipped: Pro's fetch path uses got-scraping, not undici's ecdhCurve.
+
 # v0.5.109 (2026-10-23)
 
 ## Features

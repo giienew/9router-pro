@@ -78,6 +78,20 @@ export function assertValidAwsRegion(region) {
   return region;
 }
 
+// Non-throwing region resolver for the runtime path (Kiro executor +
+// token refresh): a stored region that fails the pattern can never be
+// spliced into a URL — it falls back to us-east-1 instead of crashing
+// the request or redirecting it to a crafted host. Rival-ref sweep
+// (2026-11-19): Go's "Kiro guard region splicing" — Pro's OAuth flow
+// already asserts, but the inference + refresh paths did not.
+export function resolveAwsRegion(region) {
+  if (typeof region === "string") {
+    const trimmed = region.trim();
+    if (AWS_REGION_PATTERN.test(trimmed)) return trimmed;
+  }
+  return "us-east-1";
+}
+
 // Cursor OAuth Configuration (Import Token from Cursor IDE)
 // tokenStoragePaths: user-reference only, not stored in registry
 export const CURSOR_CONFIG = {

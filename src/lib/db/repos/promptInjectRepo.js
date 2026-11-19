@@ -281,7 +281,11 @@ export function isReservedVariantName(raw) {
 function cleanVariantEntry(raw) {
   if (!raw || typeof raw !== "object") return null;
   const backing = typeof raw.model === "string" ? raw.model.trim() : "";
-  if (!backing.includes("/")) return null;
+  // PATCH-ABCE (C): a backing may be a combo name (no "/") as well as a
+  // provider/model. Whether a bare name is a real combo is checked in
+  // setInjectVariant (it has DB access); this pure cleaner only rejects
+  // an empty backing.
+  if (!backing) return null;
   const entry = cleanEntry(raw);
   if (!entry) return null;
   const out = {
@@ -364,6 +368,13 @@ export async function setInjectVariant(name, input = {}) {
   const nodes = await getProviderNodes().catch(() => []);
   const routedModel = resolveRoutableBacking(entry.model, nodes);
   if (routedModel === null) return null;
+  // PATCH-ABCE (C): a bare backing (no "/") must name an existing combo —
+  // otherwise it is a typo that would 404 at runtime. Combo names pass
+  // through resolveRoutableBacking unchanged.
+  if (!routedModel.includes("/")) {
+    const combo = await getComboByName(routedModel).catch(() => null);
+    if (!combo) return null;
+  }
   const routedEntry = routedModel === entry.model ? entry : { ...entry, model: routedModel };
   // No backing combo: a variant name routes directly (dispatch checks the
   // variants map), so saving a variant creates no combo object — the

@@ -3,6 +3,7 @@ import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiHeaders } from "../../config/
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
+import { resolveAwsRegion } from "../../../src/lib/oauth/constants/oauth.js";
 
 let _xaiServiceSingleton = null;
 export async function refreshXaiToken(refreshToken, log) {
@@ -337,7 +338,10 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
   const authMethod = providerSpecificData?.authMethod;
   const clientId = providerSpecificData?.clientId;
   const clientSecret = providerSpecificData?.clientSecret;
-  const region = providerSpecificData?.region;
+  // Region guard (rival-ref sweep 2026-11-19): the stored region is
+  // interpolated into the OIDC token endpoint below — only a valid AWS
+  // region (or the us-east-1 default) may reach the URL.
+  const region = resolveAwsRegion(providerSpecificData?.region);
 
   if (authMethod === "external_idp") {
     let refreshRequest;
@@ -384,7 +388,9 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 
   if (clientId && clientSecret) {
     const isIDC = authMethod === "idc";
-    const endpoint = isIDC && region
+    // region is already validated by resolveAwsRegion above, so it is
+    // always a real AWS region here — never interpolate it raw.
+    const endpoint = isIDC
       ? `https://oidc.${region}.amazonaws.com/token`
       : "https://oidc.us-east-1.amazonaws.com/token";
 

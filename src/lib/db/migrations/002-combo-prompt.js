@@ -7,13 +7,6 @@ export default {
   version: 2,
   name: "combo-prompt",
   up(db) {
-    // A DB stamped v1 that never ran m001 (or lost the table) has no combos
-    // table at all: PRAGMA table_info would come back empty and the ALTER
-    // below would crash boot with "no such table: combos". Skip in that
-    // case — syncSchemaFromTables runs after migrations and creates the
-    // table from TABLES, which already includes the prompt column.
-    const table = db.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'combos'`);
-    if (!table) return;
     const cols = db.all(`PRAGMA table_info(combos)`);
     if (!cols.some((c) => c.name === "prompt")) {
       db.exec(`ALTER TABLE combos ADD COLUMN prompt TEXT`);

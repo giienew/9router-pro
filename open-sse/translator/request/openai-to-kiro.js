@@ -328,14 +328,19 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   // (the ARN doesn't belong to the key's account). So for api_key, only send a
   // profileArn that was actually resolved for this connection — never the default.
   // OAuth/social keep the default fallback (their tokens accept it).
-  // api_key / idc / external_idp carry an account-specific (or token-bound)
+  // api_key / external_idp carry an account-specific (or token-bound)
   // profile. The shared builder-id/social default ARN belongs to a different
   // account and triggers 403 "bearer token invalid", so never fall back to it —
   // send the resolved ARN, or an empty string so CodeWhisperer uses the token's
   // own default profile. Only OAuth/social keep the shared placeholder.
+  // Pro change 2026-11-17: IDC joins the default fallback. Upstream now REQUIRES
+  // an explicit profileArn on every call (400 "profileArn is required" when the
+  // field is absent), and the shared default was verified live to answer HTTP 200
+  // for an IDC token (q surface, via proxy egress). The old empty-string
+  // "token's own default profile" behaviour no longer exists upstream.
   const authMethod = credentials?.providerSpecificData?.authMethod;
   const accountBoundAuth =
-    authMethod === "api_key" || authMethod === "idc" || authMethod === "external_idp";
+    authMethod === "api_key" || authMethod === "external_idp";
   const profileArn = accountBoundAuth
     ? (credentials?.providerSpecificData?.profileArn || "")
     : (credentials?.providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));

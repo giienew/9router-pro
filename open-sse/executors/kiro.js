@@ -1,10 +1,13 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { resolveAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
 import {
   KIRO_CODEWHISPERER_TARGET,
   KIRO_ENDPOINT_FALLBACK_STATUSES,
+  resolveDefaultProfileArn,
   resolveKiroModel,
 } from "../config/kiroConstants.js";
+import { buildKiroIdentityHeaders } from "../shared/kiroIdentity.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
@@ -223,6 +226,7 @@ export class KiroExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true, url = "") {
     const headers = {
       ...this.config.headers,
+      ...buildKiroIdentityHeaders(credentials, "streaming"),
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": uuidv4()
     };
@@ -261,7 +265,16 @@ export class KiroExecutor extends BaseExecutor {
     }
     headers["x-amzn-kiro-agent-mode"] = "spec";
     headers["x-amzn-codewhisperer-machine-id"] = "kiro-desktop";
-    const profileArn = credentials?.providerSpecificData?.profileArn;
+    // Profile ARN header: send the stored ARN, or the shared default for every
+    // auth method except api_key / external_idp (their ARNs are account-bound;
+    // the placeholder 403s for them). IDC joins the default fallback since
+    // 2026-11-17: upstream now requires an explicit profileArn on every call,
+    // and the shared default was verified live to answer 200 for an IDC token.
+    // (The translators apply the same rule to the body field.)
+    const profileArn = credentials?.providerSpecificData?.profileArn
+      || (authMethod !== "api_key" && authMethod !== "external_idp"
+        ? resolveDefaultProfileArn(authMethod)
+        : null);
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;
     }
@@ -300,7 +313,12 @@ export class KiroExecutor extends BaseExecutor {
     // reject foreign tokens with 401/403, which DO fall through, so trying
     // q/codewhisperer first is safe for every auth method (CLIRO parity).
 
-    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
+    // Region guard (rival-ref sweep 2026-11-19): the stored region is
+    // spliced into the amazonaws.com hostname below, so an unvalidated
+    // value (e.g. "us-east-1@evil.com" or "us-east-1/x") could corrupt
+    // the URL or redirect the host. resolveAwsRegion only ever returns
+    // a valid AWS region or the us-east-1 default.
+    const region = resolveAwsRegion(credentials?.providerSpecificData?.region);
     const regionalize = (u) =>
       region && region !== "us-east-1" && u.includes("amazonaws.com")
         ? u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)

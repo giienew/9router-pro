@@ -112,6 +112,9 @@ export async function dispatchCombo({
   variantFallbackName = null,
   // Combo-level prompt injection (issue #2): { name, entry } or null.
   comboPrompt = null,
+  // PATCH-ABCE (C): variant→combo resolution depth, threaded to member
+  // calls so a variant/combo loop is caught (see chat.js).
+  variantDepth = 0,
 }) {
   const { memberInjectName, variantBacking } = createVariantHelpers(variants, variantFallbackName || comboName);
   const pinFor = memberPinFor(settings, comboName);
@@ -134,7 +137,7 @@ export async function dispatchCombo({
       handleSingleModel(
         b, m,
         isPanel ? stripPanelTools(clientRawRequest) : clientRawRequest,
-        request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt,
+        request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt, variantDepth,
       );
     return handleFusionChat({
       body,
@@ -153,7 +156,7 @@ export async function dispatchCombo({
   const comboCfg = comboStrategies[comboName] || {};
   log?.info?.("CHAT", `Combo "${comboName}" with ${orderedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
   const inner = (b, m, signal) =>
-    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt);
+    handleSingleModel(b, m, clientRawRequest, request, apiKey, null, memberInjectName(m), cap(), signal, pinFor(m), comboPrompt, variantDepth);
   return handleComboChat({
     body,
     models: orderedModels,

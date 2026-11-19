@@ -71,13 +71,16 @@ describe("catalog sync 0.5.109 → 0.5.119 — model additions", () => {
     expect(modelIds("ocz")).toContain("claude-fable-5");
   });
 
-  it("adds Gemini 4 Carbon tiers to Antigravity with a bare alias to medium", () => {
+  it("adds Gemini 4 Hydrogen (Sonar) to Antigravity; Carbon tiers removed (404 upstream)", () => {
+    // Live-verified 2026-11-19: gemini-4-hydrogen-sonar is the only
+    // gemini-4 model enabled with quota on the owner's Antigravity
+    // account. The Carbon tiered entries (high/medium/low + bare) 404
+    // upstream in every form and were removed from the registry.
     const ids = modelIds("ag");
+    expect(ids).toContain("gemini-4-hydrogen-sonar");
     for (const id of ["gemini-4-carbon-high", "gemini-4-carbon-medium", "gemini-4-carbon-low", "gemini-4-carbon"]) {
-      expect(ids).toContain(id);
+      expect(ids).not.toContain(id);
     }
-    const bare = (PROVIDER_MODELS["ag"] || []).find((m) => m.id === "gemini-4-carbon");
-    expect(bare.upstreamModelId).toBe("gemini-4-carbon-medium(medium)");
   });
 
   it("adds Gemini 4 Carbon + Fable 5.2 to CommandCode", () => {
