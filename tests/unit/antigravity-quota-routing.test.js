@@ -17,6 +17,8 @@ vi.mock("@/lib/localDb", () => ({
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
   pickProxyPoolId: vi.fn(),
+  resolveProviderLevelProxyPoolId: vi.fn(async () => null),
+  resolveEffectiveProxyPoolId: vi.fn(async (_override, _providerId, connectionPoolId) => connectionPoolId || null),
 }));
 vi.mock("@/shared/constants/providers.js", () => ({
   FREE_PROVIDERS: {},

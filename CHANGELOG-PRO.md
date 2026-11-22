@@ -4,6 +4,13 @@ Pro releases are tagged `v<upstream>-pro.<n>` (e.g. `v0.5.104-pro.2`) and
 published as GitHub releases in this repo. The dashboard's update checker
 follows these releases.
 
+## v0.5.109-pro.31
+
+- **Provider-level proxy pool**: a provider's proxy pool is now set once on the provider detail page and applies to every key of that provider at request time — existing keys included, new keys included, no re-apply needed. Rotation is supported too (round-robin or random across several pools). A per-key pool is still read as a fallback when no provider-level pool is set, and a key explicitly set to direct stays direct. The per-key Proxy dropdown and the Apply Proxy bulk action are removed; the provider-level card is the single control. Verified live (oneover, 35 keys, all direct): a chat request routed through the provider-level pool. (Closes #5, suggested by @IfanBodong.)
+- **Provider strategy saves no longer wipe proxy settings**: saving a provider's routing strategy previously replaced the whole override and silently dropped a saved provider-level proxy pool. The save now merges into the stored override.
+- **Dashboard fixes**: the proxy-pools export is wired through all three data layers, so the pools API cannot fail on a missing export; an empty or invalid JSON body to `POST /v1/responses/compact` now returns 400 instead of crashing; the media provider page uses the renamed proxy card.
+- **Tests**: 11 new tests for the provider-level override (precedence, rotation, end-to-end credential resolution). Full suite: 5,029 passed / 29 failed — the same pre-existing categories as pro.30 (codex/opencode/commandcode executors, image generation, reasoning injector, favicon utils, pair-strategy, live-network mimo-free, audit-m4 throttle, bulk-add-pool, param-support, plus 2 timezone-sensitive golden-url-header snapshots that pass under UTC); none in files this release touched.
+
 ## v0.5.109-pro.30
 
 - **npm correction release**: npm `0.5.109-pro.29` shipped an earlier build that predates the Admin and Spam fixes, and a published npm version can never be republished. pro.30 brings npm users the exact same code as GitHub pro.29 — no new features beyond pro.29, the fixes below are what npm pro.29 was missing.

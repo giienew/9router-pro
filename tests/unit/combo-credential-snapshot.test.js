@@ -20,6 +20,8 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({})),
   pickProxyPoolId: vi.fn(() => null),
   resolveRotationPoolIds: vi.fn(() => []),
+  resolveProviderLevelProxyPoolId: vi.fn(async () => null),
+  resolveEffectiveProxyPoolId: vi.fn(async (_override, _providerId, connectionPoolId) => connectionPoolId || null),
 }));
 
 const { getProviderCredentials } = await import("../../src/sse/services/auth.js");

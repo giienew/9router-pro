@@ -1,31 +1,37 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
-  const [showProxyDropdown, setShowProxyDropdown] = useState(false);
-  const [updatingProxy, setUpdatingProxy] = useState(false);
-  const proxyDropdownRef = useRef(null);
-  const proxyBtnRef = useRef(null);
-  const [proxyDropdownStyle, setProxyDropdownStyle] = useState(null);
-
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onEdit, onDelete, oneByOneStatus = null, autoPing = null, providerProxyPoolId = null, providerProxyRotating = false }) {
   const proxyPoolMap = new Map((proxyPools || []).map((pool) => [pool.id, pool]));
   const boundProxyPoolId = connection.providerSpecificData?.proxyPoolId || null;
   const boundProxyPool = boundProxyPoolId ? proxyPoolMap.get(boundProxyPoolId) : null;
+  // Provider-level pool (settings providerStrategies): it routes this key
+  // at request time unless the key carries an explicit "__none__" (DIRECT).
+  // Shown as inherited here — the per-key dropdown is gone; the
+  // ProviderProxyCard above the list is the single control.
+  const providerProxyPool = providerProxyPoolId ? proxyPoolMap.get(providerProxyPoolId) : null;
+  const effectiveProxyPool = boundProxyPool || providerProxyPool;
+  const effectiveProxyPoolId = boundProxyPoolId || providerProxyPoolId || null;
   const hasLegacyProxy = connection.providerSpecificData?.connectionProxyEnabled === true && !!connection.providerSpecificData?.connectionProxyUrl;
-  const hasAnyProxy = !!boundProxyPoolId || hasLegacyProxy;
+  const hasAnyProxy = !!effectiveProxyPoolId || hasLegacyProxy || providerProxyRotating;
   const proxyDisplayText = boundProxyPool
     ? `Pool: ${boundProxyPool.name}`
     : boundProxyPoolId
       ? `Pool: ${boundProxyPoolId} (inactive/missing)`
-      : hasLegacyProxy
-        ? `Legacy: ${connection.providerSpecificData?.connectionProxyUrl}`
-        : "";
+      : providerProxyPool
+        ? `Pool: ${providerProxyPool.name} (provider-level)`
+        : providerProxyPoolId
+          ? `Pool: ${providerProxyPoolId} (provider-level, inactive/missing)`
+          : providerProxyRotating
+            ? "Pool: rotating (provider-level)"
+            : hasLegacyProxy
+              ? `Legacy: ${connection.providerSpecificData?.connectionProxyUrl}`
+              : "";
   const autoPingTooltip = (() => {
     if (!autoPing) return "";
     const activeModes = [];
@@ -40,8 +46,8 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   })();
 
   let maskedProxyUrl = "";
-  if (boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl) {
-    const rawProxyUrl = boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl;
+  if (effectiveProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl) {
+    const rawProxyUrl = effectiveProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl;
     try {
       const parsed = new URL(rawProxyUrl);
       maskedProxyUrl = `${parsed.protocol}//${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
@@ -50,7 +56,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     }
   }
 
-  const noProxyText = boundProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
+  const noProxyText = effectiveProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
 
   // Health tier (G10, defensive): mirrors the router's connectionHealthTier
   // from whatever fields the API returns — no new API fields assumed.
@@ -67,67 +73,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     : null;
 
   let proxyBadgeVariant = "default";
-  if (boundProxyPool?.isActive === true) {
+  if (effectiveProxyPool?.isActive === true || providerProxyRotating) {
     proxyBadgeVariant = "success";
-  } else if (boundProxyPoolId || hasLegacyProxy) {
+  } else if (effectiveProxyPoolId || hasLegacyProxy) {
     proxyBadgeVariant = "error";
   }
-
-  // Render via portal + fixed positioning so ancestor overflow (scrollable
-  // connections list) can't clip the dropdown
-  const toggleProxyDropdown = () => {
-    if (showProxyDropdown) {
-      setShowProxyDropdown(false);
-      return;
-    }
-    const rect = proxyBtnRef.current?.getBoundingClientRect();
-    if (!rect) {
-      setShowProxyDropdown(true);
-      return;
-    }
-    const estimatedHeight = ((proxyPools?.length || 0) + 1) * 34 + 8;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const flipUp = spaceBelow < estimatedHeight && rect.top > spaceBelow;
-    setProxyDropdownStyle({
-      position: "fixed",
-      right: window.innerWidth - rect.right,
-      ...(flipUp
-        ? { bottom: window.innerHeight - rect.top + 4, maxHeight: Math.max(rect.top - 8, 120) }
-        : { top: rect.bottom + 4, maxHeight: Math.max(spaceBelow - 8, 120) }),
-    });
-    setShowProxyDropdown(true);
-  };
-
-  // Close dropdown when clicking outside, scrolling, or resizing
-  useEffect(() => {
-    if (!showProxyDropdown) return;
-    const handleClick = (e) => {
-      if (
-        proxyDropdownRef.current?.contains(e.target) ||
-        proxyBtnRef.current?.contains(e.target)
-      ) return;
-      setShowProxyDropdown(false);
-    };
-    const close = () => setShowProxyDropdown(false);
-    document.addEventListener("mousedown", handleClick);
-    window.addEventListener("resize", close);
-    document.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      window.removeEventListener("resize", close);
-      document.removeEventListener("scroll", close, true);
-    };
-  }, [showProxyDropdown]);
-
-  const handleSelectProxy = async (poolId) => {
-    setUpdatingProxy(true);
-    try {
-      await onUpdateProxy(poolId === "__none__" ? null : poolId);
-    } finally {
-      setUpdatingProxy(false);
-      setShowProxyDropdown(false);
-    }
-  };
 
   const rowAuthType = connection.authType || (isOAuth ? "oauth" : "apikey");
   const isOAuthConnection = rowAuthType === "oauth";
@@ -288,46 +238,6 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
       </div>
       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
-          {/* Proxy button with inline dropdown */}
-          {(proxyPools || []).length > 0 && (
-            <div>
-              <button
-                ref={proxyBtnRef}
-                onClick={toggleProxyDropdown}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
-                disabled={updatingProxy}
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  {updatingProxy ? "progress_activity" : "lan"}
-                </span>
-                <span className="text-[10px] leading-tight">Proxy</span>
-              </button>
-              {showProxyDropdown && createPortal(
-                <div
-                  ref={proxyDropdownRef}
-                  style={proxyDropdownStyle}
-                  className="z-50 max-w-[78vw] min-w-[160px] overflow-y-auto rounded-lg border border-border bg-bg py-1 shadow-lg"
-                >
-                  <button
-                    onClick={() => handleSelectProxy("__none__")}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
-                  >
-                    None
-                  </button>
-                  {(proxyPools || []).map((pool) => (
-                    <button
-                      key={pool.id}
-                      onClick={() => handleSelectProxy(pool.id)}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
-                    >
-                      {pool.name}
-                    </button>
-                  ))}
-                </div>,
-                document.body
-              )}
-            </div>
-          )}
           {autoPing && (
             <Tooltip text={autoPingTooltip}>
               <button
@@ -385,9 +295,10 @@ ConnectionRow.propTypes = {
   onMoveUp: PropTypes.func.isRequired,
   onMoveDown: PropTypes.func.isRequired,
   onToggleActive: PropTypes.func.isRequired,
-  onUpdateProxy: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  providerProxyPoolId: PropTypes.string,
+  providerProxyRotating: PropTypes.bool,
   oneByOneStatus: PropTypes.shape({
     state: PropTypes.string,
     error: PropTypes.string,

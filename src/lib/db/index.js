@@ -56,7 +56,7 @@ export {
 export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  validateProxyUrl,
+  validateProxyUrl, toPublicProxyPool,
 } from "./repos/proxyPoolsRepo.js";
 
 // API keys

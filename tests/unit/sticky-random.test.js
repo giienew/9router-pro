@@ -54,6 +54,8 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   })),
   pickProxyPoolId: vi.fn(() => null),
   resolveRotationPoolIds: vi.fn(() => []),
+  resolveProviderLevelProxyPoolId: vi.fn(async () => null),
+  resolveEffectiveProxyPoolId: vi.fn(async (_override, _providerId, connectionPoolId) => connectionPoolId || null),
 }));
 
 import {

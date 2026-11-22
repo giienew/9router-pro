@@ -225,11 +225,11 @@ It speaks the **OpenAI-compatible `/v1` API**, so it drops in front of the tools
 - **Stack:** Next.js 16 / React 19, one app, one SQLite file. No database server, no Redis, no extra services — the same footprint class as upstream.
 - **API:** OpenAI-compatible `/v1/chat/completions` and `/v1/models`, plus the dashboard's own `/api` routes. Overrides from the per-model editor are published through `/api/models` and `/v1/models`.
 - **Token saving:** RTK and Headroom token savers are built in (inherited from upstream), plus Pro's own hot-path optimizations — snapshot-cached injection resolution and grouped system prompts.
-- **Tested** — the Pro features ship with unit tests (5,040+ passing in pro.30); the release gate is live deploy + live check + "stable" before any GitHub or npm release.
+- **Tested** — the Pro features ship with unit tests (5,029 passing in pro.31); the release gate is live deploy + live check + "stable" before any GitHub or npm release.
 
 ## 🤝 Contributing & support
 
-- **Issues & suggestions:** open an issue on [GitHub](https://github.com/giienew/9router-pro/issues) — bugs, feature requests, and patch suggestions are all welcome. The pro.28, pro.29 and pro.30 releases were built from community suggestions.
+- **Issues & suggestions:** open an issue on [GitHub](https://github.com/giienew/9router-pro/issues) — bugs, feature requests, and patch suggestions are all welcome. The pro.28, pro.29, pro.30 and pro.31 releases were built from community suggestions.
 - **Telegram:** [@Gieneticc](https://t.me/Gieneticc) for reports and questions.
 - **Donate:** the dashboard's Donate button goes to this project's own channels ([Saweria](https://saweria.co/gienetic)) — it keeps Pro improving.
 

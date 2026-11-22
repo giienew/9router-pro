@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ZedAuthModal, XiaomiMimoAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ZedAuthModal, XiaomiMimoAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, ProviderProxyCard, ConfirmModal } from "@/shared/components";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
@@ -70,7 +70,6 @@ export default function ProviderDetailPage() {
   const [showBulkImportGrokCli, setShowBulkImportGrokCli] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditNodeModal, setShowEditNodeModal] = useState(false);
-  const [showBulkProxyModal, setShowBulkProxyModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
@@ -82,10 +81,12 @@ export default function ProviderDetailPage() {
   // { id, name, capsOverride } — capsOverride is the stored sparse override.
   const [editingModel, setEditingModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
-  const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
-  const [bulkScope, setBulkScope] = useState("loaded");
-  const [bulkPoolSearch, setBulkPoolSearch] = useState("");
-  const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
+  // Provider-level proxy pool (settings providerStrategies): the pool (or
+  // rotation) every connection of this provider inherits. Read from the
+  // same settings fetch as the strategy override; the ProviderProxyCard
+  // above the list is the editor and refetches after saving.
+  const [providerProxyPoolId, setProviderProxyPoolId] = useState(null);
+  const [providerProxyRotating, setProviderProxyRotating] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
@@ -350,6 +351,11 @@ export default function ProviderDetailPage() {
       const override = (settingsData.providerStrategies || {})[providerId] || {};
       setProviderStrategy(override.fallbackStrategy || null);
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
+      // Provider-level proxy pool for the row badges (the card above the
+      // list is the editor): a single pool, or rotation when no pool is
+      // picked but a rotate strategy is saved.
+      setProviderProxyPoolId(override.proxyPoolId || null);
+      setProviderProxyRotating(!override.proxyPoolId && (override.rotateStrategy || "none") !== "none");
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
       setThinkingMode(thinkingCfg.mode || "auto");
@@ -435,11 +441,18 @@ export default function ProviderDetailPage() {
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerStrategies || {};
 
-      // Build override: null strategy means remove override, use global
-      const override = {};
+      // Merge into the saved override instead of replacing it: the same
+      // override also carries the provider-level proxy pool
+      // (proxyPoolId/proxyPoolIds/rotateStrategy) saved by the proxy card,
+      // and wiping it here would silently drop the provider's pool.
+      // Null strategy means remove override, use global.
+      const override = { ...(current[providerId] || {}) };
       if (strategy) override.fallbackStrategy = strategy;
+      else delete override.fallbackStrategy;
       if (strategy === "round-robin" && stickyLimit !== "") {
         override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
+      } else {
+        delete override.stickyRoundRobinLimit;
       }
 
       const updated = { ...current };
@@ -1035,110 +1048,9 @@ export default function ProviderDetailPage() {
     setSelectedConnectionIds(connections.map((conn) => conn.id));
   };
 
-  const clearSelection = () => {
-    setSelectedConnectionIds([]);
-    setBulkProxyPoolId("__none__");
-  };
-
   useEffect(() => {
     setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
   }, [connections]);
-
-  const selectedProxySummary = (() => {
-    if (selectedConnections.length === 0) return "";
-    const poolIds = new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"));
-    if (poolIds.size === 1) {
-      const onlyId = [...poolIds][0];
-      if (onlyId === "__none__") return "All selected currently unbound";
-      const pool = proxyPools.find((p) => p.id === onlyId);
-      return `All selected currently bound to ${pool?.name || onlyId}`;
-    }
-    return "Selected connections have mixed proxy bindings";
-  })();
-
-  const openBulkProxyModal = () => {
-    if (selectedConnections.length === 0) return;
-    const uniquePoolIds = [...new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"))];
-    setBulkProxyPoolId(uniquePoolIds.length === 1 ? uniquePoolIds[0] : "__none__");
-    setShowBulkProxyModal(true);
-  };
-
-  const closeBulkProxyModal = () => {
-    if (bulkUpdatingProxy) return;
-    setShowBulkProxyModal(false);
-    setBulkScope("loaded");
-    setBulkPoolSearch("");
-  };
-
-  const applyProxyAssignments = async (assignments) => {
-    setBulkUpdatingProxy(true);
-    try {
-      let failed = 0;
-      for (const { connectionId, proxyPoolId } of assignments) {
-        try {
-          const res = await fetch(`/api/providers/${connectionId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ proxyPoolId }),
-          });
-          if (!res.ok) failed += 1;
-        } catch (e) {
-          console.log("Error applying proxy for", connectionId, e);
-          failed += 1;
-        }
-      }
-      if (failed > 0) notify.warning(`Updated with ${failed} failed request(s).`);
-      await fetchConnections();
-      setShowBulkProxyModal(false);
-    } finally {
-      setBulkUpdatingProxy(false);
-    }
-  };
-
-  const applyProxyAll = async (mode, proxyPoolId) => {
-    setBulkUpdatingProxy(true);
-    try {
-      const res = await fetch("/api/providers/bulk-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId, mode, proxyPoolId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to apply proxy.");
-        return;
-      }
-      await fetchConnections();
-      setShowBulkProxyModal(false);
-    } finally {
-      setBulkUpdatingProxy(false);
-    }
-  };
-
-  const handleApplySinglePool = (proxyPoolId) => {
-    if (bulkScope === "all" && connTotal > connections.length) {
-      return applyProxyAll(proxyPoolId === null ? "none" : "single", proxyPoolId);
-    }
-    const targets = connections.map((c) => ({ connectionId: c.id, proxyPoolId }));
-    return applyProxyAssignments(targets);
-  };
-
-  const handleApplyOneToOne = () => {
-    if (bulkScope === "all" && connTotal > connections.length) {
-      return applyProxyAll("rotate");
-    }
-    const activePools = proxyPools.filter((p) => p.isActive === true);
-    if (activePools.length === 0) {
-      notify.warning("No active proxy pools available.");
-      return;
-    }
-    const targets = connections.map((c, i) => ({
-      connectionId: c.id,
-      proxyPoolId: activePools[i % activePools.length].id,
-    }));
-    return applyProxyAssignments(targets);
-  };
-
 
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
@@ -1180,6 +1092,8 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                providerProxyPoolId={providerProxyPoolId}
+                providerProxyRotating={providerProxyRotating}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
                   isActive: autoPing.connections[conn.id] === true || autoPing.schedules?.[conn.id]?.enabled === true,
                   reactiveOn: autoPing.connections[conn.id] === true,
@@ -1188,24 +1102,6 @@ export default function ProviderDetailPage() {
                   scheduleSummary: getScheduleSlotLabels(autoPing.schedules?.[conn.id]).join(" / "),
                   onConfigure: () => setScheduleConnection(conn),
                 } : null}
-                onUpdateProxy={async (proxyPoolId) => {
-                  try {
-                    const res = await fetch(`/api/providers/${conn.id}`, {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
-                    });
-                    if (res.ok) {
-                      setConnections(prev => prev.map(c =>
-                        c.id === conn.id
-                          ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } }
-                          : c
-                      ));
-                    }
-                  } catch (error) {
-                    console.log("Error updating proxy:", error);
-                  }
-                }}
                 onEdit={() => {
                   setSelectedConnection(conn);
                   setShowEditModal(true);
@@ -1228,107 +1124,6 @@ export default function ProviderDetailPage() {
       </button>
     )}
     </>
-  );
-
-  const activePools = proxyPools.filter((p) => p.isActive === true);
-
-  const bulkPoolQuery = bulkPoolSearch.trim().toLowerCase();
-  const bulkPoolMatches = bulkPoolQuery
-    ? proxyPools.filter((p) => (p.name || "").toLowerCase().includes(bulkPoolQuery))
-    : proxyPools;
-  const visibleBulkPools = bulkPoolMatches.slice(0, 50);
-  const bulkTargetCount = bulkScope === "all" && connTotal > connections.length ? connTotal : connections.length;
-
-  const bulkActionModal = (
-    <Modal
-      isOpen={showBulkProxyModal}
-      onClose={closeBulkProxyModal}
-      title={`Apply Proxy (${bulkTargetCount} connections)`}
-    >
-      <div className="flex flex-col gap-3">
-        {connTotal > connections.length && (
-          <div>
-            <div className="seg-track flex gap-1 rounded-full p-1">
-              <button
-                type="button"
-                onClick={() => setBulkScope("loaded")}
-                disabled={bulkUpdatingProxy}
-                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "loaded" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
-              >
-                Loaded ({connections.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkScope("all")}
-                disabled={bulkUpdatingProxy}
-                className={`flex-1 rounded-full px-3 py-1.5 text-sm transition-colors ${bulkScope === "all" ? "bg-brand-500 font-medium text-white" : "text-text-muted hover:text-text-main"}`}
-              >
-                All ({connTotal})
-              </button>
-            </div>
-            {bulkScope === "all" && (
-              <p className="mt-1.5 text-xs text-text-muted">
-                Applies to every connection of this provider, including connections that are not loaded below.
-              </p>
-            )}
-          </div>
-        )}
-        {proxyPools.length > 20 && (
-          <input
-            value={bulkPoolSearch}
-            onChange={(e) => setBulkPoolSearch(e.target.value)}
-            placeholder="Search proxy pools…"
-            className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text-main outline-none focus:border-brand-500"
-          />
-        )}
-        <div className="flex flex-col">
-          <button
-            onClick={handleApplyOneToOne}
-            disabled={bulkUpdatingProxy || activePools.length === 0}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
-            <span className="text-sm text-text-main">One-to-one (rotate)</span>
-          </button>
-          <button
-            onClick={() => handleApplySinglePool(null)}
-            disabled={bulkUpdatingProxy}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
-            <span className="text-sm text-text-main">None (unbind all)</span>
-          </button>
-          {visibleBulkPools.map((pool) => (
-            <button
-              key={pool.id}
-              onClick={() => handleApplySinglePool(pool.id)}
-              disabled={bulkUpdatingProxy || pool.isActive !== true}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
-              <span className="truncate text-sm text-text-main">{pool.name}</span>
-              {pool.isActive !== true && (
-                <span className="text-[10px] text-text-muted">(inactive)</span>
-              )}
-            </button>
-          ))}
-          {bulkPoolMatches.length > visibleBulkPools.length && (
-            <p className="px-3 py-1.5 text-xs text-text-muted">
-              Showing {visibleBulkPools.length} of {bulkPoolMatches.length} pools — type to search for a specific pool.
-            </p>
-          )}
-          {bulkPoolQuery && visibleBulkPools.length === 0 && (
-            <p className="px-3 py-1.5 text-xs text-text-muted">No pools match “{bulkPoolSearch}”.</p>
-          )}
-        </div>
-
-        {bulkUpdatingProxy && <p className="text-xs text-text-muted">Applying...</p>}
-
-        <Button onClick={closeBulkProxyModal} variant="ghost" fullWidth disabled={bulkUpdatingProxy}>
-          Cancel
-        </Button>
-      </div>
-    </Modal>
   );
 
   const handleTestModel = async (modelId) => {
@@ -1707,23 +1502,14 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
+      {!isFreeNoAuth && <ProviderProxyCard providerId={providerId} onSaved={fetchConnections} />}
       {isFreeNoAuth ? (
-        <NoAuthProxyCard providerId={providerId} />
+        <ProviderProxyCard providerId={providerId} variant="noauth" />
       ) : (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {connections.length > 0 && proxyPools.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="lan"
-                  onClick={() => setShowBulkProxyModal(true)}
-                >
-                  Apply Proxy
-                </Button>
-              )}
               {connections.length > 0 && (
                 <>
                   {selectedConnectionIds.length > 0 && (
@@ -2033,8 +1819,6 @@ export default function ProviderDetailPage() {
         )}
         {renderModelsSection()}
       </Card>
-
-      {bulkActionModal}
 
       {/* Modals */}
       {providerId === "kiro" ? (

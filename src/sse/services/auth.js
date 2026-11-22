@@ -1,5 +1,5 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
-import { resolveConnectionProxyConfig, pickProxyPoolId, resolveRotationPoolIds } from "@/lib/network/connectionProxy";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
+import { resolveConnectionProxyConfig, resolveProviderLevelProxyPoolId, resolveEffectiveProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, connectionHealthTier, pickWindowedLru, shouldStampUnavailable, lastUsedOverlay, stampLastUsedOverlay } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, BALANCED_WINDOW_SIZE, UNAVAILABLE_LABEL_MIN_COOLDOWN_MS, SUSPECT_PROBATION_MS, SMALL_FLEET_RESCUE_MAX_CONNECTIONS, SMALL_FLEET_RESCUE_MAX_WAIT_MS, LAST_USED_FLUSH_DELAY_MS, LAST_USED_FLUSH_MAX_BATCH } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
@@ -155,17 +155,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   try {
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const override = providerOverride;
-      const strategy = override.rotateStrategy || "none";
-      // An explicitly picked pool beats rotation: a saved combo with
-      // both (e.g. set via the settings API) must not silently rotate
-      // away from the pool the operator chose.
-      let pickedId = override.proxyPoolId || null;
-      if (!pickedId && strategy !== "none") {
-        const allPools = await getProxyPools({ isActive: true });
-        const poolIds = resolveRotationPoolIds(allPools, override.proxyPoolIds);
-        pickedId = pickProxyPoolId(poolIds, strategy, providerId);
-      }
+      const pickedId = await resolveProviderLevelProxyPoolId(providerOverride, providerId);
       const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
       return {
         id: "noauth",
@@ -455,7 +445,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // spreads instead of piling on.
     if (connection) noteLeastBusyPick(connection.id);
 
-    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    // Provider-level proxy pool (settings providerStrategies): the
+    // provider-level pool wins over a per-connection pool, so changing it
+    // applies to every key at once; a per-connection pool is the fallback,
+    // and an explicit per-connection "__none__" (DIRECT on purpose) is
+    // never overridden. No provider-level setting = previous behaviour.
+    const effectivePoolId = await resolveEffectiveProxyPoolId(
+      providerOverride,
+      providerId,
+      connection.providerSpecificData?.proxyPoolId
+    );
+    const resolvedProxy = await resolveConnectionProxyConfig({
+      ...(connection.providerSpecificData || {}),
+      proxyPoolId: effectivePoolId,
+    });
 
     return {
       authType: connection.authType,

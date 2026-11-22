@@ -221,6 +221,40 @@ export async function resolveConnectionProxyConfig(
 }
 
 /**
+ * Resolve the provider-level proxy pool for one provider from its
+ * providerStrategies override (settings). An explicitly picked pool wins;
+ * otherwise a configured rotation (proxyPoolIds + rotateStrategy) picks
+ * one pool per request. Returns the pool id, "__none__" when the provider
+ * is explicitly direct, or null when nothing is configured. Shared by the
+ * no-auth lane and the keyed lane — one source of truth, no drift.
+ */
+export async function resolveProviderLevelProxyPoolId(providerOverride, providerId) {
+  if (!providerOverride) return null;
+  const picked = providerOverride.proxyPoolId || null;
+  if (picked) return picked;
+  const strategy = providerOverride.rotateStrategy || "none";
+  if (strategy === "none") return null;
+  const allPools = await getProxyPools({ isActive: true });
+  const poolIds = resolveRotationPoolIds(allPools, providerOverride.proxyPoolIds);
+  return pickProxyPoolId(poolIds, strategy, providerId);
+}
+
+/**
+ * Effective pool for one keyed connection. Precedence:
+ * 1. An explicit per-connection "__none__" (DIRECT on purpose) is never
+ *    overridden — a deliberately direct key stays direct.
+ * 2. The provider-level pool (single pick or rotation) wins over a
+ *    per-connection pool, so changing it applies to every key at once.
+ * 3. The per-connection pool is the fallback when nothing is set above.
+ * Returns a pool id, "__none__", or null.
+ */
+export async function resolveEffectiveProxyPoolId(providerOverride, providerId, connectionPoolId) {
+  if (connectionPoolId === "__none__") return "__none__";
+  const providerPoolId = await resolveProviderLevelProxyPoolId(providerOverride, providerId);
+  return providerPoolId || connectionPoolId || null;
+}
+
+/**
  * Auto proxy for connection TESTS (9Router Pro): when a connection has
  * no proxy of its own, a test may borrow one from the active standard
  * pools (round-robin) so the test reflects proxied reality instead of

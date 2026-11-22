@@ -13,7 +13,7 @@ const STRATEGIES = [
   { value: "random", label: "Random" },
 ];
 
-export default function NoAuthProxyCard({ providerId }) {
+export default function ProviderProxyCard({ providerId, variant = "provider", onSaved = null }) {
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolId, setProxyPoolId] = useState(NONE_PROXY_POOL_VALUE);
   const [rotateStrategy, setRotateStrategy] = useState("none");
@@ -74,13 +74,14 @@ export default function NoAuthProxyCard({ providerId }) {
       }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
+      if (typeof onSaved === "function") onSaved();
     } catch (e) {
       console.log("Save proxy config error:", e);
       setSaveError("Failed to save proxy settings.");
     } finally {
       setSaving(false);
     }
-  }, [providerId]);
+  }, [providerId, onSaved]);
 
   // Pool and rotation are mutually exclusive: picking a single pool turns
   // rotation off, enabling rotation clears the single pool. That keeps the
@@ -123,12 +124,14 @@ export default function NoAuthProxyCard({ providerId }) {
   return (
     <Card>
       <div className="flex items-center gap-3 mb-4">
-        <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-500/10 text-green-500">
-          <span className="material-symbols-outlined text-[20px]">lock_open</span>
+        <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full ${variant === "noauth" ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary"}`}>
+          <span className="material-symbols-outlined text-[20px]">{variant === "noauth" ? "lock_open" : "lan"}</span>
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium">No authentication required</p>
-          <p className="text-xs text-text-muted">This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included. Rotation here applies to this no-auth lane only; credentialed connections always use their own per-connection pool pin.</p>
+          <p className="text-sm font-medium">{variant === "noauth" ? "No authentication required" : "Proxy Pool (provider-level)"}</p>
+          <p className="text-xs text-text-muted">{variant === "noauth"
+            ? "This provider is ready to use. To bypass IP-based limits, route requests through your own proxy pool — your own IP credentials only, no proxies are included."
+            : "One pool for every connection of this provider. New keys inherit it automatically, and changing it applies to all keys at once. A connection explicitly set to direct stays direct."}</p>
         </div>
         {savedFlash && <Badge variant="success" size="sm">Saved</Badge>}
       </div>
@@ -230,6 +233,8 @@ export default function NoAuthProxyCard({ providerId }) {
   );
 }
 
-NoAuthProxyCard.propTypes = {
+ProviderProxyCard.propTypes = {
   providerId: PropTypes.string.isRequired,
+  variant: PropTypes.oneOf(["provider", "noauth"]),
+  onSaved: PropTypes.func,
 };

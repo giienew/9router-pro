@@ -12,7 +12,7 @@ export {
   createProviderNode, updateProviderNode, deleteProviderNode,
   normalizeRoutableMembers,
   getProxyPools, getProxyPoolById,
-  createProxyPool, updateProxyPool, deleteProxyPool, validateProxyUrl,
+  createProxyPool, updateProxyPool, deleteProxyPool, validateProxyUrl, toPublicProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, isKeyExpired,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
